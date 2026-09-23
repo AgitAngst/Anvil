@@ -12,6 +12,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
+use anvil_update::install::Source;
+
+use crate::installs;
 use crate::launch;
 use crate::run;
 
@@ -33,6 +36,35 @@ pub struct Spec {
     pub before: Vec<Before>,
     /// Что сделать после успеха: запустить собранную программу.
     pub after: Option<launch::Launch>,
+    /// Поставить собранный exe в `%LOCALAPPDATA%\Programs` (после успешной сборки).
+    pub install: Option<InstallStep>,
+    /// Задача без процесса: скачать выпуск с GitHub и поставить.
+    pub download: Option<Download>,
+    /// Ход — в байтах (скачивание), а не в единицах сборки.
+    pub bytes: bool,
+}
+
+/// Поставить свежесобранный exe новой версией установки.
+#[derive(Debug, Clone)]
+pub struct InstallStep {
+    pub bin: String,
+    /// Что собралось: `target\release\<bin>.exe`.
+    pub exe: PathBuf,
+    /// Метка версии: `0.1.0-3f89301`.
+    pub label: String,
+}
+
+/// Скачать архив выпуска, сверить SHA-256 и поставить.
+#[derive(Debug, Clone)]
+pub struct Download {
+    pub bin: String,
+    pub version: String,
+    pub asset: String,
+    /// Прямые адреса и адреса в API: с токеном берутся вторые — так видны и приватные выпуски.
+    pub asset_url: String,
+    pub asset_api: String,
+    pub sums_url: String,
+    pub sums_api: String,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +118,8 @@ pub struct Outcome {
     pub tests: Option<(u32, u32)>,
     /// Запуск программы после сборки: PID или ошибка.
     pub launched: Option<Result<u32, String>>,
+    /// Установка: какая версия встала или почему нет.
+    pub installed: Option<Result<String, String>>,
 }
 
 pub enum Event {
@@ -189,6 +223,12 @@ impl Runner {
         }
         self.note(id, format!("› {}", spec.title));
 
+        if let Some(download) = &spec.download {
+            let outcome = self.download(id, download);
+            self.send(Event::Finished(id, outcome));
+            return;
+        }
+
         let started = Instant::now();
         let mut child = match run::command(&spec.program, &spec.project)
             .args(&spec.args)
@@ -248,6 +288,18 @@ impl Runner {
         );
 
         if outcome.ok
+            && let Some(step) = &spec.install
+        {
+            let result = install_local(step);
+            match &result {
+                Ok(version) => self.note(id, format!("› {} {version} → current", step.bin)),
+                Err(e) => self.note(id, format!("› {}: {e}", step.bin)),
+            }
+            outcome.ok = result.is_ok();
+            outcome.installed = Some(result);
+        }
+
+        if outcome.ok
             && let Some(launch) = &spec.after
         {
             let result = launch::start(launch);
@@ -258,6 +310,59 @@ impl Runner {
             outcome.launched = Some(result);
         }
         self.send(Event::Finished(id, outcome));
+    }
+
+    /// Скачать выпуск и поставить — ход в килобайтах идёт в полосу, как единицы сборки.
+    fn download(&self, id: JobId, d: &Download) -> Outcome {
+        let mut outcome = Outcome::default();
+        let result = (|| {
+            let http = reqwest::blocking::Client::builder()
+                .user_agent(concat!("anvil/", env!("CARGO_PKG_VERSION")))
+                .timeout(Duration::from_secs(120))
+                .build()
+                .map_err(|e| e.to_string())?;
+            // Токен — тот же, что у потока GitHub; через окно он не проходит.
+            let (token, _) = crate::github::find_token();
+            let token = token.as_deref();
+            let (asset_url, sums_url) =
+                if token.is_some() { (&d.asset_api, &d.sums_api) } else { (&d.asset_url, &d.sums_url) };
+            let sums = anvil_update::install::fetch_text(&http, Source { url: sums_url, token })?;
+            let expected = anvil_update::expected_sum(&sums, &d.asset)
+                .ok_or_else(|| format!("{} is not listed in SHA256SUMS", d.asset))?;
+            self.note(id, format!("› SHA256SUMS: {expected}"));
+            let root = installs::root(&d.bin);
+            std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+            let layout = anvil_update::Layout::Managed { root: root.clone() };
+            let exe_name = format!("{}{}", d.bin, std::env::consts::EXE_SUFFIX);
+            let mut last = Instant::now();
+            let progress = |done: u64, _total: u64| {
+                if last.elapsed() >= Duration::from_millis(150) {
+                    last = Instant::now();
+                    self.send(Event::Units(id, (done / 1024) as u32));
+                }
+            };
+            let source = Source { url: asset_url, token };
+            let exe = anvil_update::install::install_archive(
+                &http,
+                &layout,
+                source,
+                &d.asset,
+                &expected,
+                &d.version,
+                std::ffi::OsStr::new(&exe_name),
+                progress,
+            )?;
+            self.note(id, format!("› {}", exe.display()));
+            installs::create_shortcut(&d.bin).map(|lnk| self.note(id, format!("› {}", lnk.display())))?;
+            Ok(d.version.clone())
+        })();
+        match &result {
+            Ok(version) => self.note(id, format!("› {} {version} → current", d.bin)),
+            Err(e) => self.note(id, format!("› {e}")),
+        }
+        outcome.ok = result.is_ok();
+        outcome.installed = Some(result);
+        outcome
     }
 
     fn stdout_line(&self, id: JobId, spec: &Spec, text: String, lines: &mut Vec<Line>, outcome: &mut Outcome) {
@@ -295,6 +400,19 @@ impl Runner {
         }
         lines.push(Line { kind: LineKind::Text, text });
     }
+}
+
+/// Поставить свежесобранный exe: копия во временную папку → `versions\<метка>` → `current` → ярлык.
+fn install_local(step: &InstallStep) -> Result<String, String> {
+    let root = installs::root(&step.bin);
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let staged = installs::stage_local(&step.exe, &root, &step.label)?;
+    if let Err(e) = anvil_update::install::install_version(&staged, &root, &step.label) {
+        anvil_update::install::remove_dir_later(staged);
+        return Err(e);
+    }
+    installs::create_shortcut(&step.bin)?;
+    Ok(step.label.clone())
 }
 
 /// Строки cargo в stderr: «error…» и «warning…» подсвечиваются, остальное — обычный текст.

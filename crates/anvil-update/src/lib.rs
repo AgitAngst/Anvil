@@ -17,7 +17,7 @@
 //! `<app>-X.Y.Z-windows-x64.zip` и `SHA256SUMS` в GitHub Release. Без `SHA256SUMS` обновление не
 //! ставится: непроверенный файл хуже, чем старая версия.
 
-mod install;
+pub mod install;
 mod releases;
 mod version;
 
@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub use install::{Layout, cleanup};
-pub use releases::{Asset, Update, asset_name, platform};
+pub use releases::{Asset, Update, asset_name, expected_sum, platform};
 pub use version::Version;
 
 /// Как часто проверять, пока программа открыта.
@@ -218,12 +218,7 @@ impl Updater {
         std::thread::spawn(move || {
             let result = (|| {
                 let http = Self::http()?;
-                let sums_text = http
-                    .get(&sums.url)
-                    .send()
-                    .and_then(|r| r.error_for_status())
-                    .and_then(|r| r.text())
-                    .map_err(|e| e.without_url().to_string())?;
+                let sums_text = install::fetch_text(&http, install::Source::public(&sums.url))?;
                 let expected = releases::expected_sum(&sums_text, &asset.name)
                     .ok_or_else(|| format!("{} is not listed in SHA256SUMS", asset.name))?;
                 let layout = Layout::detect()?;

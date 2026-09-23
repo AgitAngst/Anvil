@@ -98,6 +98,8 @@ pub struct Asset {
     pub size: u64,
     pub downloads: u64,
     pub url: String,
+    /// Адрес файла в API — через него файл отдаётся и из приватного репозитория (с токеном).
+    pub api_url: String,
 }
 
 /// Что известно о проекте на GitHub.
@@ -330,7 +332,7 @@ fn own_token() -> Option<String> {
     None
 }
 
-fn find_token() -> (Option<String>, TokenSource) {
+pub fn find_token() -> (Option<String>, TokenSource) {
     if let Some(token) = own_token() {
         return (Some(token), TokenSource::Keyring);
     }
@@ -480,6 +482,7 @@ struct ApiAsset {
     size: u64,
     download_count: u64,
     browser_download_url: String,
+    url: String,
 }
 
 impl From<ApiRelease> for Release {
@@ -494,7 +497,13 @@ impl From<ApiRelease> for Release {
             assets: r
                 .assets
                 .into_iter()
-                .map(|a| Asset { name: a.name, size: a.size, downloads: a.download_count, url: a.browser_download_url })
+                .map(|a| Asset {
+                    name: a.name,
+                    size: a.size,
+                    downloads: a.download_count,
+                    url: a.browser_download_url,
+                    api_url: a.url,
+                })
                 .collect(),
         }
     }
@@ -563,7 +572,7 @@ mod tests {
         let releases: Vec<ApiRelease> = serde_json::from_str(
             r#"[{"tag_name":"v0.3.0","name":"","html_url":"u",
             "published_at":"2026-09-23T15:04:05Z","created_at":"2026-09-23T15:00:00Z","prerelease":false,"draft":false,
-            "assets":[{"name":"amber-server","size":10485760,"download_count":3,"browser_download_url":"d"}]}]"#,
+            "assets":[{"name":"amber-server","size":10485760,"download_count":3,"browser_download_url":"d","url":"a"}]}]"#,
         )
         .unwrap();
         let release = Release::from(releases.into_iter().next().unwrap());

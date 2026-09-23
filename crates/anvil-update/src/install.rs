@@ -10,6 +10,7 @@
 //!
 //! Что бы ни сломалось по дороге, рабочей остаётся старая версия.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -63,18 +64,116 @@ impl Layout {
     }
 }
 
+/// Удалить папку, переждав короткие блокировки: антивирус и индексатор ненадолго держат
+/// свежие файлы, и первая попытка может не пройти. Нет папки — тоже успех.
+pub fn remove_dir_patiently(path: &Path) -> bool {
+    for attempt in 0..10 {
+        if !path.exists() || fs::remove_dir_all(path).is_ok() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100 * (attempt + 1)));
+    }
+    !path.exists()
+}
+
+/// Удалить папку в фоне, если сразу не вышло: антивирус порой проверяет свежий exe дольше, чем
+/// хочется ждать. Попытки — две минуты; не вышло и так — уберёт [`cleanup`] при следующем запуске.
+pub fn remove_dir_later(path: PathBuf) {
+    // Одна попытка сразу, остальные — в фоне: окно программы ждать не должно.
+    if !path.exists() || fs::remove_dir_all(&path).is_ok() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for _ in 0..60 {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if !path.exists() || fs::remove_dir_all(&path).is_ok() {
+                return;
+            }
+        }
+    });
+}
+
+/// Убрать папку с глаз сразу, а стереть — когда отпустят: переименовать рядом в
+/// `.<имя>.removed-<время>` (Windows это разрешает, даже пока антивирус держит файлы внутри) и
+/// удалить в фоне. Остатки таких папок подбирает [`sweep_removed`].
+pub fn discard_dir(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let aside = path.with_file_name(format!(".{name}.removed-{}", stamp()));
+    match fs::rename(path, &aside) {
+        Ok(()) => {
+            remove_dir_later(aside);
+            Ok(())
+        }
+        Err(e) if remove_dir_patiently(path) => {
+            let _ = e;
+            Ok(())
+        }
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// Дочистить в папке то, что [`discard_dir`] не успел стереть в прошлый раз.
+pub fn sweep_removed(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        // Только свои: `.<имя>.removed-<время>` — чужие папки рядом не трогаются.
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') && name.contains(".removed-") {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 fn stamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Откуда скачивать файл выпуска.
+#[derive(Debug, Clone, Copy)]
+pub struct Source<'a> {
+    /// Прямой адрес (`browser_download_url`) или, с токеном, адрес файла в API.
+    pub url: &'a str,
+    /// Токен для приватного репозитория: тогда `url` — адрес файла в API
+    /// (`…/releases/assets/<id>`), и он отдаётся с `Accept: application/octet-stream`.
+    pub token: Option<&'a str>,
+}
+
+impl<'a> Source<'a> {
+    pub fn public(url: &'a str) -> Self {
+        Self { url, token: None }
+    }
+
+    fn request(&self, http: &reqwest::blocking::Client) -> reqwest::blocking::RequestBuilder {
+        let request = http.get(self.url);
+        match self.token {
+            // reqwest не переносит Authorization на чужой хост при переадресации к хранилищу файлов.
+            Some(token) => request.bearer_auth(token).header("Accept", "application/octet-stream"),
+            None => request,
+        }
+    }
+}
+
+/// Скачать текст (`SHA256SUMS`).
+pub fn fetch_text(http: &reqwest::blocking::Client, source: Source) -> Result<String, String> {
+    source
+        .request(http)
+        .send()
+        .and_then(|r| r.error_for_status())
+        .and_then(|r| r.text())
+        .map_err(|e| e.without_url().to_string())
 }
 
 /// Скачать в файл, сообщая ход `(скачано, всего)`.
 pub fn download(
     http: &reqwest::blocking::Client,
-    url: &str,
+    source: Source,
     to: &Path,
     mut progress: impl FnMut(u64, u64),
 ) -> Result<(), String> {
-    let mut response = http.get(url).send().map_err(|e| e.without_url().to_string())?;
+    let mut response = source.request(http).send().map_err(|e| e.without_url().to_string())?;
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status().as_u16()));
     }
@@ -228,9 +327,7 @@ pub fn install_version(staged: &Path, root: &Path, version: &str) -> Result<Path
     let versions = root.join("versions");
     fs::create_dir_all(&versions).map_err(|e| e.to_string())?;
     let target = versions.join(version);
-    if target.exists() {
-        fs::remove_dir_all(&target).map_err(|e| format!("{}: {e}", target.display()))?;
-    }
+    discard_dir(&target)?;
     fs::rename(staged, &target).map_err(|e| e.to_string())?;
     switch_current(root, &target)?;
     prune_versions(&versions, &target);
@@ -291,11 +388,51 @@ fn prune_versions(versions: &Path, active: &Path) {
         .collect();
     dirs.sort_by_key(|d| std::cmp::Reverse(d.0));
     for (_, dir) in dirs.into_iter().skip(KEEP_VERSIONS - 1) {
-        let _ = fs::remove_dir_all(dir);
+        let _ = discard_dir(&dir);
     }
 }
 
-/// Скачать архив выпуска, сверить сумму и поставить. Возвращает exe, который запускать после.
+/// Скачать архив выпуска, сверить сумму и поставить. `exe_name` — exe, который обязан быть в
+/// архиве. Возвращает путь, по которому запускать новую версию.
+#[allow(clippy::too_many_arguments)]
+pub fn install_archive(
+    http: &reqwest::blocking::Client,
+    layout: &Layout,
+    source: Source,
+    asset_name: &str,
+    expected_sha256: &str,
+    version: &str,
+    exe_name: &OsStr,
+    progress: impl FnMut(u64, u64),
+) -> Result<PathBuf, String> {
+    let staging = layout.staging();
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    let zip_path = staging.join(asset_name);
+    download(http, source, &zip_path, progress)?;
+    let actual = sha256(&zip_path)?;
+    if actual != expected_sha256 {
+        let _ = fs::remove_dir_all(&staging);
+        return Err("the downloaded archive does not match SHA256SUMS — nothing was installed".into());
+    }
+    let unpacked = staging.join(version);
+    extract(&zip_path, &unpacked)?;
+    if !unpacked.join(exe_name).is_file() {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(format!("{} is missing in the archive", exe_name.to_string_lossy()));
+    }
+    let next = match layout {
+        Layout::Portable { dir } => {
+            swap_in(&unpacked, dir)?;
+            dir.join(exe_name)
+        }
+        Layout::Managed { root } => managed_exe(root, &install_version(&unpacked, root, version)?, exe_name),
+    };
+    remove_dir_later(staging);
+    Ok(next)
+}
+
+/// Самообновление: скачать и поставить поверх запущенной программы.
 pub fn install(
     http: &reqwest::blocking::Client,
     layout: &Layout,
@@ -307,31 +444,50 @@ pub fn install(
 ) -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe_name = exe.file_name().ok_or("no exe name")?.to_os_string();
-    let staging = layout.staging();
-    let _ = fs::remove_dir_all(&staging);
-    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    let zip_path = staging.join(asset_name);
-    download(http, asset_url, &zip_path, progress)?;
-    let actual = sha256(&zip_path)?;
-    if actual != expected_sha256 {
-        let _ = fs::remove_dir_all(&staging);
-        return Err("the downloaded archive does not match SHA256SUMS — nothing was installed".into());
+    let source = Source::public(asset_url);
+    install_archive(http, layout, source, asset_name, expected_sha256, version, &exe_name, progress)
+}
+
+/// В установленном раскладе запускать через `current` — так ярлыки и закрепления не устаревают.
+fn managed_exe(root: &Path, _version_dir: &Path, exe_name: &OsStr) -> PathBuf {
+    root.join("current").join(exe_name)
+}
+
+/// Установленные версии, свежие первыми (по времени появления папки).
+pub fn versions(root: &Path) -> Vec<(String, SystemTime)> {
+    let Ok(entries) = fs::read_dir(root.join("versions")) else { return Vec::new() };
+    let mut list: Vec<(String, SystemTime)> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir() && !e.file_name().to_string_lossy().starts_with('.'))
+        .filter_map(|e| Some((e.file_name().to_string_lossy().into_owned(), e.metadata().ok()?.modified().ok()?)))
+        .collect();
+    list.sort_by_key(|(_, time)| std::cmp::Reverse(*time));
+    list
+}
+
+/// Какая версия сейчас активна: на какую папку указывает `current`.
+pub fn current_version(root: &Path) -> Option<String> {
+    let target = fs::read_link(root.join("current")).ok()?;
+    Some(target.file_name()?.to_string_lossy().into_owned())
+}
+
+/// Сделать активной уже установленную версию (откат или возврат).
+pub fn activate(root: &Path, version: &str) -> Result<(), String> {
+    let target = root.join("versions").join(version);
+    if !target.is_dir() {
+        return Err(format!("{version} is not installed"));
     }
-    let unpacked = staging.join(version);
-    extract(&zip_path, &unpacked)?;
-    if !unpacked.join(&exe_name).is_file() {
-        let _ = fs::remove_dir_all(&staging);
-        return Err(format!("{} is missing in the archive", exe_name.to_string_lossy()));
+    switch_current(root, &target)
+}
+
+/// Удалить установку целиком: ссылку `current` и все версии. Данные программ (`%APPDATA%`) — не здесь
+/// и не трогаются. Папка сразу уходит с глаз, файлы стираются в фоне ([`discard_dir`]).
+pub fn uninstall(root: &Path) -> Result<(), String> {
+    let current = root.join("current");
+    if current.symlink_metadata().is_ok() {
+        remove_link(&current).map_err(|e| format!("{}: {e}", current.display()))?;
     }
-    let next = match layout {
-        Layout::Portable { dir } => {
-            swap_in(&unpacked, dir)?;
-            dir.join(&exe_name)
-        }
-        Layout::Managed { root } => install_version(&unpacked, root, version)?.join(&exe_name),
-    };
-    let _ = fs::remove_dir_all(&staging);
-    Ok(next)
+    discard_dir(root)
 }
 
 /// Запустить программу заново с теми же аргументами. Окно текущей закрывает сама программа.
@@ -476,8 +632,16 @@ mod tests {
         }
         assert_eq!(fs::read(root.join("current").join("app.exe")).unwrap(), b"two");
         assert!(root.join("versions").join("1.0.0").join("app.exe").is_file(), "прежняя версия — для отката");
-        remove_link(&root.join("current")).unwrap();
-        fs::remove_dir_all(root).unwrap();
+        assert_eq!(current_version(&root).as_deref(), Some("1.1.0"));
+        assert_eq!(versions(&root).len(), 2);
+
+        activate(&root, "1.0.0").unwrap();
+        assert_eq!(current_version(&root).as_deref(), Some("1.0.0"));
+        assert_eq!(fs::read(root.join("current").join("app.exe")).unwrap(), b"one");
+        assert!(activate(&root, "9.9.9").is_err());
+
+        uninstall(&root).unwrap();
+        assert!(!root.exists(), "папка установки ушла с глаз сразу");
     }
 
     #[test]

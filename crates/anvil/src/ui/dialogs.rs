@@ -14,6 +14,30 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     locked(app, ctx);
     stop(app, ctx);
     clean(app, ctx);
+    uninstall(app, ctx);
+}
+
+fn uninstall(app: &mut App, ctx: &egui::Context) {
+    let Some(bin) = app.uninstall_confirm.clone() else { return };
+    let root = crate::installs::root(&bin);
+    let body = |ui: &mut egui::Ui| {
+        let p = Palette::of(ui);
+        w::note(ui, t("Удалятся все установленные версии и ярлык в «Пуске». Данные программы в %APPDATA% останутся."));
+        ui.add_space(4.0);
+        ui.label(RichText::new(root.display().to_string()).font(egui::FontId::monospace(12.5)).color(p.text));
+    };
+    let heading = format!("{} {}?", t("Удалить установку"), crate::installs::display_name(&bin));
+    match w::confirm(ctx, "anvil-uninstall", &heading, body, t("Удалить"), true) {
+        Some(true) => {
+            app.uninstall_confirm = None;
+            let path = app.current().map(|p| p.path.clone());
+            if let Some(path) = path {
+                app.uninstall(&path, &bin);
+            }
+        }
+        Some(false) => app.uninstall_confirm = None,
+        None => {}
+    }
 }
 
 /// Сборке мешает запущенная программа — три честных способа и отмена.

@@ -2,6 +2,7 @@
 
 mod dialogs;
 mod github;
+mod install;
 mod jobs;
 mod presets;
 mod project;

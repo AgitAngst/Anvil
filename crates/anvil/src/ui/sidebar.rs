@@ -9,7 +9,11 @@ use crate::i18n::{self, t};
 use crate::worker::Project;
 
 /// Точка и бейдж проекта в списке: что в нём требует внимания.
-pub fn status(project: &Project, remote: Option<&crate::github::Remote>) -> (Tone, Option<(String, Tone)>) {
+pub fn status(
+    project: &Project,
+    remote: Option<&crate::github::Remote>,
+    installs: &std::collections::HashMap<String, Option<crate::installs::Installed>>,
+) -> (Tone, Option<(String, Tone)>) {
     if project.git.is_err() {
         return (Tone::Danger, Some((t("ошибка git").to_owned(), Tone::Danger)));
     }
@@ -22,6 +26,15 @@ pub fn status(project: &Project, remote: Option<&crate::github::Remote>) -> (Ton
     let Some(git) = project.git() else {
         return (Tone::Neutral, Some((t("без git").to_owned(), Tone::Neutral)));
     };
+    // Установленная копия отстала от выпуска на GitHub.
+    let newer = project.meta().into_iter().flat_map(|m| m.bins.iter()).find_map(|bin| {
+        let installed = installs.get(&bin.name).and_then(Option::as_ref);
+        let release = super::install::release_for(remote, &bin.name, false);
+        super::install::newer(installed, release.as_ref()).map(|v| format!("⬆ {v}"))
+    });
+    if let Some(text) = newer {
+        return (Tone::Success, Some((text, Tone::Success)));
+    }
     if git.dirty() {
         let n = git.changes.len();
         return (Tone::Warning, Some((i18n::count(n, ["файл", "файла", "файлов"], ["file", "files"]), Tone::Warning)));
@@ -63,7 +76,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         .visible()
         .into_iter()
         .map(|project| {
-            let (tone, trailing) = status(project, app.remotes.get(&project.path));
+            let (tone, trailing) = status(project, app.remotes.get(&project.path), &app.installs);
             Row { path: project.path.clone(), name: project.name(), tone, trailing }
         })
         .collect();

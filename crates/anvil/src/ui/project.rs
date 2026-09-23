@@ -29,6 +29,7 @@ enum Action {
     SetRelease(bool),
     /// Что запускает главная кнопка: бинарник или пресет.
     SetRun(String),
+    Install(super::install::Action),
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -60,8 +61,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         t("Изменения").to_owned()
     };
-    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Notes];
-    let tabs = [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Заметки")];
+    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Install, Tab::Notes];
+    let tabs = [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Установка"), t("Заметки")];
     let mut index = order.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     w::tabs(ui, &mut index, &tabs);
     app.tab = order[index];
@@ -79,6 +80,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         }
         Tab::Ci => super::github::ci_tab(ui, remote.as_ref(), on_github, head.as_deref()),
         Tab::Releases => super::github::releases_tab(ui, remote.as_ref(), on_github),
+        Tab::Install => {
+            actions.extend(super::install::tab(app, ui, &project, remote.as_ref()).into_iter().map(Action::Install));
+            None
+        }
         Tab::Notes => {
             notes(ui, &project, &mut actions);
             None
@@ -112,6 +117,17 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         Action::SetRun(name) => {
             app.config.project_mut(dir).run = Some(name);
             app.save();
+        }
+        Action::Install(action) => {
+            use super::install::Action as I;
+            match action {
+                I::Local(bin) => app.install_local(dir, &bin),
+                I::Release(bin, release) => app.install_release(dir, &bin, &release),
+                I::Activate(bin, version) => app.activate(dir, &bin, &version),
+                I::Launch(bin) => app.launch_installed(&bin),
+                I::Folder(root) => app.report(open::folder(&root)),
+                I::Uninstall(bin) => app.uninstall_confirm = Some(bin),
+            }
         }
     }
 }

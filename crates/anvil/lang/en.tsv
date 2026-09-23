@@ -215,3 +215,27 @@ origin ведёт не на github.com или его нет.	origin does not poi
 упал	failed
 черновик	draft
 шаг	step
+Активная версия	Active version
+В выпуске нет архива по соглашению или SHA256SUMS	The release has no conventional archive or SHA256SUMS
+Версии	Versions
+Из сборки	From build
+На GitHub нет выпуска по соглашению: архива <бинарник>-X.Y.Z-windows-x64.zip и SHA256SUMS	No conventional release on GitHub: no <binary>-X.Y.Z-windows-x64.zip and SHA256SUMS
+Открыть папку установки	Open install folder
+С GitHub	From GitHub
+Сделать текущей	Make current
+Ставить нечего	Nothing to install
+Удалить	Remove
+Удалить установку	Remove the installation of
+Удалить…	Remove…
+Удалятся все установленные версии и ярлык в «Пуске». Данные программы в %APPDATA% останутся.	All installed versions and the Start menu shortcut are removed. The app's data in %APPDATA% stays.
+Установка	Install
+Установка — в папке Programs внутри %LOCALAPPDATA%, ярлык — в «Пуске». Данные программ живут в %APPDATA%, их Anvil не трогает.	Installs go to the Programs folder inside %LOCALAPPDATA%, the shortcut to the Start menu. App data lives in %APPDATA% and Anvil never touches it.
+есть	available
+запущена из установки	running from the install
+не установлена	not installed
+перезапустите программу	restart the app
+поставлена	installed
+программа запущена из установки — сначала закройте её	the app is running from the install — close it first
+текущая	current
+установка удалена	installation removed
+установлена	installed

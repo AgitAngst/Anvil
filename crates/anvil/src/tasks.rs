@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::config::Preset;
-use crate::jobs::{Before, Diag, JobId, Line, Outcome, Spec};
+use crate::jobs::{Before, Diag, Download, InstallStep, JobId, Line, Outcome, Spec};
 use crate::launch::{self, Launch};
 use crate::registry::Meta;
 
@@ -23,6 +23,11 @@ pub enum Task {
         bin: String,
         args: Vec<String>,
     },
+    /// Собрать бинарник в release и поставить в `%LOCALAPPDATA%\Programs` с меткой версии.
+    Install {
+        bin: String,
+        label: String,
+    },
 }
 
 impl Task {
@@ -30,6 +35,7 @@ impl Task {
     fn links_into(&self, release: bool) -> Option<bool> {
         match self {
             Task::Build | Task::Run { .. } => Some(release),
+            Task::Install { .. } => Some(true),
             Task::Test => Some(false),
             Task::Clippy | Task::Fmt | Task::Clean => None,
         }
@@ -106,6 +112,9 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
     let mut args: Vec<String> = Vec::new();
     let mut json = true;
     let mut after = None;
+    let mut install = None;
+    // Установка — всегда release, что бы ни стояло в переключателе.
+    let release = release || matches!(task, Task::Install { .. });
     match task {
         Task::Build => {
             args.push("build".into());
@@ -147,8 +156,19 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
                 dir: project.to_path_buf(),
             });
         }
+        Task::Install { bin, label } => {
+            args.push("build".into());
+            if let Some(package) = meta.and_then(|m| m.bins.iter().find(|b| &b.name == bin)).map(|b| b.package.clone())
+            {
+                args.extend(["-p".into(), package]);
+            }
+            args.extend(["--bin".into(), bin.clone()]);
+            let target = meta.map(|m| m.target_dir.clone()).unwrap_or_else(|| project.join("target"));
+            install =
+                Some(InstallStep { bin: bin.clone(), exe: launch::exe_path(&target, true, bin), label: label.clone() });
+        }
     }
-    if release && matches!(task, Task::Build | Task::Run { .. }) {
+    if release && matches!(task, Task::Build | Task::Run { .. } | Task::Install { .. }) {
         args.push("--release".into());
     }
     if jobs > 0 && json && !matches!(task, Task::Clean) {
@@ -167,6 +187,26 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
         expected_units: None,
         before: Vec::new(),
         after,
+        install,
+        download: None,
+        bytes: false,
+    }
+}
+
+/// Задача «скачать выпуск с GitHub и поставить» — без процесса, ход в килобайтах.
+pub fn download_spec(project: &Path, download: Download, size: u64) -> Spec {
+    Spec {
+        project: project.to_path_buf(),
+        title: format!("GitHub · {}", download.asset),
+        program: String::new(),
+        args: Vec::new(),
+        json: false,
+        expected_units: Some((size / 1024).max(1) as u32),
+        before: Vec::new(),
+        after: None,
+        install: None,
+        download: Some(download),
+        bytes: true,
     }
 }
 
@@ -203,6 +243,11 @@ pub fn resolve(spec: &mut Spec, locked: &[Locked], how: Resolve, meta: Option<&M
                 && let Some(name) = after.exe.file_name()
             {
                 after.exe = separate.join(launch::profile_dir(release)).join(name);
+            }
+            if let Some(step) = &mut spec.install
+                && let Some(name) = step.exe.file_name()
+            {
+                step.exe = separate.join("release").join(name);
             }
         }
     }
@@ -270,6 +315,18 @@ mod tests {
         let after = s.after.unwrap();
         assert_eq!(after.exe, launch::exe_path(Path::new(r"D:\p\target"), true, "amber-desktop"));
         assert_eq!(after.args, ["--profile", "t"]);
+    }
+
+    #[test]
+    fn install_is_always_release_and_installs_the_bin() {
+        let m = meta();
+        let task = Task::Install { bin: "amber-desktop".into(), label: "0.3.0-abc".into() };
+        let s = spec(Path::new(r"D:\p"), Some(&m), &task, false, 0);
+        assert_eq!(s.title, "cargo build -p amber-desktop --bin amber-desktop --release");
+        let step = s.install.unwrap();
+        assert_eq!(step.exe, launch::exe_path(&m.target_dir, true, "amber-desktop"));
+        assert_eq!(step.label, "0.3.0-abc");
+        assert!(s.after.is_none());
     }
 
     #[test]

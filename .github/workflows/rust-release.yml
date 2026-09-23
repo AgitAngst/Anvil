@@ -78,7 +78,8 @@ jobs:
         run: |
           $tag = '${{ github.ref_name }}'
           $repo = if ('${{ inputs.repository }}') { '${{ inputs.repository }}' } else { '${{ github.repository }}' }
-          # Заметки — из аннотации тега (git tag -a v1.2.3 -m "…").
+          # Заметки — из аннотации тега. Заголовки Markdown (`#`) git при создании тега вырезает
+          # как комментарии, если не сказать `git tag -a --cleanup=verbatim …`.
           git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
           $notes = (git tag -l --format='%(contents)' $tag) -join "`n"
           $flags = @('--repo', $repo, '--title', $tag)

@@ -1,5 +1,6 @@
 //! Состояние окна: проекты, выбор, настройки, связь с фоновым потоком.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -9,8 +10,9 @@ use anvil_ui::{Accent, Tone};
 use eframe::egui;
 
 use crate::config::{self, Config};
-use crate::github::{self, Auth, Remotes, Target};
+use crate::github::{self, Auth, Release, Remotes, Target};
 use crate::i18n::{self, t};
+use crate::installs::{self, Installed};
 use crate::jobs::{self, JobId};
 use crate::procs::{self, Running, Snapshot};
 use crate::registry;
@@ -25,6 +27,7 @@ pub enum Tab {
     Changes,
     Ci,
     Releases,
+    Install,
     Notes,
 }
 
@@ -45,6 +48,10 @@ pub struct App {
     pub about_open: bool,
     /// Обновления самого Anvil.
     pub updater: anvil_update::Updater,
+    /// Установленные копии бинарников (`%LOCALAPPDATA%\Programs`); `None` — не установлен.
+    pub installs: HashMap<String, Option<Installed>>,
+    /// Подтверждение удаления установки бинарника.
+    pub uninstall_confirm: Option<String>,
     /// Задачи по порядку постановки: новые — в конце.
     pub jobs: Vec<Job>,
     pub log_open: bool,
@@ -108,6 +115,8 @@ impl App {
             settings_open: false,
             about_open: false,
             updater,
+            installs: HashMap::new(),
+            uninstall_confirm: None,
             jobs: Vec::new(),
             log_open: false,
             log_job: None,
@@ -226,9 +235,11 @@ impl App {
                 self.scanning = false;
             }
             Event::Project(update) => {
+                let path = update.path.clone();
                 if let Some(project) = self.projects.iter_mut().find(|p| p.path == update.path) {
                     project.merge(*update);
                 }
+                self.refresh_installs(&path);
                 self.refreshed_at = Some(i18n::now());
             }
             Event::Procs(snapshot) => self.procs = snapshot,
@@ -404,7 +415,10 @@ impl App {
         let was_started = job.started.is_some();
         job.finished = Some((outcome.clone(), took));
         let name = worker::display_name(&job.project);
-        let (errors, key) = (job.errors(), job.units_key.clone());
+        let (errors, key, project) = (job.errors(), job.units_key.clone(), job.project.clone());
+        if outcome.installed.is_some() {
+            self.refresh_installs(&project);
+        }
         if outcome.ok && outcome.units > 0 {
             self.units.insert(key, outcome.units);
             tasks::save_units(&self.units_path, &self.units);
@@ -428,6 +442,11 @@ impl App {
             (format!("{name}: {}", t("не удалось — подробности в логе")), Tone::Danger)
         };
         self.toasts.push(text, tone);
+        match &outcome.installed {
+            Some(Ok(version)) => self.toasts.push(format!("{name}: {} {version}", t("установлена")), Tone::Success),
+            Some(Err(e)) => self.toasts.push(format!("{name}: {e}"), Tone::Danger),
+            None => {}
+        }
         if let Some(Err(e)) = &outcome.launched {
             self.toasts.push(format!("{}: {e}", t("Не запустилось")), Tone::Danger);
         }
@@ -435,6 +454,105 @@ impl App {
         if !ctx.input(|i| i.focused) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
+    }
+
+    // ─── Установка ─────────────────────────────────────────────────────────────
+
+    /// Перечитать, что установлено для бинарников проекта.
+    pub fn refresh_installs(&mut self, path: &Path) {
+        let bins: Vec<String> = self
+            .projects
+            .iter()
+            .find(|p| p.path == path)
+            .and_then(|p| p.meta())
+            .map(|m| m.bins.iter().map(|b| b.name.clone()).collect())
+            .unwrap_or_default();
+        for bin in bins {
+            self.installs.insert(bin.clone(), installs::scan(&bin));
+        }
+    }
+
+    /// Собрать release и поставить с меткой `версия-хеш`.
+    pub fn install_local(&mut self, path: &Path, bin: &str) {
+        let Some(project) = self.projects.iter().find(|p| p.path == path) else { return };
+        let git = project.git();
+        let label = installs::local_label(
+            project.meta().and_then(|m| m.version.as_deref()).unwrap_or("0.0.0"),
+            git.and_then(|g| g.commits.first()).map(|c| c.hash.as_str()),
+            git.is_some_and(|g| g.dirty()),
+        );
+        self.start_task(path, Task::Install { bin: bin.to_owned(), label });
+    }
+
+    /// Скачать выпуск с GitHub и поставить.
+    pub fn install_release(&mut self, path: &Path, bin: &str, release: &Release) {
+        let Some(version) = anvil_update::Version::parse(&release.tag) else { return };
+        let name = anvil_update::asset_name(bin, &version);
+        let (Some(asset), Some(sums)) =
+            (release.assets.iter().find(|a| a.name == name), release.assets.iter().find(|a| a.name == "SHA256SUMS"))
+        else {
+            self.toasts.push(t("В выпуске нет архива по соглашению или SHA256SUMS"), Tone::Danger);
+            return;
+        };
+        let download = crate::jobs::Download {
+            bin: bin.to_owned(),
+            version: version.to_string(),
+            asset: name,
+            asset_url: asset.url.clone(),
+            asset_api: asset.api_url.clone(),
+            sums_url: sums.url.clone(),
+            sums_api: sums.api_url.clone(),
+        };
+        self.enqueue(tasks::download_spec(path, download, asset.size));
+    }
+
+    /// Сделать активной другую установленную версию — откат или возврат.
+    pub fn activate(&mut self, path: &Path, bin: &str, version: &str) {
+        match anvil_update::install::activate(&installs::root(bin), version) {
+            Ok(()) => {
+                let running = self
+                    .running(bin)
+                    .iter()
+                    .any(|r| r.path.as_ref().is_some_and(|p| installs::inside(p, &installs::root(bin))));
+                let text = if running {
+                    format!("{bin}: {} {version} — {}", t("текущая"), t("перезапустите программу"))
+                } else {
+                    format!("{bin}: {} {version}", t("текущая"))
+                };
+                self.toasts.push(text, Tone::Success);
+            }
+            Err(e) => self.toasts.push(format!("{bin}: {e}"), Tone::Danger),
+        }
+        self.refresh_installs(path);
+    }
+
+    /// Запустить установленную копию (через `current`).
+    pub fn launch_installed(&mut self, bin: &str) {
+        let current = installs::root(bin).join("current");
+        let launch = crate::launch::Launch {
+            exe: current.join(format!("{bin}{}", std::env::consts::EXE_SUFFIX)),
+            args: Vec::new(),
+            dir: current,
+        };
+        if let Err(e) = crate::launch::start(&launch) {
+            self.toasts.push(format!("{bin}: {e}"), Tone::Danger);
+        }
+    }
+
+    /// Удалить установку целиком (после подтверждения). Запущенную — не удаляем.
+    pub fn uninstall(&mut self, path: &Path, bin: &str) {
+        let root = installs::root(bin);
+        if self.running(bin).iter().any(|r| r.path.as_ref().is_some_and(|p| installs::inside(p, &root))) {
+            self.toasts
+                .push(format!("{bin}: {}", t("программа запущена из установки — сначала закройте её")), Tone::Warning);
+            return;
+        }
+        installs::remove_shortcut(bin);
+        match anvil_update::install::uninstall(&root) {
+            Ok(()) => self.toasts.push(format!("{bin}: {}", t("установка удалена")), Tone::Neutral),
+            Err(e) => self.toasts.push(format!("{bin}: {e}"), Tone::Danger),
+        }
+        self.refresh_installs(path);
     }
 
     pub fn report(&mut self, result: Result<(), String>) {

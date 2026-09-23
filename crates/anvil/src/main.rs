@@ -8,6 +8,7 @@ mod config;
 mod git;
 mod github;
 mod i18n;
+mod installs;
 mod jobs;
 mod launch;
 mod open;

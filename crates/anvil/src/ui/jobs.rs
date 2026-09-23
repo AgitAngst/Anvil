@@ -41,7 +41,10 @@ pub fn status(app: &mut App, ui: &mut Ui) -> bool {
         w::mono(ui, &job.spec.title, Some(p.weak));
         ui.add_space(6.0);
         w::progress(ui, job.progress(), 160.0);
+        let mb = |kb: u32| format!("{:.1}", kb as f32 / 1024.0);
         let units = match job.spec.expected_units {
+            // Скачивание: ход в килобайтах — показать мегабайты.
+            Some(total) if job.spec.bytes => format!("{}/{} {}", mb(job.units.min(total)), mb(total), t("МБ")),
             Some(total) => format!("{}/{total}", job.units.min(total)),
             None if job.units > 0 => job.units.to_string(),
             None => String::new(),
