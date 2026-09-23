@@ -288,9 +288,11 @@ mod tests {
         let mut s = spec(Path::new(r"D:\p"), Some(&m), &task, false, 0);
         resolve(&mut s, &[], Resolve::SeparateDir, Some(&m), false);
         let at = s.args.iter().position(|a| a == "--target-dir").unwrap();
-        assert_eq!(PathBuf::from(&s.args[at + 1]), PathBuf::from(r"D:\p\target\anvil"));
+        // Путь строится через join, как в коде: на Linux `\` — не разделитель.
+        let separate = m.target_dir.join("anvil");
+        assert_eq!(PathBuf::from(&s.args[at + 1]), separate);
         assert_eq!(s.args.last().map(String::as_str), Some("--message-format=json"));
-        assert_eq!(s.after.unwrap().exe, launch::exe_path(Path::new(r"D:\p\target\anvil"), false, "amber-server"));
+        assert_eq!(s.after.unwrap().exe, launch::exe_path(&separate, false, "amber-server"));
     }
 
     #[test]
