@@ -1,0 +1,19 @@
+[package]
+name = "anvil-ui"
+description = "Единый вид для всех программ: темы, значки, виджеты"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Сериализация общих настроек (тема, язык, обновления) — программа хранит их у себя.
+serde = ["dep:serde"]
+
+[dependencies]
+eframe = { workspace = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Globalization"] }
