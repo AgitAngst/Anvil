@@ -1,5 +1,6 @@
 //! Отрисовка окна. Каждая часть — в своём файле.
 
+pub mod deps;
 mod dialogs;
 mod github;
 mod install;
@@ -48,6 +49,8 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     presets::show(app, &ctx);
     release::show(app, &ctx);
     dialogs::show(app, &ctx);
+    deps::overview(app, &ctx);
+    deps::confirm(app, &ctx);
     let info = info();
     let status = anvil_update::ui::about_status(&ctx, &app.updater);
     if chrome::about(&ctx, &mut app.about_open, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {

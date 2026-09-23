@@ -5,6 +5,7 @@
 
 mod app;
 mod config;
+mod deps;
 mod git;
 mod github;
 mod i18n;
@@ -16,6 +17,7 @@ mod procs;
 mod registry;
 mod release;
 mod run;
+mod rustsec;
 mod tasks;
 mod ui;
 mod worker;

@@ -298,3 +298,55 @@ origin не на GitHub: архивы по соглашению останутс
 прошло тестов:	tests passed:
 тег уже на GitHub — поправьте и перезапустите workflow	the tag is already on GitHub — fix it and rerun the workflow
 Ход	Progress
+Anvil спросит crates.io, что обновилось, и сверит Cargo.lock с базой уязвимостей RustSec.	Anvil will ask crates.io what's new and check Cargo.lock against the RustSec advisory database.
+Cargo.toml: anvil-ui и anvil-update — тег	Cargo.toml: anvil-ui and anvil-update — tag
+Rust и зависимости	Rust and dependencies
+RustSec	RustSec
+cargo update — только версии в рамках требований Cargo.toml	cargo update — only versions within the Cargo.toml requirements
+cargo update, потом тесты; если красно — Cargo.lock вернётся как был	cargo update, then tests; if red, Cargo.lock goes back as it was
+crates.io не ответил	crates.io did not answer
+workflow выпуска: rust-release.yml@	release workflow: rust-release.yml@
+Всё уже на последних совместимых версиях.	Everything is on the latest compatible versions.
+Где разошлись версии	Where versions diverge
+Держат требования других пакетов:	Held back by other packages' requirements:
+Ещё не проверяли	Not checked yet
+Зависимости	Dependencies
+Зависимости ещё не проверены	Dependencies not checked yet
+Набор Anvil	Anvil kit
+Набор Anvil в программах	Anvil kit in the apps
+Ни одна программа пока не берёт набор с GitHub (или зависимости ещё не проверены).	No app takes the kit from GitHub yet (or dependencies aren't checked yet).
+Новые мажорные версии	New major versions
+Обновить Rust	Update Rust
+Обновить Rust?	Update Rust?
+Обновить совместимые	Update compatible
+Обновить совместимые зависимости в	Update compatible dependencies in
+Общие прямые зависимости у программ одних и тех же версий.	Shared direct dependencies are on the same versions everywhere.
+Обычно помогает «Обновить совместимые»; если исправление только в новой мажорной версии — обновить её руками.	"Update compatible" usually fixes it; if the fix is only in a new major version, update it by hand.
+Перевести	Move
+По цепочке:	Transitive:
+Поднять до	Move to
+Проверить	Check
+Проверить снова	Check again
+Проверяю…	Checking…
+Сами не обновляются: API мог поменяться. Посмотрите, что нового, и поднимите руками.	Not updated automatically: the API may have changed. See what's new and update by hand.
+Совместимые обновления	Compatible updates
+Спрашиваю rustup…	Asking rustup…
+Спросить crates.io и сверить с базой RustSec заново	Ask crates.io and check against RustSec again
+Тулчейн	Toolchain
+У прямых зависимостей мажорных обновлений нет.	No major updates for direct dependencies.
+заметка	notice
+изменения останутся в рабочей копии — закоммитьте их, когда посмотрите	the changes stay in the working copy — commit them once you've looked
+исправления пока нет	no fix yet
+исправлено:	fixed in:
+коммит	commit
+не поддерживается	unmaintained
+не собралось или тесты не прошли — все файлы вернутся как были	if it doesn't build or tests fail, all files go back as they were
+небезопасно	unsound
+с устаревшими пакетами	with outdated packages
+с уязвимостями	with vulnerabilities
+сборки, которые идут в это время, лучше дождаться	better let running builds finish first
+свежий	up to date
+тесты не прошли — Cargo.lock вернётся как был	if tests fail, Cargo.lock goes back as it was
+уязвимость	vulnerability
+что нового	what's new
+Обновить зависимости	Update dependencies

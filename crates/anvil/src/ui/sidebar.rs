@@ -13,6 +13,7 @@ pub fn status(
     project: &Project,
     remote: Option<&crate::github::Remote>,
     installs: &std::collections::HashMap<String, Option<crate::installs::Installed>>,
+    deps: Option<&crate::deps::Report>,
 ) -> (Tone, Option<(String, Tone)>) {
     if project.git.is_err() {
         return (Tone::Danger, Some((t("ошибка git").to_owned(), Tone::Danger)));
@@ -22,6 +23,9 @@ pub fn status(
     }
     if super::github::failed(remote) {
         return (Tone::Danger, Some(("CI".to_owned(), Tone::Danger)));
+    }
+    if deps.is_some_and(|d| d.vulnerabilities() > 0) {
+        return (Tone::Danger, Some(("RustSec".to_owned(), Tone::Danger)));
     }
     let Some(git) = project.git() else {
         return (Tone::Neutral, Some((t("без git").to_owned(), Tone::Neutral)));
@@ -76,13 +80,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         .visible()
         .into_iter()
         .map(|project| {
-            let (tone, trailing) = status(project, app.remotes.get(&project.path), &app.installs);
+            let (tone, trailing) =
+                status(project, app.remotes.get(&project.path), &app.installs, app.deps.get(&project.path));
             Row { path: project.path.clone(), name: project.name(), tone, trailing }
         })
         .collect();
     let current = app.current().map(|p| p.path.clone());
 
-    egui::ScrollArea::vertical().auto_shrink([false, true]).max_height(ui.available_height() - 150.0).show(ui, |ui| {
+    egui::ScrollArea::vertical().auto_shrink([false, true]).max_height(ui.available_height() - 200.0).show(ui, |ui| {
         if visible.is_empty() && !app.scanning {
             ui.add_space(8.0);
             let text = if app.search.trim().is_empty() {
@@ -110,8 +115,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let mut ahead = 0;
     let mut broken = 0;
     let mut ci = 0;
+    let mut vulnerable = 0;
+    let mut outdated = 0;
     for project in app.visible() {
         ci += usize::from(super::github::failed(app.remotes.get(&project.path)));
+        if let Some(report) = app.deps.get(&project.path) {
+            vulnerable += usize::from(report.vulnerabilities() > 0);
+            outdated += usize::from(report.updates.iter().any(|c| c.direct));
+        }
         match project.git() {
             Some(git) => {
                 dirty += usize::from(git.dirty());
@@ -134,6 +145,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         (Tone::Accent, ahead, t("с неотправленными коммитами")),
         (Tone::Danger, broken, t("с ошибкой чтения")),
         (Tone::Danger, ci, t("с упавшим CI")),
+        (Tone::Danger, vulnerable, t("с уязвимостями")),
+        (Tone::Accent, outdated, t("с устаревшими пакетами")),
     ];
     let mut any = false;
     for (tone, n, what) in lines {
@@ -152,5 +165,19 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             w::dot(ui, Tone::Success);
             ui.label(RichText::new(t("Всё закоммичено и отправлено")).size(13.0).color(p.weak));
         });
+    }
+
+    // Rust: версия и есть ли новее; щелчок — окно «Rust и зависимости».
+    ui.add_space(10.0);
+    let (text, trailing) = match &app.toolchain {
+        Some(tc) => {
+            (format!("Rust {}", tc.current), tc.latest.as_ref().map(|v| (format!("{} {v}", t("есть")), Tone::Accent)))
+        }
+        None => ("Rust".to_owned(), None),
+    };
+    let tone = if trailing.is_some() { Tone::Accent } else { Tone::Success };
+    let trailing = trailing.as_ref().map(|(text, tone)| (text.as_str(), *tone));
+    if w::nav_item(ui, false, tone, &text, trailing).on_hover_text(t("Rust и зависимости")).clicked() {
+        app.overview_open = true;
     }
 }

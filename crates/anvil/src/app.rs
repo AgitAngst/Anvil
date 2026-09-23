@@ -10,6 +10,7 @@ use anvil_ui::{Accent, Tone};
 use eframe::egui;
 
 use crate::config::{self, Config};
+use crate::deps;
 use crate::github::{self, Auth, Release, Remotes, Target};
 use crate::i18n::{self, t};
 use crate::installs::{self, Installed};
@@ -28,7 +29,16 @@ pub enum Tab {
     Ci,
     Releases,
     Install,
+    Deps,
     Notes,
+}
+
+/// Что сделать, когда задача закончится.
+enum After {
+    /// Перепроверить зависимости проекта: `Cargo.lock` мог поменяться.
+    Deps(PathBuf),
+    /// Перечитать тулчейн: Rust обновился.
+    Toolchain,
 }
 
 pub struct App {
@@ -71,6 +81,18 @@ pub struct App {
     /// CI и выпуски проектов на GitHub.
     pub remotes: Remotes,
     pub gh_auth: Option<Auth>,
+    /// Зависимости проектов: итог последней проверки.
+    pub deps: HashMap<PathBuf, deps::Report>,
+    /// Какой проект сейчас проверяется.
+    pub deps_busy: Option<PathBuf>,
+    pub toolchain: Option<deps::Toolchain>,
+    /// Ждёт подтверждения: обновить зависимости, поднять набор, обновить Rust.
+    pub deps_ask: Option<crate::ui::deps::Ask>,
+    /// Окно «Rust и зависимости».
+    pub overview_open: bool,
+    deps_commands: Sender<deps::Cmd>,
+    deps_events: Receiver<deps::Event>,
+    after_job: HashMap<JobId, After>,
     /// Поле «свой токен» в настройках (не хранится нигде, кроме keyring после «Сохранить»).
     pub token_input: String,
     gh_commands: Sender<github::Cmd>,
@@ -100,6 +122,7 @@ impl App {
         let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone());
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone());
         let units_path = config_path.with_file_name("units.json");
+        let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let updater = anvil_update::Updater::new(
             anvil_update::Config::new("anvil", env!("CARGO_PKG_VERSION"), "AgitAngst/Anvil"),
             cc.egui_ctx.clone(),
@@ -132,6 +155,14 @@ impl App {
             presets_for: None,
             remotes: Remotes::new(),
             gh_auth: None,
+            deps: HashMap::new(),
+            deps_busy: None,
+            toolchain: None,
+            deps_ask: None,
+            overview_open: false,
+            deps_commands,
+            deps_events,
+            after_job: HashMap::new(),
             token_input: String::new(),
             gh_commands,
             gh_events,
@@ -189,6 +220,15 @@ impl App {
         while let Ok(event) = self.job_events.try_recv() {
             self.apply_job(ctx, event);
         }
+        while let Ok(event) = self.deps_events.try_recv() {
+            match event {
+                deps::Event::Report(path, report) => {
+                    self.deps.insert(path, *report);
+                }
+                deps::Event::Toolchain(toolchain) => self.toolchain = Some(toolchain),
+                deps::Event::Busy(path) => self.deps_busy = path,
+            }
+        }
         while let Ok(event) = self.gh_events.try_recv() {
             match event {
                 github::Event::Remote(path, remote) => {
@@ -235,6 +275,9 @@ impl App {
     fn apply(&mut self, event: Event) {
         match event {
             Event::Found(paths) => {
+                // Зависимости: сразу — прошлое знание из кеша, в фоне — проверка устаревшего.
+                self.check_deps(paths.clone(), false);
+                self.check_toolchain(false);
                 self.projects.retain(|p| paths.contains(&p.path));
                 for path in paths {
                     if !self.projects.iter().any(|p| p.path == path) {
@@ -427,6 +470,11 @@ impl App {
     }
 
     fn finished(&mut self, ctx: &egui::Context, id: JobId, outcome: jobs::Outcome) {
+        match self.after_job.remove(&id) {
+            Some(After::Deps(path)) => self.check_deps(vec![path], true),
+            Some(After::Toolchain) => self.check_toolchain(true),
+            None => {}
+        }
         let Some(job) = self.job_mut(id) else { return };
         let took = job.started.map_or(Duration::ZERO, |s| s.elapsed());
         let was_started = job.started.is_some();
@@ -570,6 +618,61 @@ impl App {
             Err(e) => self.toasts.push(format!("{bin}: {e}"), Tone::Danger),
         }
         self.refresh_installs(path);
+    }
+
+    // ─── Зависимости ──────────────────────────────────────────────────────────
+
+    /// Проверить зависимости проектов. `force` — даже если итог свежий.
+    pub fn check_deps(&mut self, projects: Vec<PathBuf>, force: bool) {
+        let _ = self.deps_commands.send(deps::Cmd::Check { projects, force });
+    }
+
+    pub fn check_toolchain(&mut self, force: bool) {
+        let _ = self.deps_commands.send(deps::Cmd::Toolchain { force });
+    }
+
+    /// Запустить подтверждённое: обновление зависимостей, перевод на тег набора, обновление Rust.
+    pub fn start_deps(&mut self, ask: crate::ui::deps::Ask) {
+        use crate::jobs::Step;
+        use crate::ui::deps::Ask;
+        let jobs = self.config.build_jobs;
+        let mut test = vec!["test".to_owned(), "--workspace".to_owned()];
+        if jobs > 0 {
+            test.extend(["-j".to_owned(), jobs.to_string()]);
+        }
+        let (spec, after) = match ask {
+            Ask::Update(path) => {
+                let steps = vec![
+                    Step::Snapshot(vec![path.join("Cargo.lock")]),
+                    Step::Run("cargo".into(), vec!["update".into()]),
+                    Step::Run("cargo".into(), test),
+                ];
+                (tasks::script_spec(&path, "cargo update → cargo test".into(), steps), After::Deps(path))
+            }
+            Ask::Kit(path, tag) => {
+                let edits = match deps::kit_edits(&path, &tag) {
+                    Ok(edits) => edits,
+                    Err(e) => {
+                        self.toasts.push(format!("{}: {e}", worker::display_name(&path)), Tone::Danger);
+                        return;
+                    }
+                };
+                let mut files: Vec<PathBuf> = edits.iter().map(|(p, _)| p.clone()).collect();
+                files.push(path.join("Cargo.lock"));
+                let steps = vec![Step::Snapshot(files), Step::Write(edits), Step::Run("cargo".into(), test)];
+                (tasks::script_spec(&path, format!("anvil kit → {tag}"), steps), After::Deps(path))
+            }
+            Ask::Rustup(name) => {
+                // Своей папки у тулчейна нет: задача живёт в папке кеша, в списке задач — «Rust».
+                let dir = self.config_path.with_file_name("cache").join("Rust");
+                let _ = std::fs::create_dir_all(&dir);
+                let steps = vec![Step::Run("rustup".into(), vec!["update".into(), name.clone()])];
+                (tasks::script_spec(&dir, format!("rustup update {name}"), steps), After::Toolchain)
+            }
+        };
+        let id = self.enqueue(spec);
+        self.after_job.insert(id, after);
+        self.log_open = true;
     }
 
     pub fn report(&mut self, result: Result<(), String>) {

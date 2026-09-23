@@ -57,6 +57,9 @@ pub enum Step {
     Package { exes: Vec<(String, PathBuf)>, version: anvil_update::Version, out: PathBuf },
     /// Создать GitHub Release и залить всё из `out`.
     Publish { repo: String, tag: String, notes: String, prerelease: bool, out: PathBuf },
+    /// Запомнить файлы как есть: если дальше что-то упадёт, они вернутся (обновление зависимостей
+    /// откатывает `Cargo.lock` и манифесты, когда тесты покраснели).
+    Snapshot(Vec<PathBuf>),
 }
 
 /// Поставить свежесобранный exe новой версией установки.
@@ -338,6 +341,8 @@ impl Runner {
     fn script(&self, id: JobId, dir: &Path, steps: &[Step]) -> Outcome {
         let mut outcome = Outcome::default();
         let started = Instant::now();
+        // Что вернуть, если шаг упадёт: путь и прежнее содержимое (`None` — файла не было).
+        let mut saved: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
         for (n, step) in steps.iter().enumerate() {
             self.send(Event::Units(id, n as u32));
             let result: Result<(), String> = match step {
@@ -358,7 +363,7 @@ impl Runner {
                             if !lines.is_empty() {
                                 self.send(Event::Lines(id, lines));
                             }
-                            if out.status.success() { Ok(()) } else { Err(format!("{program}: exit {}", out.status)) }
+                            if out.status.success() { Ok(()) } else { Err(format!("{program}: {}", out.status)) }
                         }
                         Err(e) => Err(format!("{program}: {e}")),
                     }
@@ -381,9 +386,25 @@ impl Runner {
                         outcome.published = Some(url);
                     })
                 }
+                Step::Snapshot(files) => {
+                    for path in files {
+                        saved.push((path.clone(), std::fs::read(path).ok()));
+                    }
+                    Ok(())
+                }
             };
             if let Err(e) = result {
                 self.note(id, format!("› {e}"));
+                for (path, bytes) in &saved {
+                    let restored = match bytes {
+                        Some(bytes) => std::fs::write(path, bytes),
+                        None => std::fs::remove_file(path),
+                    };
+                    match restored {
+                        Ok(()) => self.note(id, format!("› restored {}", path.display())),
+                        Err(e) => self.note(id, format!("› {}: {e}", path.display())),
+                    }
+                }
                 self.note(id, format!("› failed ({:.1} s)", started.elapsed().as_secs_f32()));
                 return outcome;
             }

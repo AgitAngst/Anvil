@@ -62,14 +62,22 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         t("Изменения").to_owned()
     };
-    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Install, Tab::Notes];
-    let tabs = [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Установка"), t("Заметки")];
+    let attention = super::deps::attention(app.deps.get(&project.path));
+    let deps_label = if attention > 0 {
+        format!("{} · {attention}", t("Зависимости"))
+    } else {
+        t("Зависимости").to_owned()
+    };
+    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Install, Tab::Deps, Tab::Notes];
+    let tabs =
+        [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Установка"), deps_label.as_str(), t("Заметки")];
     let mut index = order.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     w::tabs(ui, &mut index, &tabs);
     app.tab = order[index];
     ui.add_space(8.0);
     let on_github = project.git().and_then(GitState::github).is_some();
     let head = project.git().and_then(|g| g.commits.first()).map(|c| c.full.clone());
+    let mut deps_actions = Vec::new();
     let opened = match app.tab {
         Tab::Commits => {
             commits(ui, &project);
@@ -85,6 +93,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             actions.extend(super::install::tab(app, ui, &project, remote.as_ref()).into_iter().map(Action::Install));
             None
         }
+        Tab::Deps => {
+            deps_actions = super::deps::tab(app, ui, &project);
+            None
+        }
         Tab::Notes => {
             notes(ui, &project, &mut actions);
             None
@@ -96,6 +108,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
     for action in actions {
         run(app, ui.ctx(), &project.path, action);
+    }
+    for action in deps_actions {
+        super::deps::run(app, ui.ctx(), action);
     }
 }
 
