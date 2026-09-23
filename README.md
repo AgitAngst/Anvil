@@ -45,7 +45,7 @@ cargo run -p anvil-ui --example gallery
 
 ```toml
 [dependencies]
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", rev = "<коммит набора>", features = ["serde"] }
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.2.0", features = ["serde"] }
 ```
 
 ```rust
@@ -78,7 +78,7 @@ chrome::content(ui, |ui| {
 
 ```toml
 [dependencies]
-anvil-update = { git = "https://github.com/AgitAngst/Anvil", rev = "<коммит набора>" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.2.0" }
 ```
 
 ```rust

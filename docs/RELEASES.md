@@ -97,7 +97,7 @@ permissions:
   contents: write
 jobs:
   release:
-    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@<коммит набора>
+    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.2.0
     with:
       app: tetrachrome
       bins: tetrachrome
@@ -109,9 +109,10 @@ jobs:
 один на всех: так у Amber клиент и командный центр обновляются по отдельности.
 Для закрытого кода — ещё `secrets: RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}`.
 
-Workflow и крейты набора программа берёт с одного и того же коммита Anvil (`@<коммит>` в workflow,
-`rev = "<коммит>"` в `Cargo.toml`) — так сборка выпуска повторяема. Когда набору поставят тег
-`kit-vX.Y.Z`, вместо коммита можно писать тег.
+Workflow и крейты набора программа берёт с одного и того же тега набора (`@kit-vX.Y.Z` в workflow,
+`tag = "kit-vX.Y.Z"` в `Cargo.toml`) — так сборка выпуска повторяема, а по `Cargo.lock` видно, на какой
+версии набора программа. Теги набора ставятся только по команде; нужен набор до тега — можно
+временно взять коммит (`rev`).
 
 ## Программы семьи
 
