@@ -1,6 +1,7 @@
 //! Отрисовка окна. Каждая часть — в своём файле.
 
 mod dialogs;
+mod github;
 mod jobs;
 mod presets;
 mod project;

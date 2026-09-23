@@ -37,15 +37,19 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         return;
     };
     let mut actions = Vec::new();
-    header(ui, &project, &mut actions);
+    let remote = app.remotes.get(&project.path).cloned();
+    header(ui, &project, remote.as_ref(), &mut actions);
     ui.add_space(12.0);
     toolbar(ui, app, &project, &mut actions);
     ui.add_space(18.0);
     problems(ui, &project);
+    if let Some(url) = super::github::failure_banner(ui, remote.as_ref()) {
+        actions.push(Action::Url(url));
+    }
 
     ui.columns(3, |cols| {
-        git_card(&mut cols[0], &project);
-        version_card(&mut cols[1], &project);
+        git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
+        version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
         bins_card(&mut cols[2], app, &project, &mut actions);
     });
 
@@ -56,19 +60,32 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         t("Изменения").to_owned()
     };
-    let tabs = [t("Коммиты"), changes_label.as_str(), t("Заметки")];
-    let mut index = match app.tab {
-        Tab::Commits => 0,
-        Tab::Changes => 1,
-        Tab::Notes => 2,
-    };
+    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Notes];
+    let tabs = [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Заметки")];
+    let mut index = order.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     w::tabs(ui, &mut index, &tabs);
-    app.tab = [Tab::Commits, Tab::Changes, Tab::Notes][index];
+    app.tab = order[index];
     ui.add_space(8.0);
-    match app.tab {
-        Tab::Commits => commits(ui, &project),
-        Tab::Changes => changes_list(ui, &project),
-        Tab::Notes => notes(ui, &project, &mut actions),
+    let on_github = project.git().and_then(GitState::github).is_some();
+    let head = project.git().and_then(|g| g.commits.first()).map(|c| c.full.clone());
+    let opened = match app.tab {
+        Tab::Commits => {
+            commits(ui, &project);
+            None
+        }
+        Tab::Changes => {
+            changes_list(ui, &project);
+            None
+        }
+        Tab::Ci => super::github::ci_tab(ui, remote.as_ref(), on_github, head.as_deref()),
+        Tab::Releases => super::github::releases_tab(ui, remote.as_ref(), on_github),
+        Tab::Notes => {
+            notes(ui, &project, &mut actions);
+            None
+        }
+    };
+    if let Some(url) = opened {
+        actions.push(Action::Url(url));
     }
 
     for action in actions {
@@ -120,7 +137,7 @@ fn empty(app: &mut App, ui: &mut Ui) {
     });
 }
 
-fn header(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
+fn header(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>, actions: &mut Vec<Action>) {
     let p = Palette::of(ui);
     let meta = project.meta();
     let git = project.git();
@@ -147,6 +164,7 @@ fn header(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
                         w::badge(ui, t("есть правки"), Tone::Warning);
                     }
                 }
+                super::github::ci_badge(ui, remote);
             });
             ui.horizontal(|ui| {
                 if let Some(description) = meta.and_then(|m| m.description.as_deref()) {
@@ -324,7 +342,7 @@ fn problems(ui: &mut Ui, project: &Project) {
 const COMMITS_RU: [&str; 3] = ["коммит", "коммита", "коммитов"];
 const COMMITS_EN: [&str; 2] = ["commit", "commits"];
 
-fn git_card(ui: &mut Ui, project: &Project) {
+fn git_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>, actions: &mut Vec<Action>) {
     let p = Palette::of(ui);
     w::card(ui, |ui| {
         w::card_title(ui, Icon::Branch, "Git");
@@ -381,10 +399,14 @@ fn git_card(ui: &mut Ui, project: &Project) {
                 w::note(ui, i18n::ago(commit.time));
             });
         }
+        let head = git.commits.first().map(|c| c.full.as_str());
+        if let Some(url) = super::github::ci_row(ui, remote, head) {
+            actions.push(Action::Url(url));
+        }
     });
 }
 
-fn version_card(ui: &mut Ui, project: &Project) {
+fn version_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>, actions: &mut Vec<Action>) {
     let p = Palette::of(ui);
     w::card(ui, |ui| {
         w::card_title(ui, Icon::Package, t("Версия"));
@@ -417,6 +439,9 @@ fn version_card(ui: &mut Ui, project: &Project) {
                     w::note(ui, t("нет"));
                 }
             });
+        }
+        if let Some(url) = super::github::release_row(ui, remote) {
+            actions.push(Action::Url(url));
         }
         if meta.packages > 1 {
             w::field_row(ui, t("Крейтов"), |ui| {

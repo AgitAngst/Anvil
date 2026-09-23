@@ -9,6 +9,7 @@ use anvil_ui::{Accent, Tone};
 use eframe::egui;
 
 use crate::config::{self, Config};
+use crate::github::{self, Auth, Remotes, Target};
 use crate::i18n::{self, t};
 use crate::jobs::{self, JobId};
 use crate::procs::{self, Running, Snapshot};
@@ -22,6 +23,8 @@ pub const ACCENT: Accent = Accent::EMBER;
 pub enum Tab {
     Commits,
     Changes,
+    Ci,
+    Releases,
     Notes,
 }
 
@@ -52,6 +55,14 @@ pub struct App {
     pub clean_confirm: Option<PathBuf>,
     /// Окно пресетов запуска открыто для этого проекта.
     pub presets_for: Option<PathBuf>,
+    /// CI и выпуски проектов на GitHub.
+    pub remotes: Remotes,
+    pub gh_auth: Option<Auth>,
+    /// Поле «свой токен» в настройках (не хранится нигде, кроме keyring после «Сохранить»).
+    pub token_input: String,
+    gh_commands: Sender<github::Cmd>,
+    gh_events: Receiver<github::Event>,
+    gh_targets: Vec<Target>,
     job_commands: Sender<jobs::Cmd>,
     job_events: Receiver<jobs::Event>,
     job_notes: Sender<jobs::Event>,
@@ -74,6 +85,7 @@ impl App {
 
         let (commands, events) = worker::spawn(cc.egui_ctx.clone());
         let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone());
+        let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone());
         let units_path = config_path.with_file_name("units.json");
         let mut app = Self {
             selected: config.selected.clone(),
@@ -96,6 +108,12 @@ impl App {
             stop_confirm: None,
             clean_confirm: None,
             presets_for: None,
+            remotes: Remotes::new(),
+            gh_auth: None,
+            token_input: String::new(),
+            gh_commands,
+            gh_events,
+            gh_targets: Vec::new(),
             job_commands,
             job_events,
             job_notes,
@@ -121,6 +139,13 @@ impl App {
 
     pub fn refresh(&mut self) {
         let _ = self.commands.send(Cmd::Refresh { full: true });
+        let _ = self.gh_commands.send(github::Cmd::Refresh);
+    }
+
+    /// Сохранить свой токен GitHub (`None` — забыть).
+    pub fn set_token(&mut self, token: Option<String>) {
+        self.gh_auth = None;
+        let _ = self.gh_commands.send(github::Cmd::SetToken(token));
     }
 
     pub fn fetch(&mut self) {
@@ -141,6 +166,24 @@ impl App {
         }
         while let Ok(event) = self.job_events.try_recv() {
             self.apply_job(ctx, event);
+        }
+        while let Ok(event) = self.gh_events.try_recv() {
+            match event {
+                github::Event::Remote(path, remote) => {
+                    self.remotes.insert(path, *remote);
+                }
+                github::Event::Auth(auth) => self.gh_auth = Some(auth),
+                github::Event::TokenSaved(Ok(())) => self.toasts.push(t("Токен GitHub обновлён"), Tone::Success),
+                github::Event::TokenSaved(Err(e)) => {
+                    self.toasts.push(format!("{}: {e}", t("Токен не сохранён")), Tone::Danger)
+                }
+            }
+        }
+        // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
+        let targets = github::targets(&self.projects);
+        if targets != self.gh_targets {
+            let _ = self.gh_commands.send(github::Cmd::Targets(targets.clone()));
+            self.gh_targets = targets;
         }
         if self.jobs.iter().any(Job::running) {
             // Время задачи в строке состояния идёт каждую секунду.

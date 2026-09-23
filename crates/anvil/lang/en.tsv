@@ -176,3 +176,43 @@ cargo clean удалит папку сборки целиком. Следующ�
 сборка должна перезаписать exe, а Windows не даёт трогать запущенный файл.	the build has to overwrite the exe, and Windows does not let anyone touch a running file.
 тестов прошло	tests passed
 упало	failed
+CI упал	CI failed
+GitHub не ответил	GitHub did not answer
+GitHub спрошен	GitHub checked
+origin ведёт не на github.com или его нет.	origin does not point to github.com, or there is no origin.
+Без токена: видны только публичные репозитории, 60 запросов в час	No token: only public repositories, 60 requests an hour
+В репозитории нет GitHub Actions или они ещё ни разу не запускались.	The repository has no GitHub Actions, or they have never run.
+Выпуск	Release
+Выпуски	Releases
+Выпуски появятся, когда на GitHub опубликуют первый Release.	Releases show up once the first one is published on GitHub.
+Выпусков нет	No releases
+Забыть	Forget
+КБ	KB
+МБ	MB
+Ответ придёт через пару секунд.	The answer will arrive in a couple of seconds.
+Проверяю доступ к GitHub…	Checking access to GitHub…
+Прогон для вашего последнего коммита	The run for your latest commit
+Прогон не для вашего последнего коммита: его ещё не отправили или CI не дошёл	Not a run for your latest commit: it is not pushed yet or CI has not got to it
+Прогонов нет	No runs
+Проект не на GitHub	Not on GitHub
+Скачать в браузере	Download in the browser
+Сохранить	Save
+Спрашиваю GitHub…	Asking GitHub…
+Токен GitHub обновлён	GitHub token updated
+Токен не подошёл	Token rejected
+Токен не сохранён	Token not saved
+Хватит токена только на чтение (Contents, Actions, Metadata). Он хранится в хранилище учётных данных Windows и уходит только на api.github.com.	A read-only token is enough (Contents, Actions, Metadata). It is kept in Windows Credential Manager and sent only to api.github.com.
+без итога	no result
+вход как	signed in as
+запросов осталось	requests left
+не ваш HEAD	not your HEAD
+отменён	cancelled
+пред-выпуск	pre-release
+прошёл	passed
+с упавшим CI	with failing CI
+свой токен	own token
+свой токен: github_pat_…	own token: github_pat_…
+токен git	git token
+упал	failed
+черновик	draft
+шаг	step

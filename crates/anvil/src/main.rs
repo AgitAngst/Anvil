@@ -6,6 +6,7 @@
 mod app;
 mod config;
 mod git;
+mod github;
 mod i18n;
 mod jobs;
 mod launch;

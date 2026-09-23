@@ -32,6 +32,8 @@ pub struct Change {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub hash: String,
+    /// Полный хеш — чтобы узнать свой коммит в прогонах CI.
+    pub full: String,
     pub subject: String,
     pub author: String,
     pub time: i64,
@@ -67,7 +69,7 @@ pub fn read(dir: &Path) -> Result<Option<GitState>, String> {
     let mut state = parse_status(&status);
 
     state.commits =
-        git(dir, &["log", "-40", "--format=%h%x1f%s%x1f%an%x1f%ct"]).map(|s| parse_log(&s)).unwrap_or_default();
+        git(dir, &["log", "-40", "--format=%h%x1f%H%x1f%s%x1f%an%x1f%ct"]).map(|s| parse_log(&s)).unwrap_or_default();
     state.last_tag = git(dir, &["describe", "--tags", "--abbrev=0"]).ok().map(|s| s.trim().to_owned());
     if let Some(tag) = &state.last_tag {
         let range = format!("{tag}..HEAD");
@@ -154,6 +156,7 @@ fn parse_log(text: &str) -> Vec<Commit> {
             let mut f = line.split('\x1f');
             Some(Commit {
                 hash: f.next()?.to_owned(),
+                full: f.next()?.to_owned(),
                 subject: f.next()?.to_owned(),
                 author: f.next()?.to_owned(),
                 time: f.next()?.trim().parse().ok()?,
@@ -217,7 +220,7 @@ mod tests {
 
     #[test]
     fn log_lines() {
-        let log = parse_log("451da94\x1fTODO: раздел\x1fNikolay\x1f1790000000\n");
+        let log = parse_log("451da94\x1f451da94abc\x1fTODO: раздел\x1fNikolay\x1f1790000000\n");
         assert_eq!(log[0].subject, "TODO: раздел");
         assert_eq!(log[0].time, 1_790_000_000);
     }

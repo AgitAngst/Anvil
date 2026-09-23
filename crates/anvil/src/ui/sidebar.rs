@@ -9,12 +9,15 @@ use crate::i18n::{self, t};
 use crate::worker::Project;
 
 /// Точка и бейдж проекта в списке: что в нём требует внимания.
-pub fn status(project: &Project) -> (Tone, Option<(String, Tone)>) {
+pub fn status(project: &Project, remote: Option<&crate::github::Remote>) -> (Tone, Option<(String, Tone)>) {
     if project.git.is_err() {
         return (Tone::Danger, Some((t("ошибка git").to_owned(), Tone::Danger)));
     }
     if let Some(Err(_)) = &project.meta {
         return (Tone::Danger, Some((t("ошибка cargo").to_owned(), Tone::Danger)));
+    }
+    if super::github::failed(remote) {
+        return (Tone::Danger, Some(("CI".to_owned(), Tone::Danger)));
     }
     let Some(git) = project.git() else {
         return (Tone::Neutral, Some((t("без git").to_owned(), Tone::Neutral)));
@@ -60,7 +63,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         .visible()
         .into_iter()
         .map(|project| {
-            let (tone, trailing) = status(project);
+            let (tone, trailing) = status(project, app.remotes.get(&project.path));
             Row { path: project.path.clone(), name: project.name(), tone, trailing }
         })
         .collect();
@@ -93,7 +96,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let mut behind = 0;
     let mut ahead = 0;
     let mut broken = 0;
+    let mut ci = 0;
     for project in app.visible() {
+        ci += usize::from(super::github::failed(app.remotes.get(&project.path)));
         match project.git() {
             Some(git) => {
                 dirty += usize::from(git.dirty());
@@ -115,6 +120,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         (Tone::Warning, behind, t("позади origin")),
         (Tone::Accent, ahead, t("с неотправленными коммитами")),
         (Tone::Danger, broken, t("с ошибкой чтения")),
+        (Tone::Danger, ci, t("с упавшим CI")),
     ];
     let mut any = false;
     for (tone, n, what) in lines {

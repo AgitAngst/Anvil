@@ -36,6 +36,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         fetch(app, ui);
         ui.add_space(12.0);
         build(app, ui);
+        ui.add_space(12.0);
+        super::github::settings(app, ui);
     });
     app.settings_open = open;
 }
