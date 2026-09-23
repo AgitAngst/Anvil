@@ -162,6 +162,8 @@ struct Gallery {
     about_open: bool,
     banner_open: bool,
     notify: bool,
+    invert: bool,
+    srgb: bool,
     started: Instant,
 }
 
@@ -181,6 +183,8 @@ impl Gallery {
             about_open: open == Some(Open::About),
             banner_open: true,
             notify: true,
+            invert: false,
+            srgb: true,
             started: Instant::now(),
         }
     }
@@ -555,6 +559,10 @@ impl Gallery {
                         w::menu_item_danger(ui, Some(Icon::Trash), "Удалить");
                     });
                 });
+                ui.add_space(8.0);
+                // Большая главная кнопка внизу панели — во всю ширину.
+                let width = ui.available_width();
+                w::button_sized(ui, Kind::Primary, Some(Icon::Download), "Экспорт", egui::vec2(width, 40.0));
             });
             left.add_space(12.0);
 
@@ -589,6 +597,11 @@ impl Gallery {
                 w::switch(ui, &mut self.settings.check_updates, "Проверять обновления при запуске");
                 w::switch(ui, &mut self.settings.prerelease, "Предлагать пред-выпуски");
                 w::switch(ui, &mut self.notify, "Уведомлять о конце долгих задач");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 14.0;
+                    w::toggle(ui, &mut self.invert, "Инвертировать");
+                    w::toggle(ui, &mut self.srgb, "Вход в sRGB");
+                });
                 ui.add_space(4.0);
                 let mut theme = self.settings.theme;
                 w::segmented(
@@ -703,47 +716,26 @@ impl Gallery {
 
             w::card(right, |ui| {
                 w::card_title(ui, Icon::Package, "Значки");
-                let all = [
-                    Icon::ArrowDown,
-                    Icon::ArrowRight,
-                    Icon::ArrowUp,
-                    Icon::Branch,
-                    Icon::Check,
-                    Icon::Clock,
-                    Icon::Close,
-                    Icon::Code,
-                    Icon::Download,
-                    Icon::File,
-                    Icon::Folder,
-                    Icon::Gear,
-                    Icon::Hammer,
-                    Icon::Info,
-                    Icon::Lock,
-                    Icon::Moon,
-                    Icon::More,
-                    Icon::Monitor,
-                    Icon::Package,
-                    Icon::Pause,
-                    Icon::Pencil,
-                    Icon::Play,
-                    Icon::Plus,
-                    Icon::Refresh,
-                    Icon::Rocket,
-                    Icon::Search,
-                    Icon::Server,
-                    Icon::Stop,
-                    Icon::Sun,
-                    Icon::Terminal,
-                    Icon::Trash,
-                    Icon::Warning,
-                ];
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
-                    for icon in all {
+                    for icon in Icon::ALL {
                         let (rect, r) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::hover());
                         ui.painter().rect_filled(rect, 6, if r.hovered() { p.hover } else { p.raised });
                         anvil_ui::icons::paint(ui.painter(), rect.shrink(8.0), icon, p.text);
                         r.on_hover_text(format!("{icon:?}"));
+                    }
+                });
+                ui.add_space(8.0);
+                w::section_label(ui, "Знаки программ");
+                ui.horizontal(|ui| {
+                    for (icon, name) in [
+                        (Icon::Hammer, "Anvil"),
+                        (Icon::Chat, "Amber"),
+                        (Icon::Tiles, "Tetrachrome"),
+                        (Icon::Film, "FFMincer"),
+                    ] {
+                        chrome::app_mark(ui, icon, 28.0).on_hover_text(name);
+                        ui.add_space(6.0);
                     }
                 });
             });

@@ -97,7 +97,7 @@ permissions:
   contents: write
 jobs:
   release:
-    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.1.0
+    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@<коммит набора>
     with:
       app: tetrachrome
       bins: tetrachrome
@@ -105,4 +105,24 @@ jobs:
 
 Входы: `app` — начало имени архива; `bins` — бинарники через пробел; `package` — пакет cargo, если
 бинарники не в корневом; `repository` — куда публиковать (`owner/name`), пусто — сюда же.
+Без `app` каждый бинарник ложится в свой архив `<бинарник>-X.Y.Z-windows-x64.zip`, а `SHA256SUMS` —
+один на всех: так у Amber клиент и командный центр обновляются по отдельности.
 Для закрытого кода — ещё `secrets: RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}`.
+
+Workflow и крейты набора программа берёт с одного и того же коммита Anvil (`@<коммит>` в workflow,
+`rev = "<коммит>"` в `Cargo.toml`) — так сборка выпуска повторяема. Когда набору поставят тег
+`kit-vX.Y.Z`, вместо коммита можно писать тег.
+
+## Программы семьи
+
+| Программа | Workflow | Архивы | Куда | Секрет |
+|---|---|---|---|---|
+| Anvil | `release.yml` | `anvil-…` | `AgitAngst/Anvil` | — |
+| Tetrachrome | `release.yml` | `tetrachrome-…` | `AgitAngst/Tetrachrome` | — |
+| FFMincer | `release.yml` | `ffmincer-…` | `AgitAngst/FFMincer` | — |
+| Amber | `desktop-release.yml` | `amber-desktop-…`, `amber-admin-…` | `AgitAngst/amber-releases` | `RELEASES_TOKEN` |
+
+У Amber сервер по-прежнему выпускает свой `server.yml` в закрытый репозиторий, а клиент и
+командный центр под Windows — `desktop-release.yml` в публичный `amber-releases` (оба — по тому же
+тегу). `RELEASES_TOKEN` — fine-grained токен с правом «Contents: Read and write» только на
+`AgitAngst/amber-releases`; его заводит владелец и кладёт в секреты репозитория `amber`.

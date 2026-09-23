@@ -71,6 +71,12 @@ pub enum Kind {
 
 /// Кнопка с необязательным значком слева.
 pub fn button(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str) -> Response {
+    button_sized(ui, kind, icon, text, Vec2::ZERO)
+}
+
+/// Кнопка не меньше `size`: большая главная кнопка внизу панели — во всю ширину и выше обычной.
+/// Значок и текст — посередине.
+pub fn button_sized(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str, size: Vec2) -> Response {
     let p = Palette::of(ui);
     let enabled = ui.is_enabled();
     let font = if kind == Kind::Primary { semibold(14.0) } else { FontId::proportional(14.0) };
@@ -79,7 +85,8 @@ pub fn button(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str) -> Respon
     let gap = if icon.is_some() && !text.is_empty() { 7.0 } else { 0.0 };
     let icon_w = if icon.is_some() { icon_size } else { 0.0 };
     let pad = if text.is_empty() { 6.0 } else { 12.0 };
-    let size = Vec2::new(pad * 2.0 + icon_w + gap + galley.size().x, 30.0);
+    let content_w = icon_w + gap + galley.size().x;
+    let size = Vec2::new(pad * 2.0 + content_w, 30.0).max(size);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
 
     let hovered = response.hovered() && enabled;
@@ -137,7 +144,7 @@ pub fn button(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str) -> Respon
 
     let painter = ui.painter();
     painter.rect(rect, radius::CONTROL, fill, Stroke::new(1.0, border), StrokeKind::Inside);
-    let mut x = rect.left() + pad;
+    let mut x = rect.center().x - content_w / 2.0;
     if let Some(icon) = icon {
         let r = Rect::from_min_size(egui::pos2(x, rect.center().y - icon_size / 2.0), Vec2::splat(icon_size));
         icons::paint(painter, r, icon, fg);
@@ -335,6 +342,36 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     focus_ring(ui, track_rect, &response, 10);
     response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, *on, label));
     response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// Переключатель в строку: тумблер и подпись справа, шириной по содержимому — несколько
+/// в ряд («Инвертировать», «sRGB»). Подпись может быть пустой: тогда только тумблер.
+pub fn toggle(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
+    let p = Palette::of(ui);
+    let track = Vec2::new(30.0, 18.0);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(13.5), p.text);
+    let text_w = if label.is_empty() { 0.0 } else { galley.size().x + 8.0 };
+    let (rect, mut response) = ui.allocate_exact_size(Vec2::new(track.x + text_w, 26.0), Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    let enabled = ui.is_enabled();
+    let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.45) };
+    let t = ui.ctx().animate_bool_responsive(response.id, *on);
+    let track_rect = Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - track.y / 2.0), track);
+    let fill = p.border_strong.lerp_to_gamma(p.accent, t);
+    ui.painter().rect_filled(track_rect, 9, dim(fill));
+    let knob = egui::lerp((track_rect.left() + 9.0)..=(track_rect.right() - 9.0), t);
+    let knob_color = if *on { p.on_accent } else { p.card };
+    ui.painter().circle_filled(egui::pos2(knob, track_rect.center().y), 6.0, dim(knob_color));
+    if !label.is_empty() {
+        let pos = egui::pos2(track_rect.right() + 8.0, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley(pos, galley, dim(p.text));
+    }
+    focus_ring(ui, track_rect, &response, 9);
+    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, *on, label));
+    if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
 }
 
 /// Сегментный выбор: «Система · Светлая · Тёмная».

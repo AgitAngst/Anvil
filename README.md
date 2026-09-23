@@ -10,7 +10,10 @@
   бинарники, быстрые переходы; сборка, тесты, clippy, fmt и запуск с живым логом и разбором ошибок;
   CI и выпуски с GitHub; установка программ в `%LOCALAPPDATA%\Programs` из сборки или с GitHub,
   откат на прежнюю версию, ярлык в «Пуске»; мастер выпуска (проверки → версия → заметки → тег →
-  Release по соглашению). Впереди: перевод программ на общий набор (K2).
+  Release по соглашению).
+
+На наборе живут Anvil, Amber (клиент и `amber-admin`), Tetrachrome и FFMincer: один вид, светлая и
+тёмная темы, английский и русский, проверка обновлений изнутри и выпуски по одному workflow.
 
 Замысел, этапы и решения — в [SPEC.md](SPEC.md); где остановились — в [HANDOFF.md](HANDOFF.md);
 правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); как выпускаются программы — в
@@ -42,7 +45,7 @@ cargo run -p anvil-ui --example gallery
 
 ```toml
 [dependencies]
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.1.0", features = ["serde"] }
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", rev = "<коммит набора>", features = ["serde"] }
 ```
 
 ```rust
@@ -75,7 +78,7 @@ chrome::content(ui, |ui| {
 
 ```toml
 [dependencies]
-anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.1.0" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", rev = "<коммит набора>" }
 ```
 
 ```rust
