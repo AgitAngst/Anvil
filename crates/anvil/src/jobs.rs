@@ -42,6 +42,21 @@ pub struct Spec {
     pub download: Option<Download>,
     /// Ход — в байтах (скачивание), а не в единицах сборки.
     pub bytes: bool,
+    /// Задача-сценарий: шаги по порядку, до первой ошибки (выпуск версии).
+    pub script: Option<Vec<Step>>,
+}
+
+/// Шаг сценария.
+#[derive(Debug, Clone)]
+pub enum Step {
+    /// Записать файлы: правки манифестов, заметки к выпуску.
+    Write(Vec<(PathBuf, String)>),
+    /// Выполнить команду в папке проекта; вывод — в лог.
+    Run(String, Vec<String>),
+    /// Упаковать exe по соглашению: `<bin>-X.Y.Z-windows-x64.zip` и `SHA256SUMS` в `out`.
+    Package { exes: Vec<(String, PathBuf)>, version: anvil_update::Version, out: PathBuf },
+    /// Создать GitHub Release и залить всё из `out`.
+    Publish { repo: String, tag: String, notes: String, prerelease: bool, out: PathBuf },
 }
 
 /// Поставить свежесобранный exe новой версией установки.
@@ -120,6 +135,8 @@ pub struct Outcome {
     pub launched: Option<Result<u32, String>>,
     /// Установка: какая версия встала или почему нет.
     pub installed: Option<Result<String, String>>,
+    /// Выпуск: страница GitHub Release, если его создали отсюда.
+    pub published: Option<String>,
 }
 
 pub enum Event {
@@ -228,6 +245,11 @@ impl Runner {
             self.send(Event::Finished(id, outcome));
             return;
         }
+        if let Some(steps) = &spec.script {
+            let outcome = self.script(id, &spec.project, steps);
+            self.send(Event::Finished(id, outcome));
+            return;
+        }
 
         let started = Instant::now();
         let mut child = match run::command(&spec.program, &spec.project)
@@ -310,6 +332,66 @@ impl Runner {
             outcome.launched = Some(result);
         }
         self.send(Event::Finished(id, outcome));
+    }
+
+    /// Сценарий: шаги по порядку; первая ошибка останавливает всё, что дальше.
+    fn script(&self, id: JobId, dir: &Path, steps: &[Step]) -> Outcome {
+        let mut outcome = Outcome::default();
+        let started = Instant::now();
+        for (n, step) in steps.iter().enumerate() {
+            self.send(Event::Units(id, n as u32));
+            let result: Result<(), String> = match step {
+                Step::Write(files) => files.iter().try_for_each(|(path, text)| {
+                    self.note(id, format!("› write {}", path.display()));
+                    std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
+                }),
+                Step::Run(program, args) => {
+                    self.note(id, format!("› {program} {}", args.join(" ")));
+                    match run::command(program, dir).args(args).env("CARGO_TERM_COLOR", "never").output() {
+                        Ok(out) => {
+                            let text = [out.stdout, out.stderr].concat();
+                            let lines: Vec<Line> = String::from_utf8_lossy(&text)
+                                .lines()
+                                .filter(|l| !l.trim().is_empty())
+                                .map(|l| Line { kind: stderr_kind(l), text: format!("  {l}") })
+                                .collect();
+                            if !lines.is_empty() {
+                                self.send(Event::Lines(id, lines));
+                            }
+                            if out.status.success() { Ok(()) } else { Err(format!("{program}: exit {}", out.status)) }
+                        }
+                        Err(e) => Err(format!("{program}: {e}")),
+                    }
+                }
+                Step::Package { exes, version, out } => {
+                    self.note(id, format!("› package → {}", out.display()));
+                    crate::release::package(exes, version, out).map(|files| {
+                        for file in files {
+                            self.note(id, format!("  {}", file.display()));
+                        }
+                    })
+                }
+                Step::Publish { repo, tag, notes, prerelease, out } => {
+                    self.note(id, format!("› GitHub Release {repo} {tag}"));
+                    let files: Vec<PathBuf> = std::fs::read_dir(out)
+                        .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.is_file()).collect())
+                        .unwrap_or_default();
+                    crate::release::publish(repo, tag, notes, *prerelease, &files).map(|url| {
+                        self.note(id, format!("  {url}"));
+                        outcome.published = Some(url);
+                    })
+                }
+            };
+            if let Err(e) = result {
+                self.note(id, format!("› {e}"));
+                self.note(id, format!("› failed ({:.1} s)", started.elapsed().as_secs_f32()));
+                return outcome;
+            }
+        }
+        self.send(Event::Units(id, steps.len() as u32));
+        self.note(id, format!("› ok ({:.1} s)", started.elapsed().as_secs_f32()));
+        outcome.ok = true;
+        outcome
     }
 
     /// Скачать выпуск и поставить — ход в килобайтах идёт в полосу, как единицы сборки.

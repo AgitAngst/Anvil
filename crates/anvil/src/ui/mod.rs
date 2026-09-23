@@ -6,6 +6,7 @@ mod install;
 mod jobs;
 mod presets;
 mod project;
+pub mod release;
 mod settings;
 mod sidebar;
 
@@ -45,6 +46,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
 
     settings::show(app, &ctx);
     presets::show(app, &ctx);
+    release::show(app, &ctx);
     dialogs::show(app, &ctx);
     let info = info();
     let status = anvil_update::ui::about_status(&ctx, &app.updater);

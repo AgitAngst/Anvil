@@ -160,7 +160,7 @@ fn clean(app: &mut App, ctx: &egui::Context) {
     match w::confirm(ctx, "anvil-clean", &heading, body, t("Очистить"), true) {
         Some(true) => {
             app.clean_confirm = None;
-            app.start_task(&path, Task::Clean);
+            let _ = app.start_task(&path, Task::Clean);
         }
         Some(false) => app.clean_confirm = None,
         None => {}

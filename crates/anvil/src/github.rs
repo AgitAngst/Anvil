@@ -21,6 +21,9 @@ const KEYRING_USER: &str = "github";
 const API: &str = "https://api.github.com";
 /// Как часто спрашивать GitHub без просьбы.
 const POLL_EVERY: Duration = Duration::from_secs(5 * 60);
+/// Слежение за выпуском: как часто и сколько всего.
+const WATCH_EVERY: Duration = Duration::from_secs(15);
+const WATCH_FOR: Duration = Duration::from_secs(30 * 60);
 
 /// Репозиторий на GitHub: `owner/name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -139,9 +142,21 @@ pub struct Auth {
     pub error: Option<String>,
 }
 
+/// Как идёт выпуск по тегу: прогоны, которые тег запустил, и сам Release.
+#[derive(Debug, Clone)]
+pub struct Watch {
+    pub tag: String,
+    pub runs: Vec<CiRun>,
+    pub release: Option<Release>,
+    /// Слежение кончилось: выпуск с файлами на месте, прогон упал или вышел срок.
+    pub done: bool,
+}
+
 pub enum Cmd {
     /// Список проектов на GitHub изменился.
     Targets(Vec<Target>),
+    /// Следить за выпуском по тегу: раз в 15 с, до файлов в выпуске, падения прогона или 30 мин.
+    Watch { path: PathBuf, repo: Repo, tag: String },
     /// Спросить сейчас, не дожидаясь срока.
     Refresh,
     /// Сохранить свой токен (`None` — забыть) и перечитать всё.
@@ -150,6 +165,7 @@ pub enum Cmd {
 
 pub enum Event {
     Remote(PathBuf, Box<Remote>),
+    Watch(PathBuf, Box<Watch>),
     Auth(Auth),
     /// Чем кончилось сохранение токена: `Ok` или текст ошибки.
     TokenSaved(Result<(), String>),
@@ -172,6 +188,7 @@ struct Hub {
     token: Option<String>,
     source: TokenSource,
     targets: Vec<Target>,
+    watches: Vec<(PathBuf, Repo, String, Instant)>,
 }
 
 impl Hub {
@@ -181,7 +198,7 @@ impl Hub {
             .timeout(Duration::from_secs(20))
             .build()
             .ok();
-        Self { ctx, events, http, token: None, source: TokenSource::None, targets: Vec::new() }
+        Self { ctx, events, http, token: None, source: TokenSource::None, targets: Vec::new(), watches: Vec::new() }
     }
 
     fn send(&self, event: Event) {
@@ -192,9 +209,24 @@ impl Hub {
     fn run(mut self, commands: Receiver<Cmd>) {
         self.load_token();
         let mut last = Instant::now() - POLL_EVERY;
+        let mut last_watch = Instant::now();
         loop {
-            let wait = POLL_EVERY.saturating_sub(last.elapsed());
+            if !self.watches.is_empty() && last_watch.elapsed() >= WATCH_EVERY {
+                self.poll_watches();
+                last_watch = Instant::now();
+            }
+            let mut wait = POLL_EVERY.saturating_sub(last.elapsed());
+            if !self.watches.is_empty() {
+                wait = wait.min(WATCH_EVERY.saturating_sub(last_watch.elapsed()));
+            }
             match commands.recv_timeout(wait) {
+                Ok(Cmd::Watch { path, repo, tag }) => {
+                    self.watches.retain(|(p, _, t, _)| !(p == &path && t == &tag));
+                    self.watches.push((path, repo, tag, Instant::now()));
+                    self.poll_watches();
+                    last_watch = Instant::now();
+                    continue;
+                }
                 Ok(Cmd::Targets(targets)) => {
                     let new: Vec<Target> = targets.iter().filter(|t| !self.targets.contains(t)).cloned().collect();
                     self.targets = targets;
@@ -210,6 +242,7 @@ impl Hub {
                     self.send(Event::TokenSaved(result));
                     self.load_token();
                 }
+                Err(RecvTimeoutError::Timeout) if last.elapsed() < POLL_EVERY => continue,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
@@ -235,6 +268,32 @@ impl Hub {
             auth.remaining = self.get::<RateLimit>("/rate_limit").ok().map(|(r, _)| r.rate.remaining);
         }
         self.send(Event::Auth(auth));
+    }
+
+    fn poll_watches(&mut self) {
+        let mut finished = Vec::new();
+        for (i, (path, repo, tag, started)) in self.watches.iter().enumerate() {
+            let base = format!("/repos/{}/{}", repo.owner, repo.name);
+            let runs: Vec<CiRun> = self
+                .get::<Runs>(&format!("{base}/actions/runs?per_page=5&branch={}", encode(tag)))
+                .map(|(r, _)| r.workflow_runs.into_iter().map(CiRun::from).collect())
+                .unwrap_or_default();
+            let release = self
+                .get::<ApiRelease>(&format!("{base}/releases/tags/{}", encode(tag)))
+                .ok()
+                .map(|(r, _)| Release::from(r));
+            let failed = runs.first().is_some_and(|r| matches!(r.state, RunState::Failure | RunState::Cancelled));
+            let published = release.as_ref().is_some_and(|r| !r.assets.is_empty());
+            let done = failed || published || started.elapsed() >= WATCH_FOR;
+            if done {
+                finished.push(i);
+            }
+            let watch = Watch { tag: tag.clone(), runs, release, done };
+            self.send(Event::Watch(path.clone(), Box::new(watch)));
+        }
+        for i in finished.into_iter().rev() {
+            self.watches.remove(i);
+        }
     }
 
     fn poll(&self, target: &Target) {

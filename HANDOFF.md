@@ -4,7 +4,7 @@
 
 ## Состояние (23.09.2026)
 
-**K0, A0, A1, A2, K1 и A3 пройдены**: репозиторий `AgitAngst/Anvil` (публичный), крейт `crates/anvil-ui`, витрина,
+**K0, A0–A4 и K1 пройдены**: репозиторий `AgitAngst/Anvil` (публичный), крейт `crates/anvil-ui`, витрина,
 CI; крейт `crates/anvil` — окно командного центра со сборкой, запуском, CI и выпусками; крейт
 `crates/anvil-update` и соглашение о выпусках (`docs/RELEASES.md`, общий workflow).
 
@@ -101,13 +101,29 @@ CI; крейт `crates/anvil` — окно командного центра с�
 - Проверено вживую: установка `demo` из сборки дважды, откат, удаление; установка Anvil v0.1.0 с GitHub,
   запуск установленной копии, удаление. После проверки ничего из установленного не осталось.
 
+`anvil` (A4, мастер выпуска):
+- `release.rs` — `bump`/`base` (от большей из версии Cargo и тега), `plan_edits` (toml_edit: версии
+  пакетов, `workspace.package.version`, `version` у path-зависимостей, с сохранением оформления),
+  `draft_notes`, `has_release_workflow`, `tag_exists`, `package` (архивы по соглашению + `SHA256SUMS`),
+  `publish` (создать Release и залить файлы; `ANVIL_GITHUB_API` — только для проверок).
+- `jobs::Step` — задача-сценарий: `Write`, `Run`, `Package`, `Publish`, до первой ошибки.
+- `ui/release.rs` — мастер: Проверки → Версия → Заметки → Выпуск → Ход; режимы `Ci` (есть workflow:
+  тег + push, дальше `github::Cmd::Watch` — прогон по тегу и Release раз в 15 с), `Upload` (сборка →
+  архивы → коммит → тег → push → Release через API), `Local` (origin не на GitHub: архивы в
+  `target/anvil-release`). Сборка — до коммита и тега.
+- Проверено вживую на `demo` с локальным голым origin: режим `Local` (v0.2.1: Cargo.toml и Cargo.lock,
+  коммит, тег с заголовками, push, архив, суммы) и `Upload` (v0.2.2: push в локальный репозиторий через
+  `pushurl`, Release и файлы — на подставной API). Режим `Ci` вживую не запускался (нужен настоящий тег);
+  его запросы (`actions/runs?branch=<тег>`, `releases/tags/<тег>`) проверены на v0.1.0 Anvil.
+
 Теги: `kit-v0.1.0` и `v0.1.0` (3f89301) поставлены 23.09 по команде; выпуск Anvil v0.1.0 опубликован
 общим workflow (архив + `SHA256SUMS`). В его заметках пропал заголовок «Что умеет»: git вырезает строки с
 `#` в аннотации тега — впредь `git tag -a --cleanup=verbatim` (записано в RELEASES.md).
 
 ## Дальше
 
-Следующий этап по SPEC — **A4**: мастер выпуска (версия → тег → Release из окна). Без команды не начинать.
+Следующий этап по SPEC — **K2**: перевод Tetrachrome, FFMincer (с egui 0.36) и Amber на `anvil-ui` +
+`anvil-update`, workflow выпуска в каждом. Без команды не начинать.
 
 ## Как здесь работать
 

@@ -190,6 +190,7 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
         install,
         download: None,
         bytes: false,
+        script: None,
     }
 }
 
@@ -207,6 +208,25 @@ pub fn download_spec(project: &Path, download: Download, size: u64) -> Spec {
         install: None,
         download: Some(download),
         bytes: true,
+        script: None,
+    }
+}
+
+/// Задача-сценарий «выпуск»: ход — по шагам.
+pub fn script_spec(project: &Path, title: String, steps: Vec<crate::jobs::Step>) -> Spec {
+    Spec {
+        project: project.to_path_buf(),
+        title,
+        program: String::new(),
+        args: Vec::new(),
+        json: false,
+        expected_units: Some(steps.len() as u32),
+        before: Vec::new(),
+        after: None,
+        install: None,
+        download: None,
+        bytes: false,
+        script: Some(steps),
     }
 }
 

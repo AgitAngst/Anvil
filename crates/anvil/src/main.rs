@@ -14,6 +14,7 @@ mod launch;
 mod open;
 mod procs;
 mod registry;
+mod release;
 mod run;
 mod tasks;
 mod ui;

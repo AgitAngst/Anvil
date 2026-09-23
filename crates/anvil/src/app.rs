@@ -52,6 +52,10 @@ pub struct App {
     pub installs: HashMap<String, Option<Installed>>,
     /// Подтверждение удаления установки бинарника.
     pub uninstall_confirm: Option<String>,
+    /// Мастер выпуска, если открыт.
+    pub release: Option<crate::ui::release::Wizard>,
+    /// Слежение за выпусками по тегу: проект → как идёт.
+    pub watches: HashMap<PathBuf, github::Watch>,
     /// Задачи по порядку постановки: новые — в конце.
     pub jobs: Vec<Job>,
     pub log_open: bool,
@@ -117,6 +121,8 @@ impl App {
             updater,
             installs: HashMap::new(),
             uninstall_confirm: None,
+            release: None,
+            watches: HashMap::new(),
             jobs: Vec::new(),
             log_open: false,
             log_job: None,
@@ -189,6 +195,9 @@ impl App {
                     self.remotes.insert(path, *remote);
                 }
                 github::Event::Auth(auth) => self.gh_auth = Some(auth),
+                github::Event::Watch(path, watch) => {
+                    self.watches.insert(path, *watch);
+                }
                 github::Event::TokenSaved(Ok(())) => self.toasts.push(t("Токен GitHub обновлён"), Tone::Success),
                 github::Event::TokenSaved(Err(e)) => {
                     self.toasts.push(format!("{}: {e}", t("Токен не сохранён")), Tone::Danger)
@@ -302,16 +311,17 @@ impl App {
     // ─── Задачи ────────────────────────────────────────────────────────────────
 
     /// Попросить задачу у проекта. Если сборке мешает запущенная программа — спросить, как быть.
-    pub fn start_task(&mut self, path: &Path, task: Task) {
-        let Some(project) = self.projects.iter().find(|p| p.path == path) else { return };
+    pub fn start_task(&mut self, path: &Path, task: Task) -> Option<JobId> {
+        let project = self.projects.iter().find(|p| p.path == path)?;
         let meta = project.meta().cloned();
         let release = self.config.project(path).release;
         let spec = tasks::spec(path, meta.as_ref(), &task, release, self.config.build_jobs);
         let locked = tasks::locked(meta.as_ref(), &task, release, &self.procs);
         if locked.is_empty() {
-            self.enqueue(spec);
+            Some(self.enqueue(spec))
         } else {
             self.locked = Some((spec, locked, task));
+            None
         }
     }
 
@@ -325,7 +335,7 @@ impl App {
         self.enqueue(spec);
     }
 
-    pub fn enqueue(&mut self, mut spec: jobs::Spec) {
+    pub fn enqueue(&mut self, mut spec: jobs::Spec) -> JobId {
         let key = tasks::units_key(&spec);
         spec.expected_units = self.units.get(&key).copied();
         // Отодвинутые раньше exe, которые уже никто не держит, — убрать.
@@ -359,6 +369,13 @@ impl App {
             self.log_job = Some(id);
         }
         let _ = self.job_commands.send(jobs::Cmd::Run(id, Box::new(spec)));
+        id
+    }
+
+    /// Следить за выпуском по тегу на GitHub.
+    pub fn watch_release(&mut self, path: &Path, repo: github::Repo, tag: String) {
+        self.watches.remove(path);
+        let _ = self.gh_commands.send(github::Cmd::Watch { path: path.to_path_buf(), repo, tag });
     }
 
     pub fn cancel(&mut self, id: JobId) {

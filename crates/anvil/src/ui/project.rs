@@ -30,6 +30,7 @@ enum Action {
     /// Что запускает главная кнопка: бинарник или пресет.
     SetRun(String),
     Install(super::install::Action),
+    Release,
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -106,7 +107,9 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         Action::Url(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
         Action::Fetch => app.fetch(),
         Action::Hide => app.hide(dir),
-        Action::Task(task) => app.start_task(dir, task),
+        Action::Task(task) => {
+            app.start_task(dir, task);
+        }
         Action::Stop(name, pid) => app.stop_confirm = Some((name, pid, dir.to_path_buf())),
         Action::CleanAsk => app.clean_confirm = Some(dir.to_path_buf()),
         Action::Presets => app.presets_for = Some(dir.to_path_buf()),
@@ -118,6 +121,7 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
             app.config.project_mut(dir).run = Some(name);
             app.save();
         }
+        Action::Release => app.open_release(dir),
         Action::Install(action) => {
             use super::install::Action as I;
             match action {
@@ -274,6 +278,13 @@ fn toolbar(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action>)
         {
             actions.push(Action::Task(Task::Test));
         }
+        let has_git = project.git().is_some();
+        ui.add_enabled_ui(has_git, |ui| {
+            let hint = t("Версия → тег → выпуск, по шагам и с подтверждением");
+            if w::button(ui, Kind::Secondary, Some(Icon::Rocket), t("Выпуск…")).on_hover_text(hint).clicked() {
+                actions.push(Action::Release);
+            }
+        });
         let checks = w::button(ui, Kind::Secondary, Some(Icon::Search), t("Проверки"));
         w::menu(&checks, 300.0, |ui| {
             if w::menu_item(ui, None, &command(&Task::Clippy), None).clicked() {

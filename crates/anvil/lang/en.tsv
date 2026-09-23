@@ -239,3 +239,62 @@ origin ведёт не на github.com или его нет.	origin does not poi
 текущая	current
 установка удалена	installation removed
 установлена	installed
+CI соберёт и опубликует выпуск	CI builds and publishes the release
+CI собирает выпуск…	CI is building the release…
+Cargo.toml не прочитан	Cargo.toml could not be read
+Cargo.toml: версия	Cargo.toml: version
+GitHub Release с архивами и SHA256SUMS	GitHub Release with archives and SHA256SUMS
+Push не отменить.	A push cannot be undone.
+Workflow выпуска нет: Anvil сам соберёт, упакует по соглашению и создаст GitHub Release.	No release workflow: Anvil builds, packages by the convention and creates the GitHub Release itself.
+origin не на GitHub: архивы по соглашению останутся в папке сборки.	origin is not on GitHub: the conventional archives stay in the build folder.
+Архивы готовы	Archives ready
+В проекте есть workflow выпуска: Anvil поставит тег, а соберёт и опубликует CI.	The project has a release workflow: Anvil pushes the tag, CI builds and publishes.
+Версия не найдена в Cargo.toml	Version not found in Cargo.toml
+Версия → тег → выпуск, по шагам и с подтверждением	Version → tag → release, step by step and with confirmation
+Ветка совпадает с origin	Branch matches origin
+Выпуск не удался	Release failed
+Выпуск опубликован	Release published
+Выпуск так и не появился	The release never showed up
+Выпускаю	Releasing
+Выпуск…	Release…
+Выпустить	Release
+Далее	Next
+Жду, пока GitHub запустит сборку…	Waiting for GitHub to start the build…
+Закрыть	Close
+Назад	Back
+Открыть на GitHub	Open on GitHub
+По порядку	In order
+Проверить заново	Check again
+Рабочая копия чистая	Working copy is clean
+Сборка выпуска упала	The release build failed
+Сборка — до коммита и тега: если она не пройдёт, наружу ничего не уйдёт, а правки Cargo.toml останутся в рабочей копии.	The build runs before the commit and tag: if it fails, nothing leaves the machine, and the Cargo.toml edits stay in the working copy.
+Своя	Custom
+Такую версию не выпустить	This version cannot be released
+Тег и выпуск увидят все.	Everyone will see the tag and the release.
+Тег уже есть	The tag already exists
+Токен GitHub	GitHub token
+Черновик — из коммитов после прошлого тега. Это тело GitHub Release и «Что нового» в программах.	Drafted from the commits since the last tag. This is the GitHub Release body and "What's new" in the apps.
+Что поменяется	What changes
+Что упаковать	What to package
+без токена GitHub выпуск не создать	no release without a GitHub token
+версия должна быть больше	the version must be greater than
+версия — три числа: 1.2.3 или 1.2.3-beta.1	a version is three numbers: 1.2.3 or 1.2.3-beta.1
+вместе с тегом уйдут ещё коммитов:	commits pushed along with the tag:
+выпуск	release
+выпуск создаст Anvil	Anvil will create the release
+выпущен	released
+ждёт решения о занятом exe	waiting for a decision about the busy exe
+загляните в Actions	check Actions
+закоммитьте или уберите	commit or discard them
+идёт…	running…
+не прошло — подробности в логе	failed — details in the log
+незакоммиченного нет	nothing uncommitted
+нужен git pull	git pull needed
+папка не под git	not a git folder
+подробности в логе	details in the log
+позади на	behind by
+последний тег	last tag
+проверено	checked
+прошло тестов:	tests passed:
+тег уже на GitHub — поправьте и перезапустите workflow	the tag is already on GitHub — fix it and rerun the workflow
+Ход	Progress
