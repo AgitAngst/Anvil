@@ -64,3 +64,33 @@ pub fn snapshot() -> Snapshot {
 pub fn snapshot() -> Snapshot {
     Snapshot::new()
 }
+
+/// Дождаться, пока процесс завершится. `true` — завершился (или его уже нет).
+#[cfg(windows)]
+pub fn wait_exit(pid: u32, timeout: std::time::Duration) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
+    // SAFETY: дескриптор открывается только на ожидание и закрывается.
+    unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if handle.is_null() {
+            return true;
+        }
+        let result = WaitForSingleObject(handle, timeout.as_millis().min(u32::MAX as u128) as u32);
+        CloseHandle(handle);
+        result != WAIT_TIMEOUT
+    }
+}
+
+#[cfg(not(windows))]
+pub fn wait_exit(pid: u32, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    let path = std::path::PathBuf::from(format!("/proc/{pid}"));
+    while path.exists() {
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    true
+}

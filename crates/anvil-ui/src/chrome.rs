@@ -120,6 +120,9 @@ pub fn dialog<R>(
             ui.add_space(6.0);
             egui::ScrollArea::vertical()
                 .max_height(max_height - 80.0)
+                // Без этого прокрутка во всплывающем слое сжимается до высоты по умолчанию,
+                // а не до края окна, и низ диалога (кнопки!) уезжает под обрез.
+                .min_scrolled_height(max_height - 80.0)
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     ui.set_width(width - 44.0);

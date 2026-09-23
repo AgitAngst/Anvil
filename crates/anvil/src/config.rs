@@ -1,6 +1,7 @@
 //! Настройки Anvil: `anvil.toml` рядом с exe (портативный режим, если файл там есть)
 //! или `%APPDATA%\Anvil\anvil.toml`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anvil_ui::CommonSettings;
@@ -19,7 +20,46 @@ pub struct Config {
     pub fetch_minutes: u32,
     /// Последний выбранный проект.
     pub selected: Option<PathBuf>,
+    /// Сколько задач сборки cargo запускает разом (`-j`); 0 — сколько ядер.
+    pub build_jobs: u32,
+    /// Настройки проектов; ключ — путь к проекту.
+    pub projects: BTreeMap<String, ProjectSettings>,
     pub common: CommonSettings,
+}
+
+/// Что Anvil помнит о проекте.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProjectSettings {
+    /// Собирать и запускать release, а не debug.
+    pub release: bool,
+    /// Что запускает главная кнопка: имя бинарника или пресета.
+    pub run: Option<String>,
+    pub presets: Vec<Preset>,
+}
+
+/// Сохранённый запуск: какой бинарник и с какими аргументами.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Preset {
+    pub name: String,
+    pub bin: String,
+    /// Аргументы строкой, как в терминале: `--profile test`.
+    pub args: String,
+}
+
+impl Config {
+    fn key(path: &Path) -> String {
+        path.to_string_lossy().to_lowercase()
+    }
+
+    pub fn project(&self, path: &Path) -> ProjectSettings {
+        self.projects.get(&Self::key(path)).cloned().unwrap_or_default()
+    }
+
+    pub fn project_mut(&mut self, path: &Path) -> &mut ProjectSettings {
+        self.projects.entry(Self::key(path)).or_default()
+    }
 }
 
 impl Default for Config {
@@ -29,6 +69,8 @@ impl Default for Config {
             hidden: Vec::new(),
             fetch_minutes: 15,
             selected: None,
+            build_jobs: 0,
+            projects: BTreeMap::new(),
             common: CommonSettings::default(),
         }
     }
@@ -83,13 +125,18 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let config = Config {
+        let mut config = Config {
             roots: vec![PathBuf::from(r"D:\dev_personal")],
             hidden: vec![PathBuf::from(r"D:\dev_personal\old")],
             fetch_minutes: 5,
             selected: Some(PathBuf::from(r"D:\dev_personal\amber")),
-            common: CommonSettings::default(),
+            build_jobs: 4,
+            ..Config::default()
         };
+        let amber = config.project_mut(Path::new(r"D:\dev_personal\amber"));
+        amber.release = true;
+        amber.presets.push(Preset { name: "Тест".into(), bin: "amber-desktop".into(), args: "--profile t".into() });
+        assert_eq!(config.project(Path::new(r"D:\DEV_PERSONAL\Amber")).presets.len(), 1);
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
     }

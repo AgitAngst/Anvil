@@ -3,13 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use anvil_ui::widgets as w;
-use anvil_ui::{Icon, Palette, Tone, semibold};
+use anvil_ui::{Icon, Kind, Palette, Tone, semibold};
 use eframe::egui::{self, RichText, Ui};
 
 use crate::app::{App, Tab};
 use crate::git::{Change, GitState};
 use crate::i18n::{self, t};
 use crate::open;
+use crate::tasks::{self, Task};
 use crate::worker::Project;
 
 /// Что попросили сделать из карточки: выполняется после отрисовки, когда `app` снова свободен.
@@ -20,6 +21,14 @@ enum Action {
     Url(String),
     Fetch,
     Hide,
+    Task(Task),
+    /// Спросить, останавливать ли программу: имя и PID.
+    Stop(String, u32),
+    CleanAsk,
+    Presets,
+    SetRelease(bool),
+    /// Что запускает главная кнопка: бинарник или пресет.
+    SetRun(String),
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -29,13 +38,15 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     };
     let mut actions = Vec::new();
     header(ui, &project, &mut actions);
+    ui.add_space(12.0);
+    toolbar(ui, app, &project, &mut actions);
     ui.add_space(18.0);
     problems(ui, &project);
 
     ui.columns(3, |cols| {
         git_card(&mut cols[0], &project);
         version_card(&mut cols[1], &project);
-        bins_card(&mut cols[2], app, &project);
+        bins_card(&mut cols[2], app, &project, &mut actions);
     });
 
     ui.add_space(18.0);
@@ -73,6 +84,18 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         Action::Url(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
         Action::Fetch => app.fetch(),
         Action::Hide => app.hide(dir),
+        Action::Task(task) => app.start_task(dir, task),
+        Action::Stop(name, pid) => app.stop_confirm = Some((name, pid, dir.to_path_buf())),
+        Action::CleanAsk => app.clean_confirm = Some(dir.to_path_buf()),
+        Action::Presets => app.presets_for = Some(dir.to_path_buf()),
+        Action::SetRelease(release) => {
+            app.config.project_mut(dir).release = release;
+            app.save();
+        }
+        Action::SetRun(name) => {
+            app.config.project_mut(dir).run = Some(name);
+            app.save();
+        }
     }
 }
 
@@ -149,6 +172,97 @@ fn header(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
     });
 }
 
+/// Сборка и запуск: профиль, главная кнопка с выбором, что запускать, сборка, тесты, проверки.
+fn toolbar(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action>) {
+    let p = Palette::of(ui);
+    let settings = app.config.project(&project.path);
+    let meta = project.meta();
+    let target = tasks::run_target(meta, &settings.presets, settings.run.as_deref());
+    let command = |task: &Task| tasks::spec(&project.path, meta, task, settings.release, app.config.build_jobs).title;
+    let here: Vec<_> = app.jobs.iter().filter(|j| j.project == project.path && j.finished.is_none()).collect();
+
+    ui.horizontal(|ui| {
+        let mut release = settings.release;
+        w::segmented(ui, &mut release, &[(false, None, "Debug"), (true, None, "Release")]);
+        if release != settings.release {
+            actions.push(Action::SetRelease(release));
+        }
+        ui.add_space(8.0);
+
+        match &target {
+            Some((label, bin, args)) => {
+                let task = Task::Run { bin: bin.clone(), args: args.clone() };
+                let text = format!("{} · {label}", t("Запустить"));
+                let hint = format!("{}\n{} {}", command(&task), t("затем"), bin);
+                if w::button(ui, Kind::Primary, Some(Icon::Play), &text).on_hover_text(hint).clicked() {
+                    actions.push(Action::Task(task));
+                }
+            }
+            None => {
+                ui.add_enabled_ui(false, |ui| w::button(ui, Kind::Primary, Some(Icon::Play), t("Запустить")))
+                    .response
+                    .on_disabled_hover_text(t("Библиотека: запускать нечего."));
+            }
+        }
+        let pick = w::icon_button(ui, Icon::ArrowDown, t("Что запускать"));
+        w::menu(&pick, 300.0, |ui| {
+            let current = target.as_ref().map(|(label, _, _)| label.clone());
+            for bin in meta.map(|m| m.bins.as_slice()).unwrap_or_default() {
+                let icon = (current.as_deref() == Some(bin.name.as_str())).then_some(Icon::Check);
+                if w::menu_item(ui, icon, &bin.name, None).clicked() {
+                    actions.push(Action::SetRun(bin.name.clone()));
+                }
+            }
+            if !settings.presets.is_empty() {
+                w::menu_separator(ui);
+                for preset in &settings.presets {
+                    let icon = (current.as_deref() == Some(preset.name.as_str())).then_some(Icon::Check);
+                    let text = format!("{} · {} {}", preset.name, preset.bin, preset.args);
+                    if w::menu_item(ui, icon, text.trim_end(), None).clicked() {
+                        actions.push(Action::SetRun(preset.name.clone()));
+                    }
+                }
+            }
+            w::menu_separator(ui);
+            if w::menu_item(ui, Some(Icon::Pencil), t("Пресеты запуска…"), None).clicked() {
+                actions.push(Action::Presets);
+            }
+        });
+        ui.add_space(6.0);
+
+        if w::button(ui, Kind::Secondary, Some(Icon::Hammer), t("Собрать"))
+            .on_hover_text(command(&Task::Build))
+            .clicked()
+        {
+            actions.push(Action::Task(Task::Build));
+        }
+        if w::button(ui, Kind::Secondary, Some(Icon::Check), t("Тесты")).on_hover_text(command(&Task::Test)).clicked()
+        {
+            actions.push(Action::Task(Task::Test));
+        }
+        let checks = w::button(ui, Kind::Secondary, Some(Icon::Search), t("Проверки"));
+        w::menu(&checks, 300.0, |ui| {
+            if w::menu_item(ui, None, &command(&Task::Clippy), None).clicked() {
+                actions.push(Action::Task(Task::Clippy));
+            }
+            if w::menu_item(ui, None, &command(&Task::Fmt), None).clicked() {
+                actions.push(Action::Task(Task::Fmt));
+            }
+        });
+
+        if !here.is_empty() {
+            ui.add_space(8.0);
+            w::spinner(ui, 14.0);
+            let text = if here.iter().any(|j| j.running()) {
+                t("идёт задача")
+            } else {
+                t("задача в очереди")
+            };
+            ui.label(RichText::new(text).size(13.0).color(p.weak));
+        }
+    });
+}
+
 fn more_menu(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
     if let Some(url) = project.git().and_then(GitState::github) {
         if w::menu_item(ui, Some(Icon::Code), t("Репозиторий на GitHub"), None).clicked() {
@@ -171,6 +285,9 @@ fn more_menu(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
     w::menu_separator(ui);
     if w::menu_item(ui, Some(Icon::Close), t("Скрыть из списка"), None).clicked() {
         actions.push(Action::Hide);
+    }
+    if w::menu_item_danger(ui, Some(Icon::Trash), t("Очистить сборку…")).clicked() {
+        actions.push(Action::CleanAsk);
     }
 }
 
@@ -316,7 +433,7 @@ fn version_card(ui: &mut Ui, project: &Project) {
     });
 }
 
-fn bins_card(ui: &mut Ui, app: &App, project: &Project) {
+fn bins_card(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action>) {
     let p = Palette::of(ui);
     w::card(ui, |ui| {
         w::card_title(ui, Icon::Terminal, t("Бинарники"));
@@ -337,6 +454,18 @@ fn bins_card(ui: &mut Ui, app: &App, project: &Project) {
                     label.on_hover_text(format!("{}: {}", t("пакет"), bin.package));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    match running.first() {
+                        Some(first) => {
+                            if w::icon_button(ui, Icon::Stop, t("Остановить")).clicked() {
+                                actions.push(Action::Stop(bin.name.clone(), first.pid));
+                            }
+                        }
+                        None => {
+                            if w::icon_button(ui, Icon::Play, t("Собрать и запустить")).clicked() {
+                                actions.push(Action::Task(Task::Run { bin: bin.name.clone(), args: Vec::new() }));
+                            }
+                        }
+                    }
                     if let Some(first) = running.first() {
                         let where_ = first.path.as_ref().map(|path| place(path, &project.path)).unwrap_or_default();
                         let text = if running.len() > 1 {

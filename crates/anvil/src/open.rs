@@ -34,6 +34,16 @@ pub fn terminal(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Открыть файл в VS Code на нужной строке: `code -g файл:строка:столбец`.
+pub fn code_at(file: &Path, line: u32, col: u32, dir: &Path) -> Result<(), String> {
+    let place = format!("{}:{line}:{col}", file.display());
+    #[cfg(windows)]
+    let result = run::command("cmd.exe", dir).args(["/C", "code", "-g"]).arg(place).spawn();
+    #[cfg(not(windows))]
+    let result = run::command("code", dir).arg("-g").arg(place).spawn();
+    result.map(|_| ()).map_err(|e| e.to_string())
+}
+
 /// Открыть папку или файл в VS Code (`code` из PATH).
 pub fn code(target: &Path, dir: &Path) -> Result<(), String> {
     // На Windows `code` — это code.cmd, поэтому через cmd.

@@ -39,6 +39,8 @@ pub struct Meta {
     pub packages: usize,
     /// Запускаемые бинарники: имя и пакет.
     pub bins: Vec<Bin>,
+    /// Куда cargo кладёт сборку (`target`, если не переопределено).
+    pub target_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +52,8 @@ pub struct Bin {
 #[derive(Deserialize)]
 struct Metadata {
     packages: Vec<Package>,
+    #[serde(default)]
+    target_directory: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -76,6 +80,7 @@ pub fn meta(dir: &Path) -> Result<Meta, String> {
 }
 
 fn summarize(dir: &Path, metadata: Metadata) -> Meta {
+    let metadata_target = metadata.target_directory;
     let packages = metadata.packages;
     // Главный пакет: корневой, а в workspace без корня — названный как папка (`Anvil` → `anvil`).
     // Сведения берутся у него, а чего у него нет — у первого пакета, у кого это заполнено.
@@ -111,6 +116,7 @@ fn summarize(dir: &Path, metadata: Metadata) -> Meta {
         repository: pick(|p| p.repository.as_ref()),
         packages: packages.len(),
         bins,
+        target_dir: if metadata_target.as_os_str().is_empty() { dir.join("target") } else { metadata_target },
     }
 }
 
@@ -160,12 +166,14 @@ mod tests {
                     package("desktop", "/w/crates/desktop", "0.3.0", &[("amber-desktop", "bin")]),
                     package("server", "/w/crates/server", "0.3.0", &[("amber-server", "bin"), ("smoke", "example")]),
                 ],
+                target_directory: PathBuf::from("/w/target"),
             },
         );
         assert_eq!(meta.version.as_deref(), Some("0.3.0"));
         assert_eq!(meta.packages, 3);
         let bins: Vec<&str> = meta.bins.iter().map(|b| b.name.as_str()).collect();
         assert_eq!(bins, ["amber-desktop", "amber-server"]);
+        assert_eq!(meta.target_dir, PathBuf::from("/w/target"));
     }
 
     #[test]
@@ -174,7 +182,8 @@ mod tests {
         kit.description = Some("Набор".into());
         let mut app = package("anvil", "/x/Anvil/crates/anvil", "0.1.0", &[("anvil", "bin")]);
         app.description = Some("Командный центр".into());
-        let meta = summarize(Path::new("/x/Anvil"), Metadata { packages: vec![kit, app] });
+        let meta =
+            summarize(Path::new("/x/Anvil"), Metadata { packages: vec![kit, app], target_directory: PathBuf::new() });
         assert_eq!(meta.description.as_deref(), Some("Командный центр"));
     }
 
@@ -184,7 +193,8 @@ mod tests {
         root_pkg.description = Some("Главный".into());
         let mut other = package("helper", "/p/helper", "0.1.0", &[]);
         other.description = Some("Помощник".into());
-        let meta = summarize(Path::new("/p"), Metadata { packages: vec![other, root_pkg] });
+        let meta =
+            summarize(Path::new("/p"), Metadata { packages: vec![other, root_pkg], target_directory: PathBuf::new() });
         assert_eq!(meta.version.as_deref(), Some("1.2.0"));
         assert_eq!(meta.description.as_deref(), Some("Главный"));
     }

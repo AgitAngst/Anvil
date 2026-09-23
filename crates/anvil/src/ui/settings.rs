@@ -34,6 +34,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         hidden(app, ui);
         ui.add_space(12.0);
         fetch(app, ui);
+        ui.add_space(12.0);
+        build(app, ui);
     });
     app.settings_open = open;
 }
@@ -101,6 +103,21 @@ fn fetch(app: &mut App, ui: &mut Ui) {
     w::note(ui, t("git fetch только узнаёт о новом на origin и ничего не меняет в рабочей копии."));
 }
 
+fn build(app: &mut App, ui: &mut Ui) {
+    w::section_label(ui, t("Сборка"));
+    ui.add_space(2.0);
+    chrome::setting_row(ui, t("Сборок разом (cargo -j)"), |ui| {
+        let before = app.config.build_jobs;
+        let mut jobs = before;
+        w::segmented(ui, &mut jobs, &[(0, None, t("авто")), (8, None, "8"), (4, None, "4"), (2, None, "2")]);
+        if jobs != before {
+            app.config.build_jobs = jobs;
+            app.save();
+        }
+    });
+    w::note(ui, t("Меньше — медленнее, но надёжнее: большим workspace может не хватить памяти на компоновку."));
+}
+
 fn path_row(ui: &mut Ui, text: &str, trailing: impl FnOnce(&mut Ui)) {
     let p = Palette::of(ui);
     egui::Frame::new()
@@ -108,10 +125,18 @@ fn path_row(ui: &mut Ui, text: &str, trailing: impl FnOnce(&mut Ui)) {
         .corner_radius(anvil_ui::theme::radius::CONTROL)
         .inner_margin(egui::Margin::symmetric(10, 2))
         .show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.set_min_height(30.0);
-                w::mono(ui, text, Some(p.text));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), trailing);
+                // Сначала кнопка справа, потом путь в оставшемся месте: длинный путь обрезается,
+                // а не раздувает диалог.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    trailing(ui);
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        let text_style = egui::RichText::new(text).font(egui::FontId::monospace(12.5)).color(p.text);
+                        ui.add(egui::Label::new(text_style).truncate()).on_hover_text(text);
+                    });
+                });
             });
         });
     ui.add_space(4.0);

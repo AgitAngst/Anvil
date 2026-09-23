@@ -108,3 +108,71 @@ origin не ответил у	origin did not respond for
 ч назад	h ago
 час	1 hour
 чисто	clean
+cargo clean удалит папку сборки целиком. Следующая сборка пойдёт с нуля и будет долгой.	cargo clean deletes the whole build folder. The next build starts from scratch and takes a while.
+Вывод	Output
+Добавить пресет	Add preset
+Задачи	Tasks
+Закрыть лог	Close log
+Закрыть программу и собрать	Close the program and build
+Запустить	Run
+Запущенный файл переименуется рядом, программа доработает как есть, новая сборка ляжет на своё место.	The running file is renamed in place, the program keeps working, and the new build takes its spot.
+Здесь появятся сборки, тесты и запуски.	Builds, tests and runs will show up here.
+Компилятор ни о чём не предупредил.	The compiler had nothing to say.
+Копировать лог	Copy log
+Лог	Log
+Лог скопирован	Log copied
+Меньше — медленнее, но надёжнее: большим workspace может не хватить памяти на компоновку.	Fewer is slower but safer: big workspaces can run out of memory while linking.
+Название	Name
+Не запустилось	Failed to start
+Остановить	Stop
+Открыть лог	Open log
+Отмена	Cancel
+Отменить	Cancel
+Отменить задачу	Cancel task
+Отодвинуть exe и собрать	Move the exe aside and build
+Очистить	Clean
+Очистить сборку	Clean the build of
+Очистить сборку…	Clean build…
+Ошибки и предупреждения	Errors and warnings
+Показать лог	Show log
+Пресет	Preset
+Пресет — это бинарник и аргументы: например, клиент с тестовым профилем. Главная кнопка «Запустить» берёт выбранный пресет.	A preset is a binary plus arguments, for example a client with a test profile. The main Run button uses the chosen preset.
+Пресеты запуска	Run presets
+Пресеты запуска…	Run presets…
+Проверки	Checks
+Программа получит команду закрыться, как от крестика окна. Если за 5 секунд не закроется — будет остановлена принудительно, несохранённое в ней пропадёт.	The program is asked to close, as if its window's close button was pressed. If it is still running after 5 seconds it is stopped forcibly, and unsaved work in it is lost.
+Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Несохранённое в ней может пропасть.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Unsaved work in it may be lost.
+Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Потом сборка и запуск новой.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Then the new build is made and started.
+Программа сейчас запущена	The program is running
+Сборка	Build
+Сборка пойдёт в папку anvil внутри target: запущенная программа не мешает, но собираться придётся с нуля.	The build goes to an anvil folder inside target: the running program is not in the way, but everything is built from scratch.
+Сборок разом (cargo -j)	Parallel jobs (cargo -j)
+Скрыть лог	Hide log
+Собрать	Build
+Собрать в отдельную папку	Build into a separate folder
+Собрать и запустить	Build and run
+Тесты	Tests
+Удалить пресет	Delete preset
+Что запускать	What to run
+авто	auto
+аргументы, например --profile test	arguments, e.g. --profile test
+в очереди	queued
+готово	done
+готово за	done in
+ещё	more
+задача в очереди	task queued
+задача отменена	task cancelled
+затем	then
+идёт	running
+идёт задача	task running
+мин	min
+не удалось	failed
+не удалось — подробности в логе	failed — details in the log
+остановлен	stopped
+отменена	cancelled
+ошибка	error
+предупреждение	warning
+с	s
+сборка должна перезаписать exe, а Windows не даёт трогать запущенный файл.	the build has to overwrite the exe, and Windows does not let anyone touch a running file.
+тестов прошло	tests passed
+упало	failed

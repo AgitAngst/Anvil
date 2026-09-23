@@ -7,10 +7,13 @@ mod app;
 mod config;
 mod git;
 mod i18n;
+mod jobs;
+mod launch;
 mod open;
 mod procs;
 mod registry;
 mod run;
+mod tasks;
 mod ui;
 mod worker;
 

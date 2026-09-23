@@ -1,5 +1,8 @@
 //! Отрисовка окна. Каждая часть — в своём файле.
 
+mod dialogs;
+mod jobs;
+mod presets;
 mod project;
 mod settings;
 mod sidebar;
@@ -28,10 +31,13 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     shortcuts(app, &ctx);
     top_bar(app, ui);
     status_bar(app, ui);
+    jobs::panel(app, ui);
     chrome::side_panel(ui, "projects", 260.0, |ui| sidebar::show(app, ui));
     chrome::content(ui, |ui| project::show(app, ui));
 
     settings::show(app, &ctx);
+    presets::show(app, &ctx);
+    dialogs::show(app, &ctx);
     let info = info();
     if chrome::about(&ctx, &mut app.about_open, &info, None) == Some(AboutAction::CheckUpdates) {
         app.toasts.push(t("Проверка обновлений появится вместе с anvil-update"), Tone::Neutral);
@@ -98,6 +104,10 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
 fn status_bar(app: &mut App, ui: &mut Ui) {
     let p = Palette::of(ui);
     chrome::status_bar(ui, |ui| {
+        if jobs::status(app, ui) {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| log_toggle(app, ui));
+            return;
+        }
         match app.busy {
             Some(busy) => {
                 w::spinner(ui, 14.0);
@@ -122,7 +132,15 @@ fn status_bar(app: &mut App, ui: &mut Ui) {
                 i18n::count(total, ["проект", "проекта", "проектов"], ["project", "projects"]),
                 i18n::count(roots, ["папка", "папки", "папок"], ["folder", "folders"]),
             );
+            log_toggle(app, ui);
             w::note(ui, text);
         });
     });
+}
+
+fn log_toggle(app: &mut App, ui: &mut Ui) {
+    let hint = if app.log_open { t("Скрыть лог") } else { t("Показать лог") };
+    if w::button(ui, Kind::Ghost, Some(Icon::Terminal), t("Лог")).on_hover_text(hint).clicked() {
+        app.log_open = !app.log_open;
+    }
 }

@@ -91,14 +91,16 @@ mod tests {
                     stack.push(path);
                 } else if path.extension().is_some_and(|e| e == "rs") {
                     let text = std::fs::read_to_string(&path).unwrap();
-                    // Комментарии не в счёт: там `t("…")` бывает примером.
+                    // Тесты не в счёт (здесь же ищется сам `t(`), комментарии тоже: там `t("…")` — пример.
+                    let text = text.split("#[cfg(test)]").next().unwrap_or_default();
                     let src: String =
                         text.lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
-                    for (i, _) in src.match_indices("t(\"") {
+                    // `t(` и сразу строка — даже если rustfmt перенёс её на следующую строку.
+                    for (i, _) in src.match_indices("t(") {
                         if src[..i].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
                             continue;
                         }
-                        let body = &src[i + 3..];
+                        let Some(body) = src[i + 2..].trim_start().strip_prefix('"') else { continue };
                         used.insert(body[..body.find('"').unwrap()].to_owned());
                     }
                 }
