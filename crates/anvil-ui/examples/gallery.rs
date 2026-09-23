@@ -449,7 +449,7 @@ impl Gallery {
 
         ui.columns(3, |cols| {
             w::card(&mut cols[0], |ui| {
-                card_head(ui, Icon::Branch, "Git");
+                w::card_title(ui, Icon::Branch, "Git");
                 w::field_row(ui, "Ветка", |ui| {
                     w::mono(ui, "main", Some(p.text));
                 });
@@ -472,7 +472,7 @@ impl Gallery {
                 });
             });
             w::card(&mut cols[1], |ui| {
-                card_head(ui, Icon::Package, "Установлено");
+                w::card_title(ui, Icon::Package, "Установлено");
                 w::field_row(ui, "Версия", |ui| {
                     w::mono(ui, "0.3.0", Some(p.text));
                     w::badge(ui, "есть 0.3.1", Tone::Accent);
@@ -490,7 +490,7 @@ impl Gallery {
                 });
             });
             w::card(&mut cols[2], |ui| {
-                card_head(ui, Icon::Terminal, "Бинарники");
+                w::card_title(ui, Icon::Terminal, "Бинарники");
                 for (name, running) in project.binaries {
                     ui.horizontal(|ui| {
                         w::dot(ui, if *running { Tone::Success } else { Tone::Neutral });
@@ -531,7 +531,7 @@ impl Gallery {
             let right = &mut right[0];
 
             w::card(left, |ui| {
-                card_head(ui, Icon::Hammer, "Кнопки");
+                w::card_title(ui, Icon::Hammer, "Кнопки");
                 ui.horizontal_wrapped(|ui| {
                     w::button(ui, Kind::Primary, Some(Icon::Play), "Главная");
                     w::button(ui, Kind::Secondary, Some(Icon::Hammer), "Обычная");
@@ -559,7 +559,7 @@ impl Gallery {
             left.add_space(12.0);
 
             w::card(left, |ui| {
-                card_head(ui, Icon::Info, "Метки");
+                w::card_title(ui, Icon::Info, "Метки");
                 ui.horizontal_wrapped(|ui| {
                     w::badge(ui, "v0.3.0", Tone::Neutral);
                     w::badge(ui, "+4 коммита", Tone::Accent);
@@ -581,7 +581,7 @@ impl Gallery {
             left.add_space(12.0);
 
             w::card(left, |ui| {
-                card_head(ui, Icon::Pencil, "Ввод");
+                w::card_title(ui, Icon::Pencil, "Ввод");
                 w::search_field(ui, &mut self.search, "Поиск…", Some("Ctrl+K"), ui.available_width());
                 ui.add_space(4.0);
                 ui.add(egui::TextEdit::singleline(&mut self.field).desired_width(f32::INFINITY));
@@ -608,7 +608,7 @@ impl Gallery {
             left.add_space(12.0);
 
             w::card(left, |ui| {
-                card_head(ui, Icon::Clock, "Ход работы");
+                w::card_title(ui, Icon::Clock, "Ход работы");
                 let t = (self.started.elapsed().as_secs_f32() / 6.0).fract();
                 ui.horizontal(|ui| {
                     w::progress(ui, Some(t), 260.0);
@@ -637,7 +637,7 @@ impl Gallery {
             });
 
             w::card(right, |ui| {
-                card_head(ui, Icon::Warning, "Баннеры");
+                w::card_title(ui, Icon::Warning, "Баннеры");
                 w::banner(ui, Tone::Accent, "Вышла v0.3.1", "12 изменений", |ui| {
                     w::button(ui, Kind::Primary, None, "Обновить");
                 });
@@ -653,7 +653,7 @@ impl Gallery {
             right.add_space(12.0);
 
             w::card(right, |ui| {
-                card_head(ui, Icon::File, "Текст");
+                w::card_title(ui, Icon::File, "Текст");
                 ui.label(RichText::new("Заголовок окна").font(semibold(24.0)).color(p.text));
                 ui.label(RichText::new("Заголовок карточки").font(semibold(15.0)).color(p.text));
                 ui.label("Основной текст — 14 pt, Segoe UI.");
@@ -665,7 +665,7 @@ impl Gallery {
             right.add_space(12.0);
 
             w::card(right, |ui| {
-                card_head(ui, Icon::Sun, "Палитра");
+                w::card_title(ui, Icon::Sun, "Палитра");
                 let tokens = [
                     ("bg", p.bg),
                     ("surface", p.surface),
@@ -702,7 +702,7 @@ impl Gallery {
             right.add_space(12.0);
 
             w::card(right, |ui| {
-                card_head(ui, Icon::Package, "Значки");
+                w::card_title(ui, Icon::Package, "Значки");
                 let all = [
                     Icon::ArrowDown,
                     Icon::ArrowRight,
@@ -759,16 +759,6 @@ impl Gallery {
             );
         });
     }
-}
-
-fn card_head(ui: &mut Ui, icon: Icon, text: &str) {
-    let p = Palette::of(ui);
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
-        anvil_ui::icons::paint(ui.painter(), rect, icon, p.weak);
-        w::title(ui, text, 14.5);
-    });
-    ui.add_space(6.0);
 }
 
 fn commits(ui: &mut Ui) {

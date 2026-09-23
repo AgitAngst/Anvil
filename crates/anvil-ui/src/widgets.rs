@@ -209,6 +209,17 @@ pub fn title(ui: &mut Ui, text: &str, size: f32) {
     ui.label(RichText::new(text).font(semibold(size)).color(p.text));
 }
 
+/// Заголовок карточки: значок цвета `weak` и полужирная подпись.
+pub fn card_title(ui: &mut Ui, icon: Icon, text: &str) {
+    let p = Palette::of(ui);
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
+        icons::paint(ui.painter(), rect, icon, p.weak);
+        title(ui, text, 14.5);
+    });
+    ui.add_space(6.0);
+}
+
 /// Второстепенный текст с переносом.
 pub fn note(ui: &mut Ui, text: impl Into<String>) {
     let p = Palette::of(ui);
