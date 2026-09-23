@@ -314,13 +314,25 @@ fn encode(text: &str) -> String {
 
 // ─── Токен ─────────────────────────────────────────────────────────────────
 
+#[cfg(windows)]
 fn keyring_entry() -> Option<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()
 }
 
+#[cfg(windows)]
+fn own_token() -> Option<String> {
+    keyring_entry()?.get_password().ok().map(|t| t.trim().to_owned()).filter(|t| !t.is_empty())
+}
+
+#[cfg(not(windows))]
+fn own_token() -> Option<String> {
+    let _ = (KEYRING_SERVICE, KEYRING_USER);
+    None
+}
+
 fn find_token() -> (Option<String>, TokenSource) {
-    if let Some(token) = keyring_entry().and_then(|e| e.get_password().ok()).filter(|t| !t.trim().is_empty()) {
-        return (Some(token.trim().to_owned()), TokenSource::Keyring);
+    if let Some(token) = own_token() {
+        return (Some(token), TokenSource::Keyring);
     }
     if let Some(token) = git_credential() {
         return (Some(token), TokenSource::Git);
@@ -328,6 +340,12 @@ fn find_token() -> (Option<String>, TokenSource) {
     (None, TokenSource::None)
 }
 
+#[cfg(not(windows))]
+fn store_token(_: Option<&str>) -> Result<(), String> {
+    Err("own token storage is available on Windows only".into())
+}
+
+#[cfg(windows)]
 fn store_token(token: Option<&str>) -> Result<(), String> {
     let entry = keyring_entry().ok_or("keyring is unavailable")?;
     match token.map(str::trim).filter(|t| !t.is_empty()) {
