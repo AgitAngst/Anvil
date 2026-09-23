@@ -4,13 +4,15 @@
 
 - **`anvil-ui`** — единый вид всех программ на egui: темы, акцент на программу, значки,
   виджеты, каркас окна, окна «О программе» и «Настройки». Готов.
-- **`anvil-update`** — проверка и установка обновлений изнутри программы. Впереди.
+- **`anvil-update`** — проверка и установка обновлений изнутри программы: GitHub Releases,
+  сверка SHA-256, установка с сохранением старой версии, перезапуск, готовый баннер. Готов.
 - **`anvil`** — окно командного центра. Сейчас: все проекты и их git-состояние, версии, запущенные
   бинарники, быстрые переходы; сборка, тесты, clippy, fmt и запуск с живым логом и разбором ошибок;
   CI и выпуски с GitHub. Впереди: обновления программ, установка, выпуски.
 
 Замысел, этапы и решения — в [SPEC.md](SPEC.md); где остановились — в [HANDOFF.md](HANDOFF.md);
-правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md).
+правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); как выпускаются программы — в
+[docs/RELEASES.md](docs/RELEASES.md).
 
 ![Anvil](docs/anvil-dark.png)
 
@@ -66,6 +68,37 @@ chrome::content(ui, |ui| {
   [patch."https://github.com/AgitAngst/Anvil"]
   anvil-ui = { path = "D:/dev_personal/Anvil/crates/anvil-ui" }
   ```
+
+## Подключение `anvil-update`
+
+```toml
+[dependencies]
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.1.0" }
+```
+
+```rust
+// При запуске:
+anvil_update::cleanup();
+let updater = anvil_update::Updater::new(
+    anvil_update::Config::new("tetrachrome", env!("CARGO_PKG_VERSION"), "AgitAngst/Tetrachrome"),
+    cc.egui_ctx.clone(),
+);
+
+// В кадре: проверка при запуске и раз в сутки (если включено), баннер вверху основной области.
+updater.auto(&settings.common);
+if anvil_update::ui::banner(ui, &updater, &mut settings.common) { /* сохранить настройки */ }
+
+// «О программе»: строка состояния и кнопка «Проверить обновления».
+let status = anvil_update::ui::about_status(ctx, &updater);
+if chrome::about(ctx, &mut open, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {
+    updater.check(settings.common.prerelease, None, true);
+}
+```
+
+Выпуски программы — по [соглашению](docs/RELEASES.md): тег `vX.Y.Z`, архив
+`<app>-X.Y.Z-windows-x64.zip`, `SHA256SUMS`. Собирает и публикует общий workflow
+`.github/workflows/rust-release.yml`. Проверить всё на месте можно примером
+`cargo run -p anvil-update --example updatable -- --version 0.1.0 --repo owner/name`.
 
 ## Лицензия
 

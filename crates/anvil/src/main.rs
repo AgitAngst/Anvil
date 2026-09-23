@@ -38,6 +38,8 @@ impl eframe::App for Anvil {
 }
 
 fn main() -> eframe::Result<()> {
+    // Следы прошлого обновления (*.old-…, папка загрузки) — прочь.
+    anvil_update::cleanup();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Anvil")

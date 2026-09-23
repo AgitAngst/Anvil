@@ -198,11 +198,19 @@ pub struct CommonSettings {
     pub language: Lang,
     pub check_updates: bool,
     pub prerelease: bool,
+    /// Версия, которую пользователь пропустил: авто-проверка её больше не предлагает.
+    pub skip_version: Option<String>,
 }
 
 impl Default for CommonSettings {
     fn default() -> Self {
-        Self { theme: ThemeChoice::System, language: lang::system_language(), check_updates: true, prerelease: false }
+        Self {
+            theme: ThemeChoice::System,
+            language: lang::system_language(),
+            check_updates: true,
+            prerelease: false,
+            skip_version: None,
+        }
     }
 }
 

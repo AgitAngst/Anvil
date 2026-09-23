@@ -43,6 +43,8 @@ pub struct App {
     pub toasts: Toasts,
     pub settings_open: bool,
     pub about_open: bool,
+    /// Обновления самого Anvil.
+    pub updater: anvil_update::Updater,
     /// Задачи по порядку постановки: новые — в конце.
     pub jobs: Vec<Job>,
     pub log_open: bool,
@@ -87,6 +89,10 @@ impl App {
         let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone());
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone());
         let units_path = config_path.with_file_name("units.json");
+        let updater = anvil_update::Updater::new(
+            anvil_update::Config::new("anvil", env!("CARGO_PKG_VERSION"), "AgitAngst/Anvil"),
+            cc.egui_ctx.clone(),
+        );
         let mut app = Self {
             selected: config.selected.clone(),
             config,
@@ -101,6 +107,7 @@ impl App {
             toasts: Toasts::default(),
             settings_open: false,
             about_open: false,
+            updater,
             jobs: Vec::new(),
             log_open: false,
             log_job: None,
@@ -196,6 +203,8 @@ impl App {
             let _ = self.commands.send(Cmd::Refresh { full: false });
         }
         self.was_focused = focused;
+
+        self.updater.auto(&self.config.common);
 
         let minutes = self.config.fetch_minutes;
         if minutes > 0 && self.last_fetch.elapsed() >= Duration::from_secs(u64::from(minutes) * 60) {

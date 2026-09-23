@@ -277,8 +277,17 @@ pub fn banner(ui: &mut Ui, tone: Tone, title: &str, text: &str, actions: impl Fn
                 icons::paint(ui.painter(), rect, tone.icon(), color);
                 ui.add_space(4.0);
                 ui.label(RichText::new(title).font(semibold(14.0)).color(p.text));
-                ui.label(RichText::new(text).size(13.5).color(p.weak));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions);
+                // Сначала действия справа, потом текст в оставшемся месте: длинный текст (ошибка,
+                // путь) обрезается многоточием и целиком виден в подсказке, а не раздвигает окно.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    actions(ui);
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        if !text.is_empty() {
+                            let label = egui::Label::new(RichText::new(text).size(13.5).color(p.weak)).truncate();
+                            ui.add(label).on_hover_text(text);
+                        }
+                    });
+                });
             });
         });
 }

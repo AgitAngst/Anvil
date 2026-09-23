@@ -52,7 +52,6 @@ origin не ответил у	origin did not respond for
 Перечитать всё и спросить origin (F5)	Re-read everything and ask origin (F5)
 Последний	Latest
 Проверено	Checked
-Проверка обновлений появится вместе с anvil-update	Update checks arrive with anvil-update
 Проверять новые коммиты	Check for new commits
 Проект — это сама папка или её подпапка, где есть Cargo.toml.	A project is the folder itself or a subfolder that has a Cargo.toml.
 Проектов не видно	No projects in sight

@@ -1,0 +1,17 @@
+# Выпуск самого Anvil — по тегу vX.Y.Z (ставится только по команде).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/rust-release.yml
+    with:
+      app: anvil
+      bins: anvil
+      package: anvil

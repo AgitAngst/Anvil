@@ -34,14 +34,21 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     status_bar(app, ui);
     jobs::panel(app, ui);
     chrome::side_panel(ui, "projects", 260.0, |ui| sidebar::show(app, ui));
-    chrome::content(ui, |ui| project::show(app, ui));
+    chrome::content(ui, |ui| {
+        let updater = app.updater.clone();
+        if anvil_update::ui::banner(ui, &updater, &mut app.config.common) {
+            app.save();
+        }
+        project::show(app, ui);
+    });
 
     settings::show(app, &ctx);
     presets::show(app, &ctx);
     dialogs::show(app, &ctx);
     let info = info();
-    if chrome::about(&ctx, &mut app.about_open, &info, None) == Some(AboutAction::CheckUpdates) {
-        app.toasts.push(t("Проверка обновлений появится вместе с anvil-update"), Tone::Neutral);
+    let status = anvil_update::ui::about_status(&ctx, &app.updater);
+    if chrome::about(&ctx, &mut app.about_open, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {
+        app.updater.check(app.config.common.prerelease, None, true);
     }
     app.toasts.show(&ctx);
 }

@@ -1,0 +1,101 @@
+# Многоразовый выпуск программы семьи Anvil по соглашению docs/RELEASES.md:
+# сборка под Windows, архив <app>-X.Y.Z-windows-x64.zip, SHA256SUMS, GitHub Release.
+name: Rust release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: Начало имени архива — <app>-X.Y.Z-windows-x64.zip
+        required: true
+        type: string
+      bins:
+        description: Бинарники через пробел, которые лягут в архив
+        required: true
+        type: string
+      package:
+        description: Пакет cargo (-p), если бинарники не в корневом пакете
+        required: false
+        type: string
+        default: ""
+      repository:
+        description: Куда публиковать (owner/name); пусто — этот же репозиторий
+        required: false
+        type: string
+        default: ""
+    secrets:
+      RELEASES_TOKEN:
+        description: Токен с правом записи в репозиторий выпусков (для закрытого кода)
+        required: false
+
+jobs:
+  windows:
+    name: Выпуск ${{ inputs.app }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Версия из тега
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if (-not ($tag -match '^v(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?$')) { throw "Тег '$tag' — не vX.Y.Z" }
+          $version = $tag.Substring(1)
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$(if ($Matches[2]) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+
+      - name: Сборка
+        shell: pwsh
+        run: |
+          $cargo = @('build', '--release', '--locked')
+          if ('${{ inputs.package }}') { $cargo += @('-p', '${{ inputs.package }}') }
+          foreach ($bin in '${{ inputs.bins }}'.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) { $cargo += @('--bin', $bin) }
+          cargo @cargo
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Архив и SHA256SUMS
+        shell: pwsh
+        run: |
+          $name = '${{ inputs.app }}-${{ steps.version.outputs.version }}-windows-x64.zip'
+          New-Item -ItemType Directory -Force dist, stage | Out-Null
+          foreach ($bin in '${{ inputs.bins }}'.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) {
+            Copy-Item "target/release/$bin.exe" stage/
+          }
+          Compress-Archive -Path stage/* -DestinationPath "dist/$name"
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          [IO.File]::WriteAllText("$PWD/dist/SHA256SUMS", "$hash  $name`n")
+          Get-Content dist/SHA256SUMS
+
+      - name: GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $repo = if ('${{ inputs.repository }}') { '${{ inputs.repository }}' } else { '${{ github.repository }}' }
+          # Заметки — из аннотации тега (git tag -a v1.2.3 -m "…").
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+          $notes = (git tag -l --format='%(contents)' $tag) -join "`n"
+          $flags = @('--repo', $repo, '--title', $tag)
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
+          if ($notes.Trim()) {
+            [IO.File]::WriteAllText("$PWD/notes.md", $notes)
+            $flags += @('--notes-file', 'notes.md')
+          } elseif ($repo -eq '${{ github.repository }}') {
+            $flags += '--generate-notes'
+          } else {
+            $flags += @('--notes', "Выпуск $tag")
+          }
+          # Выпуск уже есть (перезапуск workflow) — только дозалить файлы.
+          gh release view $tag --repo $repo *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag dist/* --repo $repo --clobber
+          } else {
+            gh release create $tag dist/* @flags
+          }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
