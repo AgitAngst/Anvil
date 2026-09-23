@@ -4,6 +4,7 @@
 //! anvil_ui::install(&cc.egui_ctx, anvil_ui::Accent::EMBER, anvil_ui::ThemeChoice::System);
 //! ```
 
+pub mod appicon;
 pub mod chrome;
 pub mod icons;
 pub mod lang;

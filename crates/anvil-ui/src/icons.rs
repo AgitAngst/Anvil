@@ -3,6 +3,7 @@
 //! Шрифтовые значки выглядят по-разному на разных системах, и не у всех символов
 //! есть глиф. Нарисованные кодом — одинаково чёткие при любом масштабе.
 
+use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
 
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke};
@@ -52,17 +53,24 @@ pub enum Icon {
 
 /// Нарисовать значок в квадрате `rect`.
 pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
+    painter.extend(shapes(rect, icon, color));
+}
+
+/// Фигуры значка в квадрате `rect` — для painter или для растеризации в значок окна.
+pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
+    let out = RefCell::new(Vec::new());
+    let push = |shape: Shape| out.borrow_mut().push(shape);
     let scale = rect.width().min(rect.height()) / 24.0;
     let origin = rect.center() - egui::vec2(12.0, 12.0) * scale;
     let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
     let stroke = Stroke::new((1.7 * scale).max(1.2), color);
-    let line = |points: Vec<Pos2>| painter.add(Shape::line(points, stroke));
+    let line = |points: Vec<Pos2>| push(Shape::line(points, stroke));
     let arc = |cx: f32, cy: f32, r: f32, from: f32, to: f32| {
         let steps = ((to - from).abs() * r).ceil().max(6.0) as usize;
         line(arc_points(cx, cy, r, from, to, steps).into_iter().map(|(x, y)| at(x, y)).collect())
     };
     let boxed = |a: Pos2, b: Pos2, r: f32| {
-        painter.rect_stroke(Rect::from_min_max(a, b), r * scale, stroke, egui::StrokeKind::Middle)
+        push(Shape::rect_stroke(Rect::from_min_max(a, b), r * scale, stroke, egui::StrokeKind::Middle))
     };
 
     match icon {
@@ -77,9 +85,9 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(vec![at(6.5, 11.0), at(12.0, 5.5), at(17.5, 11.0)]);
         }
         Icon::Branch => {
-            painter.circle_stroke(at(7.0, 5.5), 2.2 * scale, stroke);
-            painter.circle_stroke(at(7.0, 18.5), 2.2 * scale, stroke);
-            painter.circle_stroke(at(17.0, 7.5), 2.2 * scale, stroke);
+            push(Shape::circle_stroke(at(7.0, 5.5), 2.2 * scale, stroke));
+            push(Shape::circle_stroke(at(7.0, 18.5), 2.2 * scale, stroke));
+            push(Shape::circle_stroke(at(17.0, 7.5), 2.2 * scale, stroke));
             line(vec![at(7.0, 7.7), at(7.0, 16.3)]);
             line(vec![at(17.0, 9.7), at(17.0, 11.0), at(15.0, 13.5), at(9.0, 14.5), at(7.0, 16.3)]);
         }
@@ -87,7 +95,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(vec![at(5.0, 12.5), at(10.0, 17.5), at(19.5, 7.0)]);
         }
         Icon::Clock => {
-            painter.circle_stroke(at(12.0, 12.0), 8.0 * scale, stroke);
+            push(Shape::circle_stroke(at(12.0, 12.0), 8.0 * scale, stroke));
             line(vec![at(12.0, 7.5), at(12.0, 12.0), at(15.0, 14.0)]);
         }
         Icon::Close => {
@@ -121,7 +129,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             ]);
         }
         Icon::Gear => {
-            painter.circle_stroke(at(12.0, 12.0), 3.0 * scale, stroke);
+            push(Shape::circle_stroke(at(12.0, 12.0), 3.0 * scale, stroke));
             let mut points = Vec::new();
             for i in 0..=48 {
                 let a = i as f32 / 48.0 * TAU;
@@ -140,15 +148,15 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             let corner = |a: f32, b: f32| at(cx + u.0 * a + v.0 * b, cy + u.1 * a + v.1 * b);
             let head =
                 vec![corner(-6.5, -2.8), corner(4.5, -2.8), corner(6.5, 0.0), corner(4.5, 2.8), corner(-6.5, 2.8)];
-            painter.add(Shape::convex_polygon(head, color, Stroke::NONE));
+            push(Shape::convex_polygon(head, color, Stroke::NONE));
         }
         Icon::Info => {
-            painter.circle_stroke(at(12.0, 12.0), 8.5 * scale, stroke);
+            push(Shape::circle_stroke(at(12.0, 12.0), 8.5 * scale, stroke));
             line(vec![at(12.0, 11.0), at(12.0, 16.5)]);
-            painter.circle_filled(at(12.0, 7.8), 1.2 * scale, color);
+            push(Shape::circle_filled(at(12.0, 7.8), 1.2 * scale, color));
         }
         Icon::Lock => {
-            painter.rect_filled(Rect::from_min_max(at(5.5, 10.5), at(18.5, 20.5)), 2.5 * scale, color);
+            push(Shape::rect_filled(Rect::from_min_max(at(5.5, 10.5), at(18.5, 20.5)), 2.5 * scale, color));
             arc(12.0, 10.5, 4.0, PI, TAU);
         }
         Icon::Moon => {
@@ -175,12 +183,12 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
                     points.extend(arc.into_iter().rev());
                 }
                 let points: Vec<Pos2> = points.into_iter().map(|(x, y)| at(x, y)).collect();
-                painter.add(Shape::closed_line(points, stroke));
+                push(Shape::closed_line(points, stroke));
             }
         }
         Icon::More => {
             for x in [5.5, 12.0, 18.5] {
-                painter.circle_filled(at(x, 12.0), 1.8 * scale, color);
+                push(Shape::circle_filled(at(x, 12.0), 1.8 * scale, color));
             }
         }
         Icon::Monitor => {
@@ -191,13 +199,13 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Package => {
             let outline =
                 vec![at(12.0, 3.5), at(20.0, 7.5), at(20.0, 16.5), at(12.0, 20.5), at(4.0, 16.5), at(4.0, 7.5)];
-            painter.add(Shape::closed_line(outline, stroke));
+            push(Shape::closed_line(outline, stroke));
             line(vec![at(4.0, 7.5), at(12.0, 11.5), at(20.0, 7.5)]);
             line(vec![at(12.0, 11.5), at(12.0, 20.5)]);
         }
         Icon::Pause => {
-            painter.rect_filled(Rect::from_min_max(at(7.0, 5.5), at(10.5, 18.5)), scale, color);
-            painter.rect_filled(Rect::from_min_max(at(13.5, 5.5), at(17.0, 18.5)), scale, color);
+            push(Shape::rect_filled(Rect::from_min_max(at(7.0, 5.5), at(10.5, 18.5)), scale, color));
+            push(Shape::rect_filled(Rect::from_min_max(at(13.5, 5.5), at(17.0, 18.5)), scale, color));
         }
         Icon::Pencil => {
             line(vec![at(5.0, 19.0), at(6.0, 15.0), at(16.0, 5.0), at(19.0, 8.0), at(9.0, 18.0), at(5.0, 19.0)]);
@@ -205,7 +213,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Play => {
             let points = vec![at(8.0, 5.5), at(18.5, 12.0), at(8.0, 18.5)];
-            painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+            push(Shape::convex_polygon(points, color, Stroke::NONE));
         }
         Icon::Plus => {
             line(vec![at(12.0, 5.0), at(12.0, 19.0)]);
@@ -217,27 +225,27 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Rocket => {
             let body = vec![at(12.0, 3.0), at(15.5, 7.5), at(15.5, 15.0), at(8.5, 15.0), at(8.5, 7.5)];
-            painter.add(Shape::closed_line(body, stroke));
+            push(Shape::closed_line(body, stroke));
             line(vec![at(8.5, 11.5), at(5.5, 15.0), at(5.5, 17.5), at(8.5, 15.0)]);
             line(vec![at(15.5, 11.5), at(18.5, 15.0), at(18.5, 17.5), at(15.5, 15.0)]);
             line(vec![at(10.5, 17.5), at(12.0, 21.0), at(13.5, 17.5)]);
-            painter.circle_stroke(at(12.0, 9.5), 1.4 * scale, stroke);
+            push(Shape::circle_stroke(at(12.0, 9.5), 1.4 * scale, stroke));
         }
         Icon::Search => {
-            painter.circle_stroke(at(10.5, 10.5), 6.0 * scale, stroke);
+            push(Shape::circle_stroke(at(10.5, 10.5), 6.0 * scale, stroke));
             line(vec![at(15.0, 15.0), at(20.0, 20.0)]);
         }
         Icon::Server => {
             for top in [4.5, 13.0] {
                 boxed(at(4.5, top), at(19.5, top + 6.5), 1.5);
-                painter.circle_filled(at(8.0, top + 3.25), 1.1 * scale, color);
+                push(Shape::circle_filled(at(8.0, top + 3.25), 1.1 * scale, color));
             }
         }
         Icon::Stop => {
-            painter.rect_filled(Rect::from_min_max(at(6.5, 6.5), at(17.5, 17.5)), 2.0 * scale, color);
+            push(Shape::rect_filled(Rect::from_min_max(at(6.5, 6.5), at(17.5, 17.5)), 2.0 * scale, color));
         }
         Icon::Sun => {
-            painter.circle_stroke(at(12.0, 12.0), 4.0 * scale, stroke);
+            push(Shape::circle_stroke(at(12.0, 12.0), 4.0 * scale, stroke));
             for i in 0..8 {
                 let a = i as f32 / 8.0 * TAU;
                 let (s, c) = a.sin_cos();
@@ -258,11 +266,12 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Warning => {
             let outline = vec![at(12.0, 3.5), at(21.0, 19.5), at(3.0, 19.5)];
-            painter.add(Shape::closed_line(outline, stroke));
+            push(Shape::closed_line(outline, stroke));
             line(vec![at(12.0, 9.5), at(12.0, 14.0)]);
-            painter.circle_filled(at(12.0, 16.8), 1.1 * scale, color);
+            push(Shape::circle_filled(at(12.0, 16.8), 1.1 * scale, color));
         }
     }
+    out.into_inner()
 }
 
 fn arc_points(cx: f32, cy: f32, r: f32, from: f32, to: f32, steps: usize) -> Vec<(f32, f32)> {

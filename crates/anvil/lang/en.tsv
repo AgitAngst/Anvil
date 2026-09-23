@@ -1,0 +1,110 @@
+# Русская строка<TAB>английская. Полноту проверяет i18n::tests::dictionary_matches_sources.
+15 мин	15 min
+5 мин	5 min
+Cargo.toml не прочитан.	Cargo.toml could not be read.
+cargo metadata не удался	cargo metadata failed
+git fetch только узнаёт о новом на origin и ничего не меняет в рабочей копии.	git fetch only learns what is new on origin and never touches the working copy.
+git не читается	git state could not be read
+origin не ответил	origin did not respond
+origin не ответил у	origin did not respond for
+Библиотека: запускать нечего.	A library: nothing to run.
+Бинарники	Binaries
+В рабочей копии нет изменений.	The working copy has no changes.
+Вернуть	Restore
+Версия	Version
+Ветка	Branch
+Всё закоммичено	Everything is committed
+Всё закоммичено и отправлено	Everything committed and pushed
+Дерево	Tree
+Добавить папку с проектами	Add a folder with projects
+Добавить папку…	Add folder…
+Добавьте папку, в которой лежат проекты на Rust: Anvil найдёт в ней всё, где есть Cargo.toml.	Add a folder with your Rust projects: Anvil will find everything that has a Cargo.toml.
+Ещё	More
+Заметки	Notes
+Заметок нет	No notes
+Здесь пока пусто: добавьте папку, в которой лежат проекты.	Nothing here yet: add a folder with your projects.
+Здесь появятся HANDOFF.md, TODO.md, SPEC.md и README.md проекта.	The project's HANDOFF.md, TODO.md, SPEC.md and README.md will show up here.
+Изменения	Changes
+История появится после первого коммита.	History appears after the first commit.
+Ищу проекты…	Looking for projects…
+Код	Code
+Командный центр Rust-программ	Command center for Rust apps
+Коммитов нет	No commits
+Коммиты	Commits
+Крейтов	Crates
+Меню	Menu
+На origin есть новое	origin has new commits
+Найти проект…	Find a project…
+Настройки	Settings
+Настройки не прочитаны	Settings could not be read
+Настройки не сохранены	Settings were not saved
+Ничего не нашлось.	Nothing found.
+О программе	About
+Обновить	Refresh
+Опрос origin	Checking origin
+Открыть	Open
+Открыть anvil.toml	Open anvil.toml
+Открыть в VS Code	Open in VS Code
+Открыть папку	Open folder
+Папка не под git.	The folder is not under git.
+Папка с проектами	Folder with projects
+Папки с проектами	Project folders
+Перечитать всё и спросить origin (F5)	Re-read everything and ask origin (F5)
+Последний	Latest
+Проверено	Checked
+Проверка обновлений появится вместе с anvil-update	Update checks arrive with anvil-update
+Проверять новые коммиты	Check for new commits
+Проект — это сама папка или её подпапка, где есть Cargo.toml.	A project is the folder itself or a subfolder that has a Cargo.toml.
+Проектов не видно	No projects in sight
+Проекты	Projects
+Репозиторий на GitHub	Repository on GitHub
+Скрытые проекты	Hidden projects
+Скрыть из списка	Hide from the list
+Смотрю папки из настроек.	Looking through the folders from settings.
+Состояние	Status
+Состояние не прочитано.	Status could not be read.
+Состояние прочитано	Status read
+Спрашиваю origin…	Asking origin…
+Спросить origin	Ask origin
+Тег	Tag
+Терминал в папке	Terminal here
+Убрать папку	Remove folder
+Читаю Cargo.toml…	Reading Cargo.toml…
+Читаю состояние…	Reading status…
+без git	no git
+без origin	no origin
+ветка не связана с origin	branch has no upstream
+вручную	manually
+вчера	yesterday
+г. назад	y ago
+добавлен	added
+есть правки	uncommitted
+ещё не у вас — нужен git pull	not here yet — git pull needed
+запущен	running
+запущено экземпляров	instances running
+изменён	modified
+конфликт слияния	merge conflict
+мес. назад	mo ago
+мин назад	min ago
+назад	ago
+не отслеживается	untracked
+нет	none
+нет тегов	no tags
+ни разу	never
+отсоединённый HEAD	detached HEAD
+ошибка cargo	cargo error
+ошибка git	git error
+пакет	package
+переименован	renamed
+позади origin	behind origin
+правка	edited
+с неотправленными коммитами	with unpushed commits
+с ошибкой чтения	unreadable
+с правками	with changes
+скрыт из списка	hidden from the list
+совпадает	in sync
+только что	just now
+удалён	deleted
+ч назад	h ago
+час	1 hour
+чисто	clean

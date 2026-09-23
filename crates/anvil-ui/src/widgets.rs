@@ -221,9 +221,9 @@ pub fn card_title(ui: &mut Ui, icon: Icon, text: &str) {
 }
 
 /// Второстепенный текст с переносом.
-pub fn note(ui: &mut Ui, text: impl Into<String>) {
+pub fn note(ui: &mut Ui, text: impl Into<String>) -> Response {
     let p = Palette::of(ui);
-    ui.label(RichText::new(text.into()).size(13.0).color(p.weak));
+    ui.label(RichText::new(text.into()).size(13.0).color(p.weak))
 }
 
 /// Моноширинный текст: хеши, версии, команды.
@@ -439,8 +439,20 @@ pub fn nav_item(ui: &mut Ui, selected: bool, tone: Tone, text: &str, trailing: O
 
 /// Поле поиска со значком лупы и подсказкой-клавишей справа.
 pub fn search_field(ui: &mut Ui, text: &mut String, hint: &str, shortcut: Option<&str>, width: f32) -> Response {
-    let p = Palette::of(ui);
     let id = ui.make_persistent_id(("search", hint));
+    search_field_with_id(ui, id, text, hint, shortcut, width)
+}
+
+/// То же с заданным id — чтобы по сочетанию клавиш передать полю фокус.
+pub fn search_field_with_id(
+    ui: &mut Ui,
+    id: egui::Id,
+    text: &mut String,
+    hint: &str,
+    shortcut: Option<&str>,
+    width: f32,
+) -> Response {
+    let p = Palette::of(ui);
     let focused = ui.memory(|m| m.has_focus(id));
     let border = if focused { p.accent } else { p.border };
     egui::Frame::new()
