@@ -10,6 +10,24 @@ use crate::jobs::{Before, Diag, Download, InstallStep, JobId, Line, Outcome, Spe
 use crate::launch::{self, Launch};
 use crate::registry::Meta;
 
+/// Итог задачи словами и его цвет: «готово за 41 с», «тестов прошло 12, упало 1», «2 ошибки».
+pub fn summary(outcome: &Outcome, took: Duration) -> (String, anvil_ui::Tone) {
+    use crate::i18n::{self, t};
+    use anvil_ui::Tone;
+    if outcome.cancelled {
+        (t("задача отменена").to_owned(), Tone::Neutral)
+    } else if let Some((passed, failed)) = outcome.tests {
+        let tone = if failed > 0 || !outcome.ok { Tone::Danger } else { Tone::Success };
+        (format!("{} {passed}, {} {failed}", t("тестов прошло"), t("упало")), tone)
+    } else if outcome.ok {
+        (format!("{} {}", t("готово за"), crate::app::duration(took)), Tone::Success)
+    } else if outcome.errors > 0 {
+        (i18n::count(outcome.errors, ["ошибка", "ошибки", "ошибок"], ["error", "errors"]), Tone::Danger)
+    } else {
+        (t("не удалось — подробности в логе").to_owned(), Tone::Danger)
+    }
+}
+
 /// Что можно попросить у проекта.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Task {

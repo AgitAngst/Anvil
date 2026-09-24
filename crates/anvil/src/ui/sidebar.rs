@@ -90,14 +90,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     egui::ScrollArea::vertical().auto_shrink([false, true]).max_height(ui.available_height() - 200.0).show(ui, |ui| {
         if visible.is_empty() && !app.scanning {
             ui.add_space(8.0);
-            let text = if app.search.trim().is_empty() {
-                t("Здесь пока пусто: добавьте папку, в которой лежат проекты.")
-            } else {
-                t("Ничего не нашлось.")
-            };
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(8.0);
-                w::note(ui, text);
+                w::note(ui, t("Здесь пока пусто: добавьте папку, в которой лежат проекты."));
             });
         }
         for row in &visible {
@@ -105,6 +100,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             let selected = current.as_ref() == Some(&row.path);
             if w::nav_item(ui, selected, row.tone, &row.name, trailing).clicked() {
                 app.select(row.path.clone());
+                app.view = crate::app::View::Project;
             }
         }
     });
@@ -142,7 +138,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let lines = [
         (Tone::Warning, dirty, t("с правками")),
         (Tone::Warning, behind, t("позади origin")),
-        (Tone::Accent, ahead, t("с неотправленными коммитами")),
+        (Tone::Accent, ahead, t("впереди origin")),
         (Tone::Danger, broken, t("с ошибкой чтения")),
         (Tone::Danger, ci, t("с упавшим CI")),
         (Tone::Danger, vulnerable, t("с уязвимостями")),

@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -140,6 +141,8 @@ pub struct Outcome {
     pub installed: Option<Result<String, String>>,
     /// Выпуск: страница GitHub Release, если его создали отсюда.
     pub published: Option<String>,
+    /// Сколько ошибок компилятора.
+    pub errors: usize,
 }
 
 pub enum Event {
@@ -157,13 +160,16 @@ pub enum Cmd {
     Cancel(JobId),
 }
 
-pub fn spawn(ctx: egui::Context) -> (Sender<Cmd>, Receiver<Event>, Sender<Event>) {
+pub fn spawn(
+    ctx: egui::Context,
+    notifier: Arc<crate::notify::Notifier>,
+) -> (Sender<Cmd>, Receiver<Event>, Sender<Event>) {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let (event_tx, event_rx) = std::sync::mpsc::channel();
     let events = event_tx.clone();
     std::thread::Builder::new()
         .name("anvil-jobs".into())
-        .spawn(move || Runner { ctx, events: event_tx, queue: VecDeque::new() }.run(cmd_rx))
+        .spawn(move || Runner { ctx, events: event_tx, queue: VecDeque::new(), notifier }.run(cmd_rx))
         .expect("spawn jobs");
     (cmd_tx, event_rx, events)
 }
@@ -172,6 +178,7 @@ struct Runner {
     ctx: egui::Context,
     events: Sender<Event>,
     queue: VecDeque<(JobId, Spec)>,
+    notifier: Arc<crate::notify::Notifier>,
 }
 
 /// Что пришло от потоков, читающих вывод.
@@ -198,7 +205,14 @@ impl Runner {
                 }
             }
             let (id, spec) = self.queue.pop_front().expect("queue is not empty");
-            self.execute(id, spec, &commands);
+            let started = Instant::now();
+            let outcome = self.execute(id, &spec, &commands);
+            if !outcome.cancelled {
+                let (text, _) = crate::tasks::summary(&outcome, started.elapsed());
+                let title = format!("Anvil · {}", crate::worker::display_name(&spec.project));
+                self.notifier.job_done(title, text, started.elapsed());
+            }
+            self.send(Event::Finished(id, outcome));
         }
     }
 
@@ -221,7 +235,8 @@ impl Runner {
         self.send(Event::Lines(id, vec![Line { kind: LineKind::Note, text: text.into() }]));
     }
 
-    fn execute(&mut self, id: JobId, spec: Spec, commands: &Receiver<Cmd>) {
+    /// Выполнить задачу; итог отправляет вызывающий.
+    fn execute(&mut self, id: JobId, spec: &Spec, commands: &Receiver<Cmd>) -> Outcome {
         self.send(Event::Started(id));
         for step in &spec.before {
             match step {
@@ -235,8 +250,7 @@ impl Runner {
                     Ok(to) => self.note(id, format!("› {} → {}", exe.display(), to.display())),
                     Err(e) => {
                         self.note(id, format!("› {}: {e}", exe.display()));
-                        self.send(Event::Finished(id, Outcome::default()));
-                        return;
+                        return Outcome::default();
                     }
                 },
             }
@@ -244,14 +258,10 @@ impl Runner {
         self.note(id, format!("› {}", spec.title));
 
         if let Some(download) = &spec.download {
-            let outcome = self.download(id, download);
-            self.send(Event::Finished(id, outcome));
-            return;
+            return self.download(id, download);
         }
         if let Some(steps) = &spec.script {
-            let outcome = self.script(id, &spec.project, steps);
-            self.send(Event::Finished(id, outcome));
-            return;
+            return self.script(id, &spec.project, steps);
         }
 
         let started = Instant::now();
@@ -265,8 +275,7 @@ impl Runner {
             Ok(child) => child,
             Err(e) => {
                 self.note(id, format!("{}: {e}", spec.program));
-                self.send(Event::Finished(id, Outcome::default()));
-                return;
+                return Outcome::default();
             }
         };
 
@@ -281,7 +290,7 @@ impl Runner {
         let mut cancelled = false;
         while open_pipes > 0 {
             match out_rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(Output::Out(text)) => self.stdout_line(id, &spec, text, &mut lines, &mut outcome),
+                Ok(Output::Out(text)) => self.stdout_line(id, spec, text, &mut lines, &mut outcome),
                 Ok(Output::Err(text)) => lines.push(Line { kind: stderr_kind(&text), text }),
                 Ok(Output::Closed) => open_pipes -= 1,
                 Err(RecvTimeoutError::Timeout) => {}
@@ -334,7 +343,7 @@ impl Runner {
             }
             outcome.launched = Some(result);
         }
-        self.send(Event::Finished(id, outcome));
+        outcome
     }
 
     /// Сценарий: шаги по порядку; первая ошибка останавливает всё, что дальше.
@@ -489,6 +498,7 @@ impl Runner {
                     }
                     lines.extend(rendered.map(|l| Line { kind: LineKind::Text, text: l.to_owned() }));
                     if let Some(diag) = diag {
+                        outcome.errors += usize::from(diag.level == Level::Error);
                         self.send(Event::Diag(id, diag));
                     }
                 }

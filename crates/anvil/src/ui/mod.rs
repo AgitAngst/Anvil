@@ -1,10 +1,13 @@
 //! Отрисовка окна. Каждая часть — в своём файле.
 
+mod amber;
 pub mod deps;
 mod dialogs;
 mod github;
 mod install;
 mod jobs;
+mod overview;
+pub mod palette;
 mod presets;
 mod project;
 pub mod release;
@@ -16,7 +19,7 @@ use anvil_ui::widgets as w;
 use anvil_ui::{Icon, Kind, Palette, Tone};
 use eframe::egui::{self, Ui};
 
-use crate::app::App;
+use crate::app::{App, View};
 use crate::i18n::{self, t};
 use crate::worker::Busy;
 
@@ -42,7 +45,10 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
         if anvil_update::ui::banner(ui, &updater, &mut app.config.common) {
             app.save();
         }
-        project::show(app, ui);
+        match app.view {
+            View::Project => project::show(app, ui),
+            View::Overview => overview::show(app, ui),
+        }
     });
 
     settings::show(app, &ctx);
@@ -56,6 +62,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     if chrome::about(&ctx, &mut app.about_open, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {
         app.updater.check(app.config.common.prerelease, None, true);
     }
+    palette::show(app, &ctx);
     app.toasts.show(&ctx);
 }
 
@@ -69,12 +76,15 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         app.settings_open = true;
     }
     if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::K))) {
-        ctx.memory_mut(|m| m.request_focus(search_id()));
+        if app.palette.is_some() {
+            app.palette = None;
+        } else {
+            palette::open(app);
+        }
     }
-}
-
-fn search_id() -> egui::Id {
-    egui::Id::new("anvil-search")
+    if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0))) {
+        app.toggle_view();
+    }
 }
 
 fn top_bar(app: &mut App, ui: &mut Ui) {
@@ -82,7 +92,16 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
         let info = info();
         chrome::brand(ui, info.icon, info.name);
         ui.add_space(18.0);
-        w::search_field_with_id(ui, search_id(), &mut app.search, t("Найти проект…"), Some("Ctrl+K"), 320.0);
+        palette::launcher(app, ui, 340.0);
+        ui.add_space(10.0);
+        let mut view = app.view;
+        w::segmented(
+            ui,
+            &mut view,
+            &[(View::Project, Some(Icon::File), t("Проект")), (View::Overview, Some(Icon::Tiles), t("Обзор"))],
+        )
+        .on_hover_text("Ctrl+0");
+        app.view = view;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let gear = w::icon_button(ui, Icon::Gear, t("Меню"));

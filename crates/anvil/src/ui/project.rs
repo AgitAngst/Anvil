@@ -10,6 +10,7 @@ use crate::app::{App, Tab};
 use crate::git::{Change, GitState};
 use crate::i18n::{self, t};
 use crate::open;
+use crate::registry::Kind as ProjectKind;
 use crate::tasks::{self, Task};
 use crate::worker::Project;
 
@@ -31,6 +32,8 @@ enum Action {
     SetRun(String),
     Install(super::install::Action),
     Release,
+    /// Открыть amber-admin: установленный — сразу, иначе собрать и запустить.
+    AmberAdmin,
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -40,20 +43,34 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     };
     let mut actions = Vec::new();
     let remote = app.remotes.get(&project.path).cloned();
+    // Сборка, запуск, установка и зависимости — только у проектов на Rust; у остальных — git и GitHub.
+    let rust = project.kind == ProjectKind::Rust;
     header(ui, &project, remote.as_ref(), &mut actions);
     ui.add_space(12.0);
-    toolbar(ui, app, &project, &mut actions);
-    ui.add_space(18.0);
+    if rust {
+        toolbar(ui, app, &project, &mut actions);
+        ui.add_space(18.0);
+    }
     problems(ui, &project);
     if let Some(url) = super::github::failure_banner(ui, remote.as_ref()) {
         actions.push(Action::Url(url));
     }
+    if rust && super::amber::line(app, ui, &project) {
+        actions.push(Action::AmberAdmin);
+    }
 
-    ui.columns(3, |cols| {
-        git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
-        version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
-        bins_card(&mut cols[2], app, &project, &mut actions);
-    });
+    if rust {
+        ui.columns(3, |cols| {
+            git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
+            version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
+            bins_card(&mut cols[2], app, &project, &mut actions);
+        });
+    } else {
+        ui.columns(2, |cols| {
+            git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
+            version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
+        });
+    }
 
     ui.add_space(18.0);
     let changes = project.git().map_or(0, |g| g.changes.len());
@@ -68,9 +85,17 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         t("Зависимости").to_owned()
     };
-    let order = [Tab::Commits, Tab::Changes, Tab::Ci, Tab::Releases, Tab::Install, Tab::Deps, Tab::Notes];
-    let tabs =
-        [t("Коммиты"), changes_label.as_str(), "CI", t("Выпуски"), t("Установка"), deps_label.as_str(), t("Заметки")];
+    let all = [
+        (Tab::Commits, t("Коммиты")),
+        (Tab::Changes, changes_label.as_str()),
+        (Tab::Ci, "CI"),
+        (Tab::Releases, t("Выпуски")),
+        (Tab::Install, t("Установка")),
+        (Tab::Deps, deps_label.as_str()),
+        (Tab::Notes, t("Заметки")),
+    ];
+    let (order, tabs): (Vec<Tab>, Vec<&str>) =
+        all.into_iter().filter(|(tab, _)| rust || !matches!(tab, Tab::Install | Tab::Deps)).unzip();
     let mut index = order.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     w::tabs(ui, &mut index, &tabs);
     app.tab = order[index];
@@ -137,6 +162,7 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
             app.save();
         }
         Action::Release => app.open_release(dir),
+        Action::AmberAdmin => app.open_amber_admin(dir),
         Action::Install(action) => {
             use super::install::Action as I;
             match action {
@@ -198,6 +224,9 @@ fn header(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>
                     if git.dirty() {
                         w::badge(ui, t("есть правки"), Tone::Warning);
                     }
+                }
+                if project.kind != ProjectKind::Rust {
+                    w::badge(ui, project.kind.label(), Tone::Accent);
                 }
                 super::github::ci_badge(ui, remote);
             });
@@ -346,7 +375,8 @@ fn more_menu(ui: &mut Ui, project: &Project, actions: &mut Vec<Action>) {
     if w::menu_item(ui, Some(Icon::Close), t("Скрыть из списка"), None).clicked() {
         actions.push(Action::Hide);
     }
-    if w::menu_item_danger(ui, Some(Icon::Trash), t("Очистить сборку…")).clicked() {
+    if project.kind == ProjectKind::Rust && w::menu_item_danger(ui, Some(Icon::Trash), t("Очистить сборку…")).clicked()
+    {
         actions.push(Action::CleanAsk);
     }
 }
@@ -453,6 +483,8 @@ fn version_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::R
     w::card(ui, |ui| {
         w::card_title(ui, Icon::Package, t("Версия"));
         let meta = match &project.meta {
+            // Не Rust: Cargo.toml нет, есть только тег и выпуски.
+            _ if project.kind != ProjectKind::Rust => None,
             None => {
                 ui.horizontal(|ui| {
                     w::spinner(ui, 14.0);
@@ -464,11 +496,13 @@ fn version_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::R
                 w::note(ui, t("Cargo.toml не прочитан."));
                 return;
             }
-            Some(Ok(meta)) => meta,
+            Some(Ok(meta)) => Some(meta),
         };
-        w::field_row(ui, "Cargo", |ui| {
-            w::mono(ui, meta.version.as_deref().unwrap_or("—"), Some(p.text));
-        });
+        if let Some(meta) = meta {
+            w::field_row(ui, "Cargo", |ui| {
+                w::mono(ui, meta.version.as_deref().unwrap_or("—"), Some(p.text));
+            });
+        }
         if let Some(git) = project.git() {
             w::field_row(ui, t("Тег"), |ui| match &git.last_tag {
                 Some(tag) => {
@@ -485,12 +519,12 @@ fn version_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::R
         if let Some(url) = super::github::release_row(ui, remote) {
             actions.push(Action::Url(url));
         }
-        if meta.packages > 1 {
+        if let Some(meta) = meta.filter(|m| m.packages > 1) {
             w::field_row(ui, t("Крейтов"), |ui| {
                 ui.label(meta.packages.to_string());
             });
         }
-        let link = project.git().and_then(GitState::github).or_else(|| meta.repository.clone());
+        let link = project.git().and_then(GitState::github).or_else(|| meta.and_then(|m| m.repository.clone()));
         if let Some(url) = link {
             w::field_row(ui, t("Код"), |ui| {
                 let short = url.trim_start_matches("https://").trim_start_matches("github.com/");

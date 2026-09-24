@@ -9,12 +9,13 @@ use eframe::egui;
 
 use crate::git::{self, GitState};
 use crate::procs::{self, Snapshot};
-use crate::registry::{self, Meta};
+use crate::registry::{self, Kind, Meta};
 
 /// Всё, что известно о проекте.
 #[derive(Debug, Clone)]
 pub struct Project {
     pub path: PathBuf,
+    pub kind: Kind,
     /// Сведения cargo; `None` — ещё не прочитаны (или в этом обновлении не перечитывались).
     pub meta: Option<Result<Meta, String>>,
     /// `Ok(None)` — папка не под git.
@@ -54,8 +55,8 @@ pub fn display_name(path: &Path) -> String {
 }
 
 pub enum Cmd {
-    /// Заново найти проекты в этих корнях и прочитать всё.
-    Rescan(Vec<PathBuf>),
+    /// Заново найти проекты включённых видов в этих корнях и прочитать всё.
+    Rescan(Vec<PathBuf>, Vec<String>),
     /// Перечитать git и заметки у всех (cargo — только если `full`).
     Refresh { full: bool },
     /// Спросить origin у всех проектов, потом перечитать.
@@ -64,7 +65,7 @@ pub enum Cmd {
 
 pub enum Event {
     /// Найденные проекты, в порядке поиска. Пришедших раньше, но пропавших — убрать.
-    Found(Vec<PathBuf>),
+    Found(Vec<(PathBuf, Kind)>),
     Project(Box<Project>),
     Procs(Snapshot),
     /// Чем поток сейчас занят; `None` — ничем.
@@ -91,7 +92,7 @@ pub fn spawn(ctx: egui::Context) -> (Sender<Cmd>, Receiver<Event>) {
     let (event_tx, event_rx) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("anvil-worker".into())
-        .spawn(move || Worker { ctx, events: event_tx, paths: Vec::new() }.run(cmd_rx))
+        .spawn(move || Worker { ctx, events: event_tx, found: Vec::new() }.run(cmd_rx))
         .expect("spawn worker");
     (cmd_tx, event_rx)
 }
@@ -99,7 +100,7 @@ pub fn spawn(ctx: egui::Context) -> (Sender<Cmd>, Receiver<Event>) {
 struct Worker {
     ctx: egui::Context,
     events: Sender<Event>,
-    paths: Vec<PathBuf>,
+    found: Vec<(PathBuf, Kind)>,
 }
 
 impl Worker {
@@ -116,15 +117,15 @@ impl Worker {
                 self.send(Event::Procs(procs::snapshot()));
                 last_procs = Instant::now();
             }
-            if last_git.elapsed() >= GIT_EVERY && !self.paths.is_empty() {
+            if last_git.elapsed() >= GIT_EVERY && !self.found.is_empty() {
                 self.refresh(false, false);
                 last_git = Instant::now();
             }
             match commands.recv_timeout(PROCS_EVERY.saturating_sub(last_procs.elapsed())) {
-                Ok(Cmd::Rescan(roots)) => {
+                Ok(Cmd::Rescan(roots, kinds)) => {
                     self.send(Event::Busy(Some(Busy::Scanning)));
-                    self.paths = registry::scan(&roots);
-                    self.send(Event::Found(self.paths.clone()));
+                    self.found = registry::scan(&roots, &kinds);
+                    self.send(Event::Found(self.found.clone()));
                     self.refresh(true, true);
                     last_git = Instant::now();
                 }
@@ -148,11 +149,13 @@ impl Worker {
             self.send(Event::Busy(Some(Busy::Refreshing)));
         }
         std::thread::scope(|scope| {
-            for path in &self.paths {
+            for (path, kind) in &self.found {
                 scope.spawn(move || {
                     let project = Project {
                         path: path.clone(),
-                        meta: full.then(|| registry::meta(path)),
+                        kind: *kind,
+                        // cargo — только у проектов на Rust.
+                        meta: (full && *kind == Kind::Rust).then(|| registry::meta(path)),
                         git: git::read(path),
                         notes: registry::notes(path),
                     };
@@ -169,8 +172,9 @@ impl Worker {
         self.send(Event::Busy(Some(Busy::Fetching)));
         let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
             let handles: Vec<_> = self
-                .paths
+                .found
                 .iter()
+                .map(|(p, _)| p)
                 .filter(|p| p.join(".git").exists())
                 .map(|path| scope.spawn(move || git::fetch(path).map_err(|e| format!("{}: {e}", display_name(path)))))
                 .collect();

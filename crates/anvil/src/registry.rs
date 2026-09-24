@@ -7,26 +7,78 @@ use serde::Deserialize;
 
 use crate::run;
 
-/// Папки проектов: сам корень, если в нём `Cargo.toml`, и его прямые подпапки с `Cargo.toml`.
+/// Вид проекта. Пока Anvil показывает только Rust (`kinds = ["rust"]` в `anvil.toml`); остальные
+/// узнаются, чтобы их можно было включить, не переписывая поиск.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Rust,
+    Godot,
+    Unity,
+    /// Просто репозиторий git — ни одного из известных видов.
+    Git,
+}
+
+impl Kind {
+    /// Имя в `anvil.toml`.
+    pub fn code(self) -> &'static str {
+        match self {
+            Kind::Rust => "rust",
+            Kind::Godot => "godot",
+            Kind::Unity => "unity",
+            Kind::Git => "git",
+        }
+    }
+
+    /// Имя для людей.
+    pub fn label(self) -> &'static str {
+        match self {
+            Kind::Rust => "Rust",
+            Kind::Godot => "Godot",
+            Kind::Unity => "Unity",
+            Kind::Git => "Git",
+        }
+    }
+
+    /// Что это за папка: по `Cargo.toml`, `project.godot`, `ProjectSettings/ProjectVersion.txt`, `.git`.
+    pub fn detect(dir: &Path) -> Option<Kind> {
+        if dir.join("Cargo.toml").is_file() {
+            Some(Kind::Rust)
+        } else if dir.join("project.godot").is_file() {
+            Some(Kind::Godot)
+        } else if dir.join("ProjectSettings").join("ProjectVersion.txt").is_file() {
+            Some(Kind::Unity)
+        } else if dir.join(".git").exists() {
+            Some(Kind::Git)
+        } else {
+            None
+        }
+    }
+}
+
+/// Папки проектов включённых видов: сам корень, если он проект, и его прямые подпапки-проекты.
 /// Пути приводятся к каноническому виду, чтобы один проект не попал дважды.
-pub fn scan(roots: &[PathBuf]) -> Vec<PathBuf> {
+pub fn scan(roots: &[PathBuf], kinds: &[String]) -> Vec<(PathBuf, Kind)> {
+    let wanted = |dir: &Path| Kind::detect(dir).filter(|k| kinds.iter().any(|w| w.eq_ignore_ascii_case(k.code())));
     let mut found = Vec::new();
     for root in roots {
-        if root.join("Cargo.toml").is_file() {
-            found.push(root.clone());
+        if let Some(kind) = wanted(root) {
+            found.push((root.clone(), kind));
             continue;
         }
         let Ok(entries) = std::fs::read_dir(root) else { continue };
         for entry in entries.flatten() {
             let path = entry.path();
             let hidden = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.'));
-            if !hidden && path.is_dir() && path.join("Cargo.toml").is_file() {
-                found.push(path);
+            if !hidden
+                && path.is_dir()
+                && let Some(kind) = wanted(&path)
+            {
+                found.push((path, kind));
             }
         }
     }
-    found.sort_by_key(|p| p.to_string_lossy().to_lowercase());
-    found.dedup_by_key(|p| p.to_string_lossy().to_lowercase());
+    found.sort_by_key(|(p, _)| p.to_string_lossy().to_lowercase());
+    found.dedup_by_key(|(p, _)| p.to_string_lossy().to_lowercase());
     found
 }
 

@@ -22,6 +22,10 @@ pub struct Config {
     pub selected: Option<PathBuf>,
     /// Сколько задач сборки cargo запускает разом (`-j`); 0 — сколько ядер.
     pub build_jobs: u32,
+    /// Уведомление Windows, когда долгая задача кончилась, а окно не в фокусе.
+    pub notify: bool,
+    /// Какие проекты показывать: `rust`; на будущее — `godot`, `unity`, `git` (просто репозиторий).
+    pub kinds: Vec<String>,
     /// Настройки проектов; ключ — путь к проекту.
     pub projects: BTreeMap<String, ProjectSettings>,
     pub common: CommonSettings,
@@ -70,6 +74,8 @@ impl Default for Config {
             fetch_minutes: 15,
             selected: None,
             build_jobs: 0,
+            notify: true,
+            kinds: vec!["rust".to_owned()],
             projects: BTreeMap::new(),
             common: CommonSettings::default(),
         }

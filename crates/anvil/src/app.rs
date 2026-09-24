@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -33,6 +34,13 @@ pub enum Tab {
     Notes,
 }
 
+/// Что в середине окна: карточка выбранного проекта или обзор всех.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Project,
+    Overview,
+}
+
 /// Что сделать, когда задача закончится.
 enum After {
     /// Перепроверить зависимости проекта: `Cargo.lock` мог поменяться.
@@ -51,7 +59,9 @@ pub struct App {
     /// Первый поиск ещё идёт: список пуст не потому, что проектов нет.
     pub scanning: bool,
     pub refreshed_at: Option<i64>,
-    pub search: String,
+    pub view: View,
+    /// Палитра `Ctrl+K`, если открыта.
+    pub palette: Option<crate::ui::palette::State>,
     pub tab: Tab,
     pub toasts: Toasts,
     pub settings_open: bool,
@@ -71,7 +81,8 @@ pub struct App {
     pub log_open: bool,
     pub log_job: Option<JobId>,
     /// Сборке мешает запущенная программа: ждём выбора пользователя.
-    pub locked: Option<(jobs::Spec, Vec<Locked>, Task)>,
+    /// Последнее — профиль сборки (release ли).
+    pub locked: Option<(jobs::Spec, Vec<Locked>, Task, bool)>,
     /// Подтверждение остановки программы: имя, PID, папка проекта.
     pub stop_confirm: Option<(String, u32, PathBuf)>,
     /// Подтверждение `cargo clean` для проекта.
@@ -90,6 +101,8 @@ pub struct App {
     pub deps_ask: Option<crate::ui::deps::Ask>,
     /// Окно «Rust и зависимости».
     pub overview_open: bool,
+    /// Сводка amber-admin о серверах Amber.
+    pub amber: crate::amber::Watch,
     deps_commands: Sender<deps::Cmd>,
     deps_events: Receiver<deps::Event>,
     after_job: HashMap<JobId, After>,
@@ -101,6 +114,8 @@ pub struct App {
     job_commands: Sender<jobs::Cmd>,
     job_events: Receiver<jobs::Event>,
     job_notes: Sender<jobs::Event>,
+    /// Уведомления о конце долгих задач: решает поток задач, окно сообщает настройку.
+    pub notifier: Arc<crate::notify::Notifier>,
     next_job: JobId,
     units: UnitsCache,
     units_path: PathBuf,
@@ -119,8 +134,9 @@ impl App {
         i18n::set(&cc.egui_ctx, config.common.language);
 
         let (commands, events) = worker::spawn(cc.egui_ctx.clone());
-        let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone());
-        let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone());
+        let notifier = Arc::new(crate::notify::Notifier::new(config.notify, config_path.with_file_name("cache")));
+        let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone(), notifier.clone());
+        let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let updater = anvil_update::Updater::new(
@@ -136,7 +152,8 @@ impl App {
             busy: None,
             scanning: true,
             refreshed_at: None,
-            search: String::new(),
+            view: View::Project,
+            palette: None,
             tab: Tab::Commits,
             toasts: Toasts::default(),
             settings_open: false,
@@ -160,6 +177,7 @@ impl App {
             toolchain: None,
             deps_ask: None,
             overview_open: false,
+            amber: crate::amber::Watch::default(),
             deps_commands,
             deps_events,
             after_job: HashMap::new(),
@@ -170,6 +188,7 @@ impl App {
             job_commands,
             job_events,
             job_notes,
+            notifier,
             next_job: 1,
             units: tasks::load_units(&units_path),
             units_path,
@@ -187,7 +206,7 @@ impl App {
 
     pub fn rescan(&mut self) {
         self.scanning = true;
-        let _ = self.commands.send(Cmd::Rescan(self.config.roots.clone()));
+        let _ = self.commands.send(Cmd::Rescan(self.config.roots.clone(), self.config.kinds.clone()));
     }
 
     pub fn refresh(&mut self) {
@@ -274,14 +293,16 @@ impl App {
 
     fn apply(&mut self, event: Event) {
         match event {
-            Event::Found(paths) => {
+            Event::Found(found) => {
                 // Зависимости: сразу — прошлое знание из кеша, в фоне — проверка устаревшего.
-                self.check_deps(paths.clone(), false);
+                let rust: Vec<PathBuf> =
+                    found.iter().filter(|(_, k)| *k == registry::Kind::Rust).map(|(p, _)| p.clone()).collect();
+                self.check_deps(rust, false);
                 self.check_toolchain(false);
-                self.projects.retain(|p| paths.contains(&p.path));
-                for path in paths {
+                self.projects.retain(|p| found.iter().any(|(path, _)| *path == p.path));
+                for (path, kind) in found {
                     if !self.projects.iter().any(|p| p.path == path) {
-                        self.projects.push(Project { path, meta: None, git: Ok(None), notes: Vec::new() });
+                        self.projects.push(Project { path, kind, meta: None, git: Ok(None), notes: Vec::new() });
                     }
                 }
                 self.scanning = false;
@@ -309,15 +330,9 @@ impl App {
         }
     }
 
-    /// Проекты для списка: без скрытых, по фильтру поиска, свежие сверху.
+    /// Проекты для списка: без скрытых, свежие сверху.
     pub fn visible(&self) -> Vec<&Project> {
-        let needle = self.search.trim().to_lowercase();
-        let mut list: Vec<&Project> = self
-            .projects
-            .iter()
-            .filter(|p| !self.is_hidden(&p.path))
-            .filter(|p| needle.is_empty() || p.name().to_lowercase().contains(&needle))
-            .collect();
+        let mut list: Vec<&Project> = self.projects.iter().filter(|p| !self.is_hidden(&p.path)).collect();
         list.sort_by_key(|p| std::cmp::Reverse(p.git().map_or(0, |g| g.last_commit_time())));
         list
     }
@@ -340,6 +355,14 @@ impl App {
         }
     }
 
+    /// Обзор ↔ карточка проекта (`Ctrl+0`).
+    pub fn toggle_view(&mut self) {
+        self.view = match self.view {
+            View::Project => View::Overview,
+            View::Overview => View::Project,
+        };
+    }
+
     pub fn hide(&mut self, path: &Path) {
         self.config.hidden.push(path.to_path_buf());
         self.save();
@@ -355,25 +378,30 @@ impl App {
 
     /// Попросить задачу у проекта. Если сборке мешает запущенная программа — спросить, как быть.
     pub fn start_task(&mut self, path: &Path, task: Task) -> Option<JobId> {
+        let release = self.config.project(path).release;
+        self.start_task_as(path, task, release)
+    }
+
+    /// То же, но с явным профилем: «Собрать release» из палитры не трогает переключатель проекта.
+    pub fn start_task_as(&mut self, path: &Path, task: Task, release: bool) -> Option<JobId> {
         let project = self.projects.iter().find(|p| p.path == path)?;
         let meta = project.meta().cloned();
-        let release = self.config.project(path).release;
         let spec = tasks::spec(path, meta.as_ref(), &task, release, self.config.build_jobs);
         let locked = tasks::locked(meta.as_ref(), &task, release, &self.procs);
         if locked.is_empty() {
             Some(self.enqueue(spec))
         } else {
-            self.locked = Some((spec, locked, task));
+            self.locked = Some((spec, locked, task, release));
             None
         }
     }
 
     /// Пользователь выбрал, как обойти занятый exe (`None` — передумал).
     pub fn resolve_locked(&mut self, how: Option<Resolve>) {
-        let Some((mut spec, locked, task)) = self.locked.take() else { return };
+        let Some((mut spec, locked, task, release)) = self.locked.take() else { return };
         let Some(how) = how else { return };
         let meta = self.projects.iter().find(|p| p.path == spec.project).and_then(|p| p.meta()).cloned();
-        let release = !matches!(task, Task::Test) && self.config.project(&spec.project).release;
+        let release = !matches!(task, Task::Test) && release;
         tasks::resolve(&mut spec, &locked, how, meta.as_ref(), release);
         self.enqueue(spec);
     }
@@ -480,7 +508,7 @@ impl App {
         let was_started = job.started.is_some();
         job.finished = Some((outcome.clone(), took));
         let name = worker::display_name(&job.project);
-        let (errors, key, project) = (job.errors(), job.units_key.clone(), job.project.clone());
+        let (key, project) = (job.units_key.clone(), job.project.clone());
         if outcome.installed.is_some() {
             self.refresh_installs(&project);
         }
@@ -491,22 +519,8 @@ impl App {
         if !was_started {
             return;
         }
-        let (text, tone) = if outcome.cancelled {
-            (format!("{name}: {}", t("задача отменена")), Tone::Neutral)
-        } else if let Some((passed, failed)) = outcome.tests {
-            let tone = if failed > 0 || !outcome.ok { Tone::Danger } else { Tone::Success };
-            (format!("{name}: {} {passed}, {} {failed}", t("тестов прошло"), t("упало")), tone)
-        } else if outcome.ok {
-            (format!("{name}: {} {}", t("готово за"), duration(took)), Tone::Success)
-        } else if errors > 0 {
-            (
-                format!("{name}: {}", i18n::count(errors, ["ошибка", "ошибки", "ошибок"], ["error", "errors"])),
-                Tone::Danger,
-            )
-        } else {
-            (format!("{name}: {}", t("не удалось — подробности в логе")), Tone::Danger)
-        };
-        self.toasts.push(text, tone);
+        let (text, tone) = tasks::summary(&outcome, took);
+        self.toasts.push(format!("{name}: {text}"), tone);
         match &outcome.installed {
             Some(Ok(version)) => self.toasts.push(format!("{name}: {} {version}", t("установлена")), Tone::Success),
             Some(Err(e)) => self.toasts.push(format!("{name}: {e}"), Tone::Danger),
@@ -515,7 +529,8 @@ impl App {
         if let Some(Err(e)) = &outcome.launched {
             self.toasts.push(format!("{}: {e}", t("Не запустилось")), Tone::Danger);
         }
-        // Окно не в фокусе — мигнуть на панели задач: дело сделано.
+        // Окно не в фокусе — мигнуть на панели задач: дело сделано (уведомление о долгой задаче
+        // уже послал поток задач).
         if !ctx.input(|i| i.focused) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
@@ -601,6 +616,15 @@ impl App {
         };
         if let Err(e) = crate::launch::start(&launch) {
             self.toasts.push(format!("{bin}: {e}"), Tone::Danger);
+        }
+    }
+
+    /// amber-admin: установленная копия — сразу, иначе сборка и запуск из проекта.
+    pub fn open_amber_admin(&mut self, dir: &Path) {
+        if self.installs.get(crate::amber::ADMIN).is_some_and(Option::is_some) {
+            self.launch_installed(crate::amber::ADMIN);
+        } else {
+            self.start_task(dir, Task::Run { bin: crate::amber::ADMIN.to_owned(), args: Vec::new() });
         }
     }
 

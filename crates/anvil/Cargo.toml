@@ -25,10 +25,15 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 # Свой токен GitHub — в хранилище учётных данных Windows. На Linux keyring тянет zbus, чьи
 # возможности расходятся с тем zbus, что уже подключает eframe; там токен берётся только у git.
 keyring = "4.2.0"
+# Уведомления о конце долгих задач (тосты WinRT); тот же windows, что уже тянут rfd и keyring.
+windows = { version = "0.62.2", features = ["Data_Xml_Dom", "UI_Notifications"] }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
+    "Win32_System_Console",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Registry",
     "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [build-dependencies]

@@ -1,4 +1,5 @@
-//! Значок exe: тот же знак, что в окне и в шапке, вшивается ресурсом.
+//! Значок exe: тот же знак, что в окне и в шапке, вшивается ресурсом. PNG того же знака —
+//! для уведомлений Windows.
 
 use std::path::PathBuf;
 
@@ -21,6 +22,8 @@ fn main() {
         })
         .collect();
     IcoEncoder::new(std::fs::File::create(&ico).expect("create icon")).encode_images(&frames).expect("write icon");
+    let png = anvil_ui::appicon::rgba(Accent::EMBER, Icon::Hammer, 128);
+    image::save_buffer(out.join("anvil.png"), &png, 128, 128, ExtendedColorType::Rgba8).expect("write png");
 
     let mut res = winresource::WindowsResource::new();
     res.set_icon(ico.to_str().expect("utf-8 path"));

@@ -34,7 +34,6 @@ origin не ответил у	origin did not respond for
 Крейтов	Crates
 Меню	Menu
 На origin есть новое	origin has new commits
-Найти проект…	Find a project…
 Настройки	Settings
 Настройки не прочитаны	Settings could not be read
 Настройки не сохранены	Settings were not saved
@@ -97,7 +96,6 @@ origin не ответил у	origin did not respond for
 переименован	renamed
 позади origin	behind origin
 правка	edited
-с неотправленными коммитами	with unpushed commits
 с ошибкой чтения	unreadable
 с правками	with changes
 скрыт из списка	hidden from the list
@@ -350,3 +348,35 @@ workflow выпуска: rust-release.yml@	release workflow: rust-release.yml@
 уязвимость	vulnerability
 что нового	what's new
 Обновить зависимости	Update dependencies
+Amber не стоит	Amber not installed
+Добавить папку с проектами…	Add a folder with projects…
+Добавьте папку с проектами в настройках.	Add a folder with projects in the settings.
+Запустить установленный amber-admin	Launch the installed amber-admin
+Карточка проекта	Project card
+Найти проект или действие…	Find a project or action…
+Обзор	Overview
+Обзор проектов	Projects overview
+Обновить всё и спросить origin	Refresh everything and ask origin
+Открыть amber-admin	Open amber-admin
+Перейти	Go to
+Проверить зависимости	Check dependencies
+Проверить зависимости всех проектов	Check dependencies of all projects
+Проверить обновления Anvil	Check for Anvil updates
+Проверить форматирование	Check formatting
+Проект	Project
+Проект или действие…	Project or action…
+Серверы Amber	Amber servers
+Собрать debug	Build debug
+Собрать release	Build release
+Собрать и запустить amber-admin из проекта	Build and run amber-admin from the project
+Уведомление Windows, если задача шла дольше 15 с, а окно Anvil было не в фокусе.	A Windows notification when a task took over 15 s and the Anvil window was not focused.
+Уведомлять о конце долгих задач	Notify when long tasks finish
+в сети	online
+не проверен	not checked
+недоступен	unreachable
+работает	running
+сводка не читается	summary is unreadable
+сводки нет — проверьте серверы в amber-admin	no summary yet — check the servers in amber-admin
+серверов в amber-admin нет	no servers in amber-admin
+служба остановлена	service stopped
+впереди origin	ahead of origin

@@ -3,6 +3,7 @@
 // В релизе не поднимаем окно консоли.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod amber;
 mod app;
 mod config;
 mod deps;
@@ -12,6 +13,7 @@ mod i18n;
 mod installs;
 mod jobs;
 mod launch;
+mod notify;
 mod open;
 mod procs;
 mod registry;

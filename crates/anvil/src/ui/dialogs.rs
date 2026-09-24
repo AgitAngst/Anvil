@@ -42,7 +42,7 @@ fn uninstall(app: &mut App, ctx: &egui::Context) {
 
 /// Сборке мешает запущенная программа — три честных способа и отмена.
 fn locked(app: &mut App, ctx: &egui::Context) {
-    let Some((spec, locked, task)) = &app.locked else { return };
+    let Some((spec, locked, task, _)) = &app.locked else { return };
     let name = worker::display_name(&spec.project);
     let exes: Vec<String> = locked
         .iter()

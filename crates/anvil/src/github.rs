@@ -3,6 +3,9 @@
 //! Токен — только для чтения, и только до api.github.com. Откуда он берётся, по порядку:
 //! свой из хранилища Windows (`keyring`, служба `anvil`), тот же, что у git (`git credential fill`
 //! без окон входа), иначе — без токена: видны только публичные репозитории, 60 запросов в час.
+//!
+//! Последнее известное лежит в `cache/github.json` рядом с `anvil.toml`: окно открывается сразу
+//! с ним, свежее приходит следом. Токенов там нет — только прогоны и выпуски.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -12,7 +15,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::run;
 
@@ -50,7 +53,7 @@ pub struct Target {
     pub branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunState {
     Queued,
     Running,
@@ -62,7 +65,7 @@ pub enum RunState {
 }
 
 /// Прогон CI.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CiRun {
     pub id: u64,
     pub workflow: String,
@@ -76,7 +79,7 @@ pub struct CiRun {
     pub failed_jobs: Vec<FailedJob>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FailedJob {
     pub name: String,
     pub url: String,
@@ -84,7 +87,7 @@ pub struct FailedJob {
     pub steps: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Release {
     pub tag: String,
     pub name: String,
@@ -95,7 +98,7 @@ pub struct Release {
     pub assets: Vec<Asset>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Asset {
     pub name: String,
     pub size: u64,
@@ -106,7 +109,8 @@ pub struct Asset {
 }
 
 /// Что известно о проекте на GitHub.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Remote {
     /// Последние прогоны CI по ветке, свежие первыми.
     pub runs: Vec<CiRun>,
@@ -171,12 +175,13 @@ pub enum Event {
     TokenSaved(Result<(), String>),
 }
 
-pub fn spawn(ctx: egui::Context) -> (Sender<Cmd>, Receiver<Event>) {
+/// `cache_dir` — куда класть последнее известное (`github.json`).
+pub fn spawn(ctx: egui::Context, cache_dir: PathBuf) -> (Sender<Cmd>, Receiver<Event>) {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let (event_tx, event_rx) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("anvil-github".into())
-        .spawn(move || Hub::new(ctx, event_tx).run(cmd_rx))
+        .spawn(move || Hub::new(ctx, event_tx, cache_dir.join("github.json")).run(cmd_rx))
         .expect("spawn github");
     (cmd_tx, event_rx)
 }
@@ -189,16 +194,29 @@ struct Hub {
     source: TokenSource,
     targets: Vec<Target>,
     watches: Vec<(PathBuf, Repo, String, Instant)>,
+    /// Последнее известное по проектам и где оно лежит.
+    known: HashMap<PathBuf, Remote>,
+    cache_file: PathBuf,
 }
 
 impl Hub {
-    fn new(ctx: egui::Context, events: Sender<Event>) -> Self {
+    fn new(ctx: egui::Context, events: Sender<Event>, cache_file: PathBuf) -> Self {
         let http = reqwest::blocking::Client::builder()
             .user_agent(concat!("anvil/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(20))
             .build()
             .ok();
-        Self { ctx, events, http, token: None, source: TokenSource::None, targets: Vec::new(), watches: Vec::new() }
+        Self {
+            ctx,
+            events,
+            http,
+            token: None,
+            source: TokenSource::None,
+            targets: Vec::new(),
+            watches: Vec::new(),
+            known: load_cache(&cache_file),
+            cache_file,
+        }
     }
 
     fn send(&self, event: Event) {
@@ -230,7 +248,12 @@ impl Hub {
                 Ok(Cmd::Targets(targets)) => {
                     let new: Vec<Target> = targets.iter().filter(|t| !self.targets.contains(t)).cloned().collect();
                     self.targets = targets;
-                    // Новые проекты — сразу, остальные — в свой срок.
+                    // Новые проекты: сначала всё известное из кеша разом, потом свежее по одному.
+                    for target in &new {
+                        if let Some(remote) = self.known.get(&target.path) {
+                            self.send(Event::Remote(target.path.clone(), Box::new(remote.clone())));
+                        }
+                    }
                     for target in &new {
                         self.poll(target);
                     }
@@ -296,8 +319,18 @@ impl Hub {
         }
     }
 
-    fn poll(&self, target: &Target) {
-        let remote = self.remote(target);
+    fn poll(&mut self, target: &Target) {
+        let mut remote = self.remote(target);
+        match self.known.get(&target.path) {
+            // Не достучались — показать прежнее с ошибкой, а не пустоту.
+            Some(old) if remote.error.is_some() && remote.runs.is_empty() && remote.releases.is_empty() => {
+                remote = Remote { error: remote.error, ..old.clone() };
+            }
+            _ => {
+                self.known.insert(target.path.clone(), remote.clone());
+                save_cache(&self.cache_file, &self.known);
+            }
+        }
         self.send(Event::Remote(target.path.clone(), Box::new(remote)));
     }
 
@@ -361,6 +394,22 @@ impl Hub {
             404 => "404: not visible (private repository without a token?)".to_owned(),
             code => format!("HTTP {code}"),
         })
+    }
+}
+
+fn load_cache(file: &Path) -> HashMap<PathBuf, Remote> {
+    std::fs::read_to_string(file).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+}
+
+/// Через временный файл: оборванная запись не портит кеш. Не вышло — не беда, это только кеш.
+fn save_cache(file: &Path, known: &HashMap<PathBuf, Remote>) {
+    let Ok(text) = serde_json::to_string(known) else { return };
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = file.with_extension("json.tmp");
+    if std::fs::write(&tmp, text).is_ok() {
+        let _ = std::fs::rename(&tmp, file);
     }
 }
 
@@ -647,5 +696,30 @@ mod tests {
             encode("feature/новая ветка"),
             "feature%2F%D0%BD%D0%BE%D0%B2%D0%B0%D1%8F%20%D0%B2%D0%B5%D1%82%D0%BA%D0%B0"
         );
+    }
+
+    #[test]
+    fn cache_round_trip() {
+        let dir = std::env::temp_dir().join(format!("anvil-gh-cache-{}", std::process::id()));
+        let file = dir.join("github.json");
+        let run = CiRun {
+            id: 7,
+            workflow: "CI".into(),
+            number: 68,
+            state: RunState::Success,
+            head_sha: "cdb7351".into(),
+            title: "t".into(),
+            url: "u".into(),
+            updated: 1,
+            failed_jobs: Vec::new(),
+        };
+        let remote = Remote { runs: vec![run], checked: 5, ..Remote::default() };
+        let known = HashMap::from([(PathBuf::from("amber"), remote)]);
+        save_cache(&file, &known);
+        let back = load_cache(&file);
+        let _ = std::fs::remove_dir_all(&dir);
+        let amber = &back[&PathBuf::from("amber")];
+        assert_eq!((amber.checked, amber.runs[0].number, amber.runs[0].state), (5, 68, RunState::Success));
+        assert!(load_cache(&dir.join("missing.json")).is_empty());
     }
 }

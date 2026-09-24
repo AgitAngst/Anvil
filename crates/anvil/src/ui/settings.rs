@@ -118,6 +118,15 @@ fn build(app: &mut App, ui: &mut Ui) {
         }
     });
     w::note(ui, t("Меньше — медленнее, но надёжнее: большим workspace может не хватить памяти на компоновку."));
+    ui.add_space(8.0);
+    let mut notify = app.config.notify;
+    w::switch(ui, &mut notify, t("Уведомлять о конце долгих задач"));
+    if notify != app.config.notify {
+        app.config.notify = notify;
+        app.notifier.set_enabled(notify);
+        app.save();
+    }
+    w::note(ui, t("Уведомление Windows, если задача шла дольше 15 с, а окно Anvil было не в фокусе."));
 }
 
 fn path_row(ui: &mut Ui, text: &str, trailing: impl FnOnce(&mut Ui)) {
