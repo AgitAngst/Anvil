@@ -28,6 +28,12 @@ on:
       RELEASES_TOKEN:
         description: Токен с правом записи в репозиторий выпусков (для закрытого кода)
         required: false
+      SIGN_PFX:
+        description: Сертификат подписи кода — файл .pfx в base64. Нет — exe выходят без подписи
+        required: false
+      SIGN_PASSWORD:
+        description: Пароль к SIGN_PFX
+        required: false
 
 jobs:
   windows:
@@ -58,6 +64,42 @@ jobs:
           foreach ($bin in '${{ inputs.bins }}'.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) { $cargo += @('--bin', $bin) }
           cargo @cargo
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # Сертификат виден только шагу подписи — не сборке: иначе его прочёл бы любой
+      # build-скрипт зависимости. Секреты в `if` напрямую не видны, поэтому сначала
+      # отдельный шаг говорит, передали ли сертификат.
+      - name: Есть ли сертификат подписи
+        id: signing
+        shell: pwsh
+        env:
+          SIGN_PFX: ${{ secrets.SIGN_PFX }}
+        run: |
+          "present=$(if ($env:SIGN_PFX) { 'yes' } else { 'no' })" >> $env:GITHUB_OUTPUT
+
+      - name: Подпись
+        if: ${{ steps.signing.outputs.present == 'yes' }}
+        shell: pwsh
+        env:
+          SIGN_PFX: ${{ secrets.SIGN_PFX }}
+          SIGN_PASSWORD: ${{ secrets.SIGN_PASSWORD }}
+        run: |
+          # signtool из Windows SDK, который стоит на windows-latest; метка времени — чтобы
+          # подпись оставалась действительной и после того, как сертификат истечёт.
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool не найден' }
+          $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX))
+          try {
+            foreach ($bin in '${{ inputs.bins }}'.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)) {
+              & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:SIGN_PASSWORD /tr http://timestamp.digicert.com /td SHA256 "target/release/$bin.exe"
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+              & $signtool.FullName verify /pa "target/release/$bin.exe"
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Архивы и SHA256SUMS
         shell: pwsh
