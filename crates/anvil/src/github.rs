@@ -38,9 +38,18 @@ pub struct Repo {
 impl Repo {
     /// Из адреса `https://github.com/owner/name`.
     pub fn from_url(url: &str) -> Option<Repo> {
-        let rest = url.strip_prefix("https://github.com/")?;
-        let (owner, name) = rest.split_once('/')?;
-        Some(Repo { owner: owner.to_owned(), name: name.to_owned() })
+        Repo::from_slug(url.strip_prefix("https://github.com/")?)
+    }
+
+    /// Из `owner/name`.
+    pub fn from_slug(slug: &str) -> Option<Repo> {
+        let (owner, name) = slug.trim().split_once('/')?;
+        let ok = |s: &str| !s.is_empty() && !s.contains(['/', ' ']);
+        (ok(owner) && ok(name)).then(|| Repo { owner: owner.to_owned(), name: name.to_owned() })
+    }
+
+    pub fn slug(&self) -> String {
+        format!("{}/{}", self.owner, self.name)
     }
 }
 
@@ -51,6 +60,8 @@ pub struct Target {
     pub repo: Repo,
     /// Ветка, по которой смотреть CI.
     pub branch: Option<String>,
+    /// Откуда выпуски, если не из `repo` (у Amber — `amber-releases`).
+    pub releases: Option<Repo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +129,8 @@ pub struct Remote {
     /// Когда спрашивали (секунды UNIX).
     pub checked: i64,
     pub error: Option<String>,
+    /// Выпуски взяты не из репозитория проекта, а отсюда (`owner/name`).
+    pub releases_from: Option<String>,
 }
 
 impl Remote {
@@ -160,7 +173,8 @@ pub enum Cmd {
     /// Список проектов на GitHub изменился.
     Targets(Vec<Target>),
     /// Следить за выпуском по тегу: раз в 15 с, до файлов в выпуске, падения прогона или 30 мин.
-    Watch { path: PathBuf, repo: Repo, tag: String },
+    /// Прогоны — в `repo`, сам выпуск — в `releases` (если выпуски живут отдельно).
+    Watch { path: PathBuf, repo: Repo, releases: Option<Repo>, tag: String },
     /// Спросить сейчас, не дожидаясь срока.
     Refresh,
     /// Сохранить свой токен (`None` — забыть) и перечитать всё.
@@ -193,7 +207,7 @@ struct Hub {
     token: Option<String>,
     source: TokenSource,
     targets: Vec<Target>,
-    watches: Vec<(PathBuf, Repo, String, Instant)>,
+    watches: Vec<Watching>,
     /// Последнее известное по проектам и где оно лежит.
     known: HashMap<PathBuf, Remote>,
     cache_file: PathBuf,
@@ -238,9 +252,9 @@ impl Hub {
                 wait = wait.min(WATCH_EVERY.saturating_sub(last_watch.elapsed()));
             }
             match commands.recv_timeout(wait) {
-                Ok(Cmd::Watch { path, repo, tag }) => {
-                    self.watches.retain(|(p, _, t, _)| !(p == &path && t == &tag));
-                    self.watches.push((path, repo, tag, Instant::now()));
+                Ok(Cmd::Watch { path, repo, releases, tag }) => {
+                    self.watches.retain(|w| !(w.path == path && w.tag == tag));
+                    self.watches.push(Watching { path, repo, releases, tag, started: Instant::now() });
                     self.poll_watches();
                     last_watch = Instant::now();
                     continue;
@@ -295,14 +309,15 @@ impl Hub {
 
     fn poll_watches(&mut self) {
         let mut finished = Vec::new();
-        for (i, (path, repo, tag, started)) in self.watches.iter().enumerate() {
-            let base = format!("/repos/{}/{}", repo.owner, repo.name);
+        for (i, Watching { path, repo, releases, tag, started }) in self.watches.iter().enumerate() {
+            let base = format!("/repos/{}", repo.slug());
             let runs: Vec<CiRun> = self
                 .get::<Runs>(&format!("{base}/actions/runs?per_page=5&branch={}", encode(tag)))
                 .map(|(r, _)| r.workflow_runs.into_iter().map(CiRun::from).collect())
                 .unwrap_or_default();
+            let release_base = format!("/repos/{}", releases.as_ref().unwrap_or(repo).slug());
             let release = self
-                .get::<ApiRelease>(&format!("{base}/releases/tags/{}", encode(tag)))
+                .get::<ApiRelease>(&format!("{release_base}/releases/tags/{}", encode(tag)))
                 .ok()
                 .map(|(r, _)| Release::from(r));
             let failed = runs.first().is_some_and(|r| matches!(r.state, RunState::Failure | RunState::Cancelled));
@@ -363,7 +378,15 @@ impl Hub {
                 })
                 .collect();
         }
-        match self.get::<Vec<ApiRelease>>(&format!("{repo}/releases?per_page=10")) {
+        // Выпуски — из своего репозитория выпусков, если он есть (у закрытого кода — публичный).
+        let releases_repo = match &target.releases {
+            Some(other) if *other != target.repo => {
+                remote.releases_from = Some(other.slug());
+                format!("/repos/{}", other.slug())
+            }
+            _ => repo.clone(),
+        };
+        match self.get::<Vec<ApiRelease>>(&format!("{releases_repo}/releases?per_page=10")) {
             Ok((releases, _)) => remote.releases = releases.into_iter().map(Release::from).collect(),
             Err(e) if remote.error.is_none() => remote.error = Some(e),
             Err(_) => {}
@@ -395,6 +418,15 @@ impl Hub {
             code => format!("HTTP {code}"),
         })
     }
+}
+
+/// Слежение за выпуском по тегу.
+struct Watching {
+    path: PathBuf,
+    repo: Repo,
+    releases: Option<Repo>,
+    tag: String,
+    started: Instant,
 }
 
 fn load_cache(file: &Path) -> HashMap<PathBuf, Remote> {
@@ -635,12 +667,23 @@ pub fn parse_time(text: &str) -> Option<i64> {
 }
 
 /// Цели для GitHub из проектов: у кого origin на GitHub.
-pub fn targets(projects: &[crate::worker::Project]) -> Vec<Target> {
+/// Проекты на GitHub. Выпуски — из `releases` в настройках проекта, иначе — из workflow выпуска.
+pub fn targets(projects: &[crate::worker::Project], config: &crate::config::Config) -> Vec<Target> {
     projects
         .iter()
         .filter_map(|p| {
             let git = p.git()?;
-            Some(Target { path: p.path.clone(), repo: Repo::from_url(&git.github()?)?, branch: git.branch.clone() })
+            let releases = config
+                .project(&p.path)
+                .releases
+                .or_else(|| p.meta().and_then(|m| m.releases_repo.clone()))
+                .and_then(|slug| Repo::from_slug(&slug));
+            Some(Target {
+                path: p.path.clone(),
+                repo: Repo::from_url(&git.github()?)?,
+                branch: git.branch.clone(),
+                releases,
+            })
         })
         .collect()
 }
@@ -686,6 +729,15 @@ mod tests {
         let release = Release::from(releases.into_iter().next().unwrap());
         assert_eq!(release.name, "v0.3.0");
         assert_eq!(release.assets[0].size, 10_485_760);
+    }
+
+    #[test]
+    fn repo_from_slug() {
+        let repo = Repo::from_slug(" AgitAngst/amber-releases ").unwrap();
+        assert_eq!(repo.slug(), "AgitAngst/amber-releases");
+        assert!(Repo::from_slug("amber-releases").is_none());
+        assert!(Repo::from_slug("a/b/c").is_none());
+        assert!(Repo::from_slug("/b").is_none());
     }
 
     #[test]

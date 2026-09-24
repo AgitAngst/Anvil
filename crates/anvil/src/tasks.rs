@@ -333,6 +333,7 @@ mod tests {
 
     fn meta() -> Meta {
         Meta {
+            releases_repo: None,
             packages: 3,
             bins: vec![
                 Bin { name: "amber-desktop".into(), package: "amber-desktop".into() },

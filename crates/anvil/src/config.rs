@@ -40,6 +40,9 @@ pub struct ProjectSettings {
     /// Что запускает главная кнопка: имя бинарника или пресета.
     pub run: Option<String>,
     pub presets: Vec<Preset>,
+    /// Откуда брать выпуски (`owner/name`), если не из репозитория проекта. Не задано — как в
+    /// workflow выпуска проекта (`repository:`), иначе — сам репозиторий.
+    pub releases: Option<String>,
 }
 
 /// Сохранённый запуск: какой бинарник и с какими аргументами.

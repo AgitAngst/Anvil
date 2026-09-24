@@ -264,7 +264,7 @@ impl App {
             }
         }
         // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
-        let targets = github::targets(&self.projects);
+        let targets = github::targets(&self.projects, &self.config);
         if targets != self.gh_targets {
             let _ = self.gh_commands.send(github::Cmd::Targets(targets.clone()));
             self.gh_targets = targets;
@@ -446,7 +446,8 @@ impl App {
     /// Следить за выпуском по тегу на GitHub.
     pub fn watch_release(&mut self, path: &Path, repo: github::Repo, tag: String) {
         self.watches.remove(path);
-        let _ = self.gh_commands.send(github::Cmd::Watch { path: path.to_path_buf(), repo, tag });
+        let releases = self.gh_targets.iter().find(|t| t.path == path).and_then(|t| t.releases.clone());
+        let _ = self.gh_commands.send(github::Cmd::Watch { path: path.to_path_buf(), repo, releases, tag });
     }
 
     pub fn cancel(&mut self, id: JobId) {

@@ -93,6 +93,9 @@ pub struct Meta {
     pub bins: Vec<Bin>,
     /// Куда cargo кладёт сборку (`target`, если не переопределено).
     pub target_dir: PathBuf,
+    /// Репозиторий выпусков (`owner/name`), если выпуски публикуются не в сам проект: у закрытого
+    /// Amber — публичный `AgitAngst/amber-releases`. Берётся из workflow выпуска.
+    pub releases_repo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -128,7 +131,32 @@ struct Target {
 pub fn meta(dir: &Path) -> Result<Meta, String> {
     let json = run::output("cargo", dir, &["metadata", "--no-deps", "--offline", "--format-version", "1"])?;
     let metadata: Metadata = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    Ok(summarize(dir, metadata))
+    Ok(Meta { releases_repo: releases_repo(dir), ..summarize(dir, metadata) })
+}
+
+/// Куда публикуются выпуски, если не в сам репозиторий: `repository: owner/name` у вызова общего
+/// workflow выпуска семьи (`rust-release.yml`) в `.github/workflows`.
+pub fn releases_repo(dir: &Path) -> Option<String> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir.join(".github").join("workflows"))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "yml" || e == "yaml"))
+        .collect();
+    files.sort();
+    files.iter().find_map(|file| workflow_releases_repo(&std::fs::read_to_string(file).ok()?))
+}
+
+fn workflow_releases_repo(text: &str) -> Option<String> {
+    if !text.lines().any(|l| l.trim_start().starts_with("uses:") && l.contains("rust-release.yml")) {
+        return None;
+    }
+    text.lines().find_map(|line| {
+        let value = line.trim().strip_prefix("repository:")?;
+        let value = value.split(" #").next()?.trim().trim_matches(['"', '\'']);
+        let slug = value.split('/').count() == 2 && !value.contains('$') && !value.contains(' ');
+        slug.then(|| value.to_owned())
+    })
 }
 
 fn summarize(dir: &Path, metadata: Metadata) -> Meta {
@@ -169,6 +197,7 @@ fn summarize(dir: &Path, metadata: Metadata) -> Meta {
         packages: packages.len(),
         bins,
         target_dir: if metadata_target.as_os_str().is_empty() { dir.join("target") } else { metadata_target },
+        releases_repo: None,
     }
 }
 
@@ -195,6 +224,33 @@ pub fn notes(dir: &Path) -> Vec<(String, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn releases_repo_from_release_workflow() {
+        let amber = r#"# Код Amber закрыт, поэтому выпуск идёт в отдельный публичный
+# AgitAngst/amber-releases.
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  release:
+    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.2.0
+    with:
+      bins: amber-desktop amber-admin
+      repository: AgitAngst/amber-releases
+"#;
+        assert_eq!(workflow_releases_repo(amber).as_deref(), Some("AgitAngst/amber-releases"));
+        // Свой репозиторий — поля нет.
+        let own = "jobs:\n  release:\n    uses: ./.github/workflows/rust-release.yml\n    with:\n      app: anvil\n";
+        assert_eq!(workflow_releases_repo(own), None);
+        // Сам общий workflow: поле — описание входа или выражение, а не адрес.
+        let shared = "on:\n  workflow_call:\n    inputs:\n      repository:\n        type: string\n\
+            steps:\n  - run: $repo = '${{ inputs.repository }}'\n";
+        assert_eq!(workflow_releases_repo(shared), None);
+        // Чужой workflow с `repository:` — не про выпуски семьи.
+        let other = "steps:\n  - uses: actions/checkout@v4\n    with:\n      repository: someone/else\n";
+        assert_eq!(workflow_releases_repo(other), None);
+    }
 
     fn package(name: &str, dir: &str, version: &str, kinds: &[(&str, &str)]) -> Package {
         Package {

@@ -167,6 +167,9 @@ pub fn tab(app: &App, ui: &mut Ui, project: &Project, remote: Option<&Remote>) -
         });
         ui.add_space(10.0);
     }
+    if let Some(from) = remote.and_then(|r| r.releases_from.as_deref()) {
+        w::note(ui, format!("{} {from}", t("Выпуски с GitHub берутся из")));
+    }
     w::note(
         ui,
         t(

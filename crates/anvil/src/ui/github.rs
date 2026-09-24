@@ -197,6 +197,17 @@ pub fn releases_tab(ui: &mut Ui, remote: Option<&Remote>, on_github: bool) -> Op
     if missing(ui, remote, on_github) {
         return None;
     }
+    let mut open = None;
+    if let Some(from) = remote.and_then(|r| r.releases_from.as_deref()) {
+        ui.horizontal(|ui| {
+            w::note(ui, t("Выпуски — из"));
+            let url = format!("https://github.com/{from}/releases");
+            if ui.link(egui::RichText::new(from).size(13.0)).on_hover_text(&url).clicked() {
+                open = Some(url);
+            }
+        });
+        ui.add_space(6.0);
+    }
     let releases = remote.map(|r| r.releases.as_slice()).unwrap_or_default();
     if releases.is_empty() {
         w::card(ui, |ui| {
@@ -207,9 +218,8 @@ pub fn releases_tab(ui: &mut Ui, remote: Option<&Remote>, on_github: bool) -> Op
                 t("Выпуски появятся, когда на GitHub опубликуют первый Release."),
             )
         });
-        return None;
+        return open;
     }
-    let mut open = None;
     w::card(ui, |ui| {
         for (i, release) in releases.iter().enumerate() {
             if i > 0 {
