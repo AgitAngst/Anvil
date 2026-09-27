@@ -45,6 +45,17 @@ pub struct Spec {
     pub bytes: bool,
     /// Задача-сценарий: шаги по порядку, до первой ошибки (выпуск версии).
     pub script: Option<Vec<Step>>,
+    /// «Пересобрать и перезапустить»: после успешной сборки — остановить эту копию, потом запустить
+    /// `after`. Сборка не удалась — копия работает дальше.
+    pub replace: Option<Replace>,
+}
+
+/// Какую копию заменить: PID, когда запущена (PID мог перейти к другому процессу), служба ли.
+#[derive(Debug, Clone, Copy)]
+pub struct Replace {
+    pub pid: u32,
+    pub started: i64,
+    pub service: bool,
 }
 
 /// Шаг сценария.
@@ -152,6 +163,10 @@ pub enum Event {
     Units(JobId, u32),
     Diag(JobId, Diag),
     Finished(JobId, Outcome),
+    /// «Пересобрать и перезапустить» останавливает прежнюю копию: её конец — не падение.
+    Stopping(u32),
+    /// Прежняя копия не закрылась мягко — спросить про принудительную остановку (§5.12).
+    StopTimedOut(u32),
 }
 
 pub enum Cmd {
@@ -237,6 +252,26 @@ impl Runner {
     /// Выполнить задачу; итог отправляет вызывающий.
     fn execute(&mut self, id: JobId, spec: &Spec, commands: &Receiver<Cmd>) -> Outcome {
         self.send(Event::Started(id));
+        let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let outcome = self.execute_steps(id, spec, commands, &mut moved);
+        // Сборка не удалась — отодвинутый exe возвращается: «из кода» и дальше запускает прежнюю сборку.
+        if !outcome.ok {
+            for (exe, to) in moved {
+                if !exe.exists() && std::fs::rename(&to, &exe).is_ok() {
+                    self.note(id, format!("› {} → {}", to.display(), exe.display()));
+                }
+            }
+        }
+        outcome
+    }
+
+    fn execute_steps(
+        &mut self,
+        id: JobId,
+        spec: &Spec,
+        commands: &Receiver<Cmd>,
+        moved: &mut Vec<(PathBuf, PathBuf)>,
+    ) -> Outcome {
         for step in &spec.before {
             match step {
                 Before::Stop(pid, service) => {
@@ -246,7 +281,10 @@ impl Runner {
                     }
                 }
                 Before::MoveAside(exe) => match launch::move_aside(exe) {
-                    Ok(to) => self.note(id, format!("› {} → {}", exe.display(), to.display())),
+                    Ok(to) => {
+                        self.note(id, format!("› {} → {}", exe.display(), to.display()));
+                        moved.push((exe.clone(), to));
+                    }
                     Err(e) => {
                         self.note(id, format!("› {}: {e}", exe.display()));
                         return Outcome::default();
@@ -332,7 +370,36 @@ impl Runner {
             outcome.installed = Some(result);
         }
 
+        let mut launch_after = true;
         if outcome.ok
+            && let Some(replace) = spec.replace
+        {
+            let pid = replace.pid;
+            if !crate::runs::same_process(pid, replace.started) {
+                // Пока шла сборка, прежняя копия закрылась (её остановили или она упала), — новую не
+                // поднимаем: остановленное пусть остаётся остановленным.
+                self.note(id, format!("› PID {pid}: {}", crate::i18n::t("прежней копии уже нет — новую не запускаю")));
+                launch_after = false;
+            } else {
+                self.note(id, format!("› stop PID {pid}"));
+                self.send(Event::Stopping(pid));
+                crate::runs::soft_stop(pid, replace.service);
+                if crate::procs::wait_exit(pid, Duration::from_secs(10)) {
+                    if let Some(launch) = &spec.after {
+                        crate::runs::wait_log(launch, Duration::from_secs(3));
+                    }
+                } else {
+                    // Не закрылась — новая не запускается: две копии поделили бы порт и данные.
+                    // Принудительно — только после вопроса.
+                    self.note(id, format!("› PID {pid}: {}", crate::i18n::t("не закрылась за 10 с")));
+                    self.send(Event::StopTimedOut(pid));
+                    outcome.ok = false;
+                }
+            }
+        }
+
+        if outcome.ok
+            && launch_after
             && let Some(launch) = &spec.after
         {
             let result = launch::start(launch);

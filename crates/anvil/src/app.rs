@@ -61,6 +61,32 @@ pub struct DeckView {
     pub scroll: bool,
     /// Что и когда запускали: повторный Enter не запускает вторую копию.
     pub launching: HashMap<String, Instant>,
+    /// Открытая страница предмета (ключ); `None` — список Пульта.
+    pub page: Option<String>,
+    /// Вкладка страницы предмета.
+    pub page_tab: usize,
+    /// Поиск в журнале службы и «только ошибки и предупреждения».
+    pub log_find: String,
+    pub log_errors: bool,
+}
+
+/// Проверки портов, общие с фоновыми потоками, которые подключаются.
+type PortChecks = std::sync::Arc<std::sync::Mutex<HashMap<u16, PortCheck>>>;
+
+/// Слушает ли порт по последней проверке, когда она была и идёт ли новая.
+#[derive(Clone, Copy)]
+struct PortCheck {
+    open: bool,
+    at: Option<Instant>,
+    pending: bool,
+}
+
+/// Хвост файла вывода, прочитанный недавно: читается заново, только если файл изменился.
+struct LogCache {
+    path: PathBuf,
+    len: u64,
+    checked: Instant,
+    lines: Vec<String>,
 }
 
 /// Что сделать, когда задача закончится.
@@ -161,6 +187,13 @@ pub struct App {
     locked_head: Option<crate::builds::Build>,
     /// Профили правили — сохранить при закрытии окна.
     pub presets_dirty: bool,
+    /// «Поставить из кода…» ждёт подтверждения: проект, бинарник.
+    pub install_confirm: Option<(PathBuf, String)>,
+    /// «Откатить…» ждёт подтверждения: проект, бинарник, версия.
+    pub rollback_confirm: Option<(PathBuf, String, String)>,
+    log_cache: Option<LogCache>,
+    /// Слушает ли порт: проверка в фоне не чаще раза в 2 с; `None` — ещё идёт.
+    port_checks: PortChecks,
     /// Из какого коммита собраны exe (`cache\builds.json`).
     pub build_info: crate::builds::Builds,
     builds_path: PathBuf,
@@ -264,6 +297,10 @@ impl App {
             force_confirm: None,
             locked_head: None,
             presets_dirty: false,
+            install_confirm: None,
+            rollback_confirm: None,
+            log_cache: None,
+            port_checks: Default::default(),
             build_info: crate::builds::load(&builds_path),
             builds_path,
             ctx: cc.egui_ctx.clone(),
@@ -509,6 +546,10 @@ impl App {
                 self.deck_view.order.clear();
                 if let Some(project) = self.current().map(|p| p.path.clone()) {
                     let ours = |k: &String| items.iter().any(|i| &i.key == k && i.project == project);
+                    // В Кузнице выбрали другой проект — страница прежнего предмета закрывается.
+                    if self.deck_view.page.as_ref().is_some_and(|k| !ours(k)) {
+                        self.deck_view.page = None;
+                    }
                     if !self.deck_view.selected.as_ref().is_some_and(ours) {
                         self.deck_view.selected = items.iter().find(|i| i.project == project).map(|i| i.key.clone());
                     }
@@ -584,7 +625,7 @@ impl App {
                     true
                 }
             }
-            registry::Kind::Godot if from_code => self.export_and_play(item),
+            registry::Kind::Godot if from_code => self.export_game(item, true),
             registry::Kind::Godot => {
                 let engine = self.projects.iter().find(|p| p.path == item.project).and_then(|p| p.engine.as_ref());
                 let export = engine.and_then(|e| e.export.clone()).filter(|e| e.is_file());
@@ -681,7 +722,7 @@ impl App {
         };
         let tag = self.tag(item, profile, source, true);
         let (env, cwd) = (profile.env.clone(), profile.cwd.clone());
-        self.start_task_with(&item.project, Task::Run { bin, args }, true, move |spec| {
+        self.start_task_with(&item.project, Task::Run { bin, args }, true, true, move |spec| {
             if let Some(after) = &mut spec.after {
                 after.tag = Some(tag);
                 after.env = env;
@@ -690,6 +731,123 @@ impl App {
                 }
             }
         });
+    }
+
+    /// «Пересобрать и перезапустить» службу или программу из кода: сборка release; удалась —
+    /// прежняя копия останавливается и запускается новая с тем же профилем; не удалась — ничего не
+    /// останавливается. Работающий exe отодвигается, чтобы сборка могла записать новый.
+    pub fn rebuild_restart(&mut self, item: &crate::deck::Item) {
+        let Some(bin) = item.bin.clone() else { return };
+        // Заменяется только своя сборка из кода: установленную и чужую так не трогаем (§5.12).
+        let Some(run) = self.runs.iter().rev().find(|r| r.key == item.key && r.running() && r.from_code).cloned()
+        else {
+            return;
+        };
+        if self.rebuilding(&item.key) {
+            return;
+        }
+        let installed = self.installs.get(&bin).is_some_and(Option::is_some);
+        let presets = self.config.project(&item.project).presets;
+        let profiles = crate::deck::profiles(item, &presets, installed);
+        let mut profile =
+            profiles.iter().find(|p| p.name == run.profile).cloned().unwrap_or_else(|| self.profile_of(item));
+        profile.source = crate::config::Source::Code;
+        let args = crate::launch::split_args(&crate::launch::expand_env(&profile.args));
+        let source = match self.head(&item.project) {
+            Some(build) => format!("сборка {}", crate::builds::label(&build)),
+            None => "сборка".to_owned(),
+        };
+        let tag = self.tag(item, &profile, source, true);
+        let exe = self
+            .projects
+            .iter()
+            .find(|p| p.path == item.project)
+            .and_then(|p| p.meta())
+            .map(|m| crate::launch::exe_path(&m.target_dir, true, &bin));
+        let running_there = exe.as_ref().is_some_and(|e| !crate::launch::running_from(&self.procs, e).is_empty());
+        let replace = jobs::Replace { pid: run.pid, started: run.started, service: run.service };
+        let (env, cwd) = (profile.env.clone(), profile.cwd.clone());
+        self.start_task_with(&item.project, Task::Run { bin, args }, true, false, move |spec| {
+            if running_there && let Some(exe) = exe {
+                spec.before.push(jobs::Before::MoveAside(exe));
+            }
+            spec.replace = Some(replace);
+            if let Some(after) = &mut spec.after {
+                after.tag = Some(tag);
+                after.env = env;
+                if let Some(dir) = cwd {
+                    after.dir = dir;
+                }
+            }
+        });
+        self.deck_view.launching.insert(item.key.clone(), Instant::now());
+    }
+
+    /// Предмет сейчас пересобирается с заменой (задача ещё не кончилась).
+    pub fn rebuilding(&self, key: &str) -> bool {
+        self.jobs.iter().any(|j| {
+            j.finished.is_none()
+                && j.spec.replace.is_some()
+                && j.spec.after.as_ref().and_then(|a| a.tag.as_ref()).is_some_and(|t| t.key == key)
+        })
+    }
+
+    /// Открыть страницу предмета.
+    pub fn open_page(&mut self, key: String) {
+        self.seen(&key);
+        // Страница открывается сверху, а не на прокрутке Пульта.
+        self.deck_view.scroll = true;
+        self.deck_view.selected = Some(key.clone());
+        if self.deck_view.page.as_ref() != Some(&key) {
+            self.deck_view.page_tab = 0;
+            self.deck_view.log_find.clear();
+        }
+        self.deck_view.page = Some(key);
+    }
+
+    /// Хвост файла вывода: перечитывается не чаще раза в секунду и только если файл изменился.
+    pub fn log_lines(&mut self, path: &Path) -> Vec<String> {
+        let fresh =
+            self.log_cache.as_ref().is_some_and(|c| c.path == path && c.checked.elapsed() < Duration::from_secs(1));
+        if !fresh {
+            let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let same = self.log_cache.as_ref().is_some_and(|c| c.path == path && c.len == len);
+            if same {
+                if let Some(cache) = &mut self.log_cache {
+                    cache.checked = Instant::now();
+                }
+            } else {
+                let lines = crate::runs::tail(path, 800);
+                self.log_cache = Some(LogCache { path: path.to_path_buf(), len, checked: Instant::now(), lines });
+            }
+            self.ctx.request_repaint_after(Duration::from_secs(1));
+        }
+        self.log_cache.as_ref().map(|c| c.lines.clone()).unwrap_or_default()
+    }
+
+    /// Слушает ли порт на этом компьютере. Подключение пробуется в фоне (окно не ждёт), не чаще
+    /// раза в 2 с; до первого ответа — «не слушает».
+    pub fn port_open(&mut self, port: u16) -> bool {
+        let Ok(mut checks) = self.port_checks.lock() else { return false };
+        let entry = checks.entry(port).or_insert(PortCheck { open: false, at: None, pending: false });
+        let stale = entry.at.is_none_or(|at| at.elapsed() >= Duration::from_secs(2));
+        if stale && !entry.pending {
+            // Пока идёт новая проверка, показывается прошлый ответ.
+            entry.pending = true;
+            let (checks, ctx) = (self.port_checks.clone(), self.ctx.clone());
+            std::thread::spawn(move || {
+                let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+                let open = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok();
+                if let Ok(mut checks) = checks.lock() {
+                    checks.insert(port, PortCheck { open, at: Some(Instant::now()), pending: false });
+                }
+                ctx.request_repaint();
+            });
+        }
+        let open = entry.open;
+        drop(checks);
+        self.ctx.request_repaint_after(Duration::from_secs(2));
+        open
     }
 
     /// Коммит, из которого соберётся проект сейчас: HEAD и есть ли правки.
@@ -710,8 +868,9 @@ impl App {
         self.start_tagged(&item.name, &godot, &["--path".into(), dir], Some(&item.project), Some(tag))
     }
 
-    /// Godot: экспортировать игру под Windows (задача в консоли, ошибки видны там же) и запустить.
-    fn export_and_play(&mut self, item: &crate::deck::Item) -> bool {
+    /// Godot: экспортировать игру под Windows (задача в консоли, ошибки видны там же); `play` —
+    /// и запустить.
+    pub fn export_game(&mut self, item: &crate::deck::Item, play: bool) -> bool {
         let project = self.projects.iter().find(|p| p.path == item.project);
         let Some(export) = project.and_then(|p| p.engine.as_ref()).and_then(|e| e.export.clone()) else {
             self.toasts.push(t("В export_presets.cfg нет пресета «Windows Desktop»"), Tone::Warning);
@@ -721,6 +880,14 @@ impl App {
             self.toasts.push(t("Godot не найден: укажите путь к редактору в меню строки"), Tone::Warning);
             return false;
         };
+        // Запущенную игру экспорт перезаписать не сможет.
+        if !crate::launch::running_from(&self.procs, &export).is_empty() {
+            self.toasts.push(
+                format!("{}: {}", item.name, t("игра запущена — закройте её, чтобы экспортировать")),
+                Tone::Warning,
+            );
+            return false;
+        }
         if let Some(dir) = export.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -735,8 +902,10 @@ impl App {
         let title = format!("godot --export-release \"Windows Desktop\" {}", export.display());
         let steps = vec![jobs::Step::Run(godot.to_string_lossy().into_owned(), args)];
         let id = self.enqueue(tasks::script_spec(&item.project, title, steps));
-        let tag = self.game_tag(item, format!("экспорт {}", i18n::date(i18n::now())));
-        self.after_job.entry(id).or_default().push(After::LaunchExe(item.name.clone(), export, Some(tag)));
+        if play {
+            let tag = self.game_tag(item, format!("экспорт {}", i18n::date(i18n::now())));
+            self.after_job.entry(id).or_default().push(After::LaunchExe(item.name.clone(), export, Some(tag)));
+        }
         true
     }
 
@@ -873,7 +1042,7 @@ impl App {
             }
             _ => None,
         };
-        self.start_task_with(path, task, release, move |spec| {
+        self.start_task_with(path, task, release, true, move |spec| {
             if let (Some(after), Some((tag, profile))) = (&mut spec.after, tag) {
                 after.tag.get_or_insert(tag);
                 if after.env.is_empty() {
@@ -893,6 +1062,7 @@ impl App {
         path: &Path,
         task: Task,
         release: bool,
+        check_locked: bool,
         tweak: impl FnOnce(&mut jobs::Spec),
     ) -> Option<JobId> {
         let project = self.projects.iter().find(|p| p.path == path)?;
@@ -901,7 +1071,7 @@ impl App {
         tweak(&mut spec);
         let exe = spec.after.as_ref().map(|a| a.exe.clone()).or_else(|| spec.install.as_ref().map(|i| i.exe.clone()));
         let head = self.head(path);
-        let locked = tasks::locked(meta.as_ref(), &task, release, &self.procs);
+        let locked = if check_locked { tasks::locked(meta.as_ref(), &task, release, &self.procs) } else { Vec::new() };
         if locked.is_empty() {
             let id = self.enqueue(spec);
             if let (Some(exe), Some(build)) = (exe, head) {
@@ -1085,19 +1255,6 @@ impl App {
         }
     }
 
-    /// Журнал службы: файл вывода последнего запуска — в редакторе по умолчанию.
-    /// Журнал внутри Anvil — на странице службы (П4).
-    pub fn open_log(&mut self, key: &str) {
-        let log = self.runs.iter().rev().find(|r| r.key == key).and_then(|r| r.log.clone());
-        match log {
-            Some(path) => {
-                let result = crate::open::file(&path);
-                self.report(result);
-            }
-            None => self.toasts.push(t("Журнала ещё нет: его пишет запуск из Anvil"), Tone::Neutral),
-        }
-    }
-
     /// Падение предмета, которое ещё не видели (последнее по времени).
     pub fn unseen_crash(&self, key: &str) -> Option<&crate::runs::Run> {
         self.runs
@@ -1124,6 +1281,16 @@ impl App {
 
     fn apply_job(&mut self, ctx: &egui::Context, event: jobs::Event) {
         match event {
+            jobs::Event::Stopping(pid) => {
+                for run in self.runs.iter_mut().filter(|r| r.pid == pid && r.running()) {
+                    run.stopping = true;
+                }
+            }
+            jobs::Event::StopTimedOut(pid) => {
+                let name = self.runs.iter().rev().find(|r| r.pid == pid && r.running()).map(|r| r.name.clone());
+                let started = self.procs.values().flatten().find(|r| r.pid == pid).and_then(|r| r.started);
+                self.force_confirm = Some((name.unwrap_or_else(|| format!("PID {pid}")), pid, started));
+            }
             jobs::Event::Started(id) => {
                 if let Some(job) = self.job_mut(id) {
                     job.started = Some(Instant::now());

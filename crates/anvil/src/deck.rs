@@ -312,6 +312,8 @@ mod tests {
             exported_at: None,
             open: false,
             editor: None,
+            render: None,
+            size: None,
         });
         let mut unity = godot.clone();
         unity.path = PathBuf::from("/dev/Claude_Sandbox");

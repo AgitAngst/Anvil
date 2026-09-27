@@ -27,6 +27,10 @@ pub struct Info {
     pub open: bool,
     /// Редактор Unity нужной версии, если он стоит (у Godot редактор общий — ищет окно).
     pub editor: Option<PathBuf>,
+    /// Рендер Godot: `Forward Plus`, `Mobile`, `GL Compatibility`.
+    pub render: Option<String>,
+    /// Размер собранной игры, байт.
+    pub size: Option<u64>,
 }
 
 /// Прочитать проект движка. Для Rust и просто git — `None`.
@@ -43,7 +47,22 @@ fn godot(dir: &Path) -> Info {
     let presets = std::fs::read_to_string(dir.join("export_presets.cfg")).unwrap_or_default();
     let export = windows_export_path(&presets).map(|p| dir.join(p));
     let exported_at = export.as_deref().and_then(modified);
-    Info { engine: Engine::Godot, version: godot_version(&project), export, exported_at, open: false, editor: None }
+    let size = export.as_deref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len());
+    let render = project
+        .lines()
+        .find(|l| l.trim_start().starts_with("config/features="))
+        .and_then(|l| l.split('"').skip(1).step_by(2).find(|v| RENDERERS.contains(v)))
+        .map(str::to_owned);
+    Info {
+        engine: Engine::Godot,
+        version: godot_version(&project),
+        export,
+        exported_at,
+        open: false,
+        editor: None,
+        render,
+        size,
+    }
 }
 
 fn unity(dir: &Path) -> Info {
@@ -55,7 +74,7 @@ fn unity(dir: &Path) -> Info {
         .filter(|v| !v.is_empty());
     let open = dir.join("Temp").join("UnityLockfile").exists();
     let editor = version.as_deref().and_then(unity_editor);
-    Info { engine: Engine::Unity, version, export: None, exported_at: None, open, editor }
+    Info { engine: Engine::Unity, version, export: None, exported_at: None, open, editor, render: None, size: None }
 }
 
 /// Версия Godot из `config/features=PackedStringArray("4.7", "Forward Plus")` — первый элемент,
@@ -101,6 +120,38 @@ pub fn unity_editor(version: &str) -> Option<PathBuf> {
     roots.into_iter().map(|root| root.join(version).join("Editor").join("Unity.exe")).find(|exe| exe.is_file())
 }
 
+/// Рендеры Godot 4, как их пишет `config/features` (там же версия и, например, `C#`).
+const RENDERERS: [&str; 3] = ["Forward Plus", "Mobile", "GL Compatibility"];
+
+/// Версия редактора Godot по имени файла: `Godot_v4.7.1-stable_win64.exe` → `4.7.1`.
+pub fn godot_editor_version(exe: &Path) -> Option<String> {
+    let name = exe.file_name()?.to_string_lossy().to_lowercase();
+    let rest = name.split("_v").nth(1)?;
+    let version: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    (!version.is_empty()).then_some(version)
+}
+
+/// Папка шаблонов экспорта для этого редактора: `Godot_v4.7.1-stable_win64.exe` → `4.7.1.stable`,
+/// `Godot_v4.5-beta2_mono_win64.exe` → `4.5.beta2.mono`. Не разобрать имя — `None`.
+pub fn godot_templates_name(exe: &Path) -> Option<String> {
+    let name = exe.file_name()?.to_string_lossy().to_lowercase();
+    let rest = name.split("_v").nth(1)?;
+    let (version, tail) = rest.split_once('-')?;
+    let status: String = tail.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    let valid = !version.is_empty() && version.chars().all(|c| c.is_ascii_digit() || c == '.') && !status.is_empty();
+    let mono = if tail.contains("mono") { ".mono" } else { "" };
+    valid.then(|| format!("{version}.{status}{mono}"))
+}
+
+/// Стоят ли шаблоны экспорта для этого редактора: `%APPDATA%\Godot\export_templates\<папка>`, а у
+/// переносного редактора (рядом `_sc_`) — `editor_data\export_templates\<папка>` возле exe.
+pub fn godot_templates(exe: &Path, name: &str) -> bool {
+    let beside = exe.parent().map(|d| d.join("editor_data").join("export_templates").join(name));
+    let appdata =
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Godot").join("export_templates").join(name));
+    beside.into_iter().chain(appdata).any(|d| d.is_dir())
+}
+
 /// Редактор Godot: путь из `anvil.toml` (`godot = "…"`), иначе первый `godot*.exe` в `PATH`
 /// (не консольный вариант).
 pub fn godot_editor(configured: Option<&Path>) -> Option<PathBuf> {
@@ -132,6 +183,11 @@ mod tests {
         let path = windows_export_path(presets).unwrap();
         assert!(path.starts_with("build") && path.ends_with("IQube.exe"));
         assert_eq!(windows_export_path("[preset.0]\nplatform=\"Web\"\nexport_path=\"a.html\"\n"), None);
+        assert_eq!(godot_editor_version(Path::new("Godot_v4.7.1-stable_win64.exe")).as_deref(), Some("4.7.1"));
+        let name = |f: &str| godot_templates_name(Path::new(f));
+        assert_eq!(name("Godot_v4.7.1-stable_win64.exe").as_deref(), Some("4.7.1.stable"));
+        assert_eq!(name("Godot_v4.5-beta2_mono_win64.exe").as_deref(), Some("4.5.beta2.mono"));
+        assert_eq!(name("godot.exe"), None);
     }
 
     #[test]

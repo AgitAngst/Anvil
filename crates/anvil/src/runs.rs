@@ -142,6 +142,23 @@ fn release_log(path: &Path) {
     }
 }
 
+/// Журнал этого запуска ещё числится за прежней копией (её сторож не успел заметить выход) —
+/// подождать, чтобы новая писала в тот же `out.log`, а не в `out-<id>.log`.
+pub fn wait_log(launch: &crate::launch::Launch, timeout: std::time::Duration) {
+    let Some(path) = launch.tag.as_ref().filter(|t| t.log).and_then(|t| log_path(launch_bin(launch), &t.profile))
+    else {
+        return;
+    };
+    let until = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < until {
+        let busy = HUB.get().and_then(|h| h.live.lock().ok().map(|l| l.contains(&path))).unwrap_or(false);
+        if !busy {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// Где лежит вывод запуска: `<dir>\<бинарник>-<профиль>\out.log`.
 pub fn log_path(bin: &str, profile: &str) -> Option<PathBuf> {
     let hub = HUB.get()?;
@@ -213,7 +230,13 @@ pub fn start(launch: &Launch) -> Result<u32, String> {
         }
     };
     let pid = child.id();
-    let Some(tag) = tag else { return Ok(pid) };
+    let Some(tag) = tag else {
+        // Без метки в историю не пишем, но дождаться надо: иначе на Unix остаётся зомби.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        return Ok(pid);
+    };
 
     let started = crate::i18n::now();
     send(Event::Started(Box::new(Run {
@@ -308,6 +331,39 @@ pub fn watch(run: &Run) {
         }
         send(Event::Exited { id, code, at: crate::i18n::now() });
     });
+}
+
+/// Жив ли процесс `pid`, запущенный в `started` (секунды Unix, ±3 с). PID после выхода программы
+/// может достаться другому процессу — его трогать нельзя.
+#[cfg(windows)]
+pub fn same_process(pid: u32, started: i64) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
+    // SAFETY: дескриптор открывается на чтение сведений и ожидание и закрывается.
+    unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let zero = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+        let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+        // Вышедший процесс ещё открывается, пока кто-то держит его дескриптор, — живой ли, спросить отдельно.
+        let alive = WaitForSingleObject(handle, 0) == WAIT_TIMEOUT;
+        let same = alive && GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) != 0 && {
+            let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+            let secs = (ticks / 10_000_000) as i64 - 11_644_473_600;
+            (secs - started).abs() <= 3
+        };
+        CloseHandle(handle);
+        same
+    }
+}
+
+#[cfg(not(windows))]
+pub fn same_process(pid: u32, _started: i64) -> bool {
+    crate::procs::alive(pid)
 }
 
 #[cfg(windows)]
@@ -458,6 +514,73 @@ fn code_meaning(code: u32) -> Option<&'static str> {
     })
 }
 
+/// Последние строки файла вывода (не больше `max`): читается только хвост, до 256 КБ.
+pub fn tail(path: &Path, max: usize) -> Vec<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else { return Vec::new() };
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let from = len.saturating_sub(256 * 1024);
+    if file.seek(SeekFrom::Start(from)).is_err() {
+        return Vec::new();
+    }
+    let mut bytes = Vec::new();
+    let _ = file.read_to_end(&mut bytes);
+    let text = String::from_utf8_lossy(&bytes);
+    let mut lines: Vec<String> = text.lines().map(strip_ansi).collect();
+    // Начали с середины строки — первая неполная.
+    if from > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+    let skip = lines.len().saturating_sub(max);
+    lines.split_off(skip)
+}
+
+/// Строка без цветовых кодов терминала (`ESC[32m`): журналы tracing пишут их и в файл.
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            // Параметры и промежуточные байты, потом буква-команда.
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Уровень строки журнала по слову `ERROR` / `WARN` / `INFO` / `DEBUG` в её начале.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Plain,
+}
+
+pub fn log_level(line: &str) -> LogLevel {
+    let head: String = line.chars().take(48).collect();
+    let has = |word: &str| head.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w == word);
+    if has("ERROR") || head.contains("panicked at") {
+        LogLevel::Error
+    } else if has("WARN") || has("WARNING") {
+        LogLevel::Warn
+    } else if has("INFO") {
+        LogLevel::Info
+    } else if has("DEBUG") || has("TRACE") {
+        LogLevel::Debug
+    } else {
+        LogLevel::Plain
+    }
+}
+
 /// История запусков: `runs.json` рядом с `anvil.toml`. Хранится последних 200.
 pub fn load(path: &Path) -> Vec<Run> {
     std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
@@ -484,6 +607,21 @@ mod tests {
         assert_eq!(code_text(101), "101 (паника Rust)");
         assert_eq!(code_text(0xC000_0005), "0xC0000005 (нарушение доступа)");
         assert_eq!(code_text(0xE000_0001), "0xE0000001");
+    }
+
+    #[test]
+    fn log_levels_and_tail() {
+        assert_eq!(log_level("00:28:22  ERROR  audio: socket closed"), LogLevel::Error);
+        assert_eq!(log_level("2026-09-27T00:28:22Z  WARN amber_server: peer left"), LogLevel::Warn);
+        assert_eq!(log_level("INFO  tick 3"), LogLevel::Info);
+        assert_eq!(log_level("thread 'main' panicked at src/main.rs:4:5:"), LogLevel::Error);
+        assert_eq!(log_level("just text"), LogLevel::Plain);
+        assert_eq!(strip_ansi("\u{1b}[2m00:28:22\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m x"), "00:28:22 ERROR x");
+        let path = std::env::temp_dir().join(format!("anvil-tail-{}.log", std::process::id()));
+        std::fs::write(&path, (1..=50).map(|i| format!("line {i}\n")).collect::<String>()).unwrap();
+        let last = tail(&path, 3);
+        assert_eq!(last, ["line 48", "line 49", "line 50"]);
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

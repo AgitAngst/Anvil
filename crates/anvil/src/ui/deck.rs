@@ -1,5 +1,6 @@
 //! Пульт: всё, что я запускаю, одной таблицей. Enter — запустить, Ctrl+Enter — свежую сборку из
-//! кода, Shift+Enter — этот проект в Кузнице. Строки не прыгают, пока Пульт на экране.
+//! кода, Shift+Enter — этот проект в Кузнице, щелчок или Alt+Enter — страница предмета. Строки не
+//! прыгают, пока Пульт на экране.
 
 use std::path::PathBuf;
 
@@ -15,14 +16,14 @@ use crate::registry::Kind as ProjectKind;
 
 /// Главное действие строки: что сделает Enter и кнопка справа.
 #[derive(Debug, Clone, PartialEq)]
-enum Main {
+pub(super) enum Main {
     /// Запустить то, что установлено (или собрано, если ставить нечего).
     Launch,
     /// Собрать из кода и запустить.
     FromCode,
     /// Программа работает — показать её окно.
     Focus(u32),
-    /// Служба работает — её журнал (пока — консоль Кузницы).
+    /// Служба работает — её страница с журналом.
     Journal,
     /// Не установлена, на GitHub есть выпуск — поставить и запустить.
     Install,
@@ -35,25 +36,25 @@ enum Main {
 /// Как строка выглядит сейчас.
 pub struct Look {
     /// Чип источника: слово и моно-часть.
-    chip: (String, Option<String>),
+    pub(super) chip: (String, Option<String>),
     /// Работает: PID и когда запущен.
-    running: Option<(u32, Option<i64>)>,
+    pub(super) running: Option<(u32, Option<i64>)>,
     /// Это само окно Anvil.
-    this: bool,
-    state: String,
-    main: Main,
-    icon: Icon,
-    hint: String,
+    pub(super) this: bool,
+    pub(super) state: String,
+    pub(super) main: Main,
+    pub(super) icon: Icon,
+    pub(super) hint: String,
     /// Где стоит установленная копия — для «Папка установки».
-    install_dir: Option<PathBuf>,
+    pub(super) install_dir: Option<PathBuf>,
     /// Порт службы из профиля — хвост чипа «amber-server :18731».
-    port: Option<u16>,
+    pub(super) port: Option<u16>,
     /// Бейдж падения: «test упал», пока страницу не открыли.
-    badge: Option<String>,
+    pub(super) badge: Option<String>,
     /// Работает своя сборка из кода: «Остановить» без вопроса.
-    own: bool,
+    pub(super) own: bool,
     /// Выбран не «обычный» профиль — его имя.
-    profile: Option<String>,
+    pub(super) profile: Option<String>,
 }
 
 impl Look {
@@ -79,10 +80,10 @@ impl Look {
 /// Пульт на этот кадр: предметы в порядке строк и как они выглядят. Считается один раз и нужен
 /// и строкам, и чипам «Запущено» в строке состояния.
 pub struct Frame {
-    items: Vec<Item>,
-    looks: Vec<Look>,
+    pub(super) items: Vec<Item>,
+    pub(super) looks: Vec<Look>,
     /// Выбранная строка: та, что выбрали, или первая, если не выбирали (или выбранной больше нет).
-    selected: Option<String>,
+    pub(super) selected: Option<String>,
 }
 
 impl Frame {
@@ -118,7 +119,7 @@ impl Frame {
 
 /// Что попросили на Пульте: выполняется после отрисовки.
 enum Action {
-    Select(String),
+    Page(String),
     Main(Box<Item>),
     FromCode(Box<Item>),
     FromSource(Box<Item>),
@@ -201,7 +202,7 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
     let fresh_enter = ctx.input(|i| {
         i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, repeat: false, .. }))
     });
-    let (from_code, forge, _page, enter, up, down, pin) = ctx.input_mut(|i| {
+    let (from_code, forge, page, enter, up, down, pin) = ctx.input_mut(|i| {
         (
             i.consume_key(Modifiers::COMMAND, Key::Enter),
             i.consume_key(Modifiers::SHIFT, Key::Enter),
@@ -212,6 +213,9 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
             i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::P)),
         )
     });
+    // → и Пробел — тоже страница (§5.11). Пробел не открывает палитру, как другая печать.
+    let (right, space) = ctx
+        .input_mut(|i| (i.consume_key(Modifiers::NONE, Key::ArrowRight), i.consume_key(Modifiers::NONE, Key::Space)));
     let mut index = selected.and_then(|k| items.iter().position(|i| i.key == k)).unwrap_or(0);
     if up || down {
         index = if down { (index + 1).min(items.len() - 1) } else { index.saturating_sub(1) };
@@ -223,8 +227,13 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
         actions.push(Action::FromCode(Box::new(item.clone())));
     } else if fresh_enter && forge {
         actions.push(Action::Forge(Box::new(item.clone())));
+    } else if fresh_enter && page {
+        actions.push(Action::Page(item.key.clone()));
     } else if fresh_enter && enter {
         actions.push(Action::Main(Box::new(item.clone())));
+    }
+    if right || space {
+        actions.push(Action::Page(item.key.clone()));
     }
     if pin {
         actions.push(Action::Pin(item.key.clone()));
@@ -239,7 +248,7 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
             })
             .collect()
     });
-    if !typed.trim().is_empty() && !ctx.input(|i| i.modifiers.command || i.modifiers.alt) {
+    if !typed.trim().is_empty() && !space && !ctx.input(|i| i.modifiers.command || i.modifiers.alt) {
         super::palette::open_with(app, typed.trim_start());
     }
     actions
@@ -294,10 +303,7 @@ fn row(app: &App, ui: &mut Ui, item: &Item, look: &Look, selected: bool, actions
         response.scroll_to_me(Some(egui::Align::Center));
     }
     if response.clicked() {
-        actions.push(Action::Select(item.key.clone()));
-    }
-    if response.double_clicked() {
-        actions.push(Action::Main(Box::new(item.clone())));
+        actions.push(Action::Page(item.key.clone()));
     }
     let rect = response.rect;
     let mark = egui::Rect::from_min_size(egui::pos2(rect.left() + 12.0, rect.center().y - 14.0), Vec2::splat(28.0));
@@ -419,6 +425,9 @@ fn menu(app: &App, more: &egui::Response, item: &Item, look: &Look, actions: &mu
             }
             _ => {}
         }
+        if w::menu_item(ui, Some(Icon::ArrowRight), t("Страница"), Some("Alt+Enter")).clicked() {
+            actions.push(Action::Page(item.key.clone()));
+        }
         if w::menu_item(ui, Some(Icon::Hammer), t("Открыть в Кузнице"), Some("Shift+Enter")).clicked() {
             actions.push(Action::Forge(Box::new(item.clone())));
         }
@@ -462,7 +471,7 @@ fn menu(app: &App, more: &egui::Response, item: &Item, look: &Look, actions: &mu
 
 /// Что сейчас с предметом и что сделает Enter. Без обращений к диску: всё уже прочитано фоновым
 /// потоком или закешировано в `App`.
-fn look(app: &App, item: &Item, godot_found: bool) -> Look {
+pub(super) fn look(app: &App, item: &Item, godot_found: bool) -> Look {
     let project = app.projects.iter().find(|p| p.path == item.project);
     match item.kind {
         ProjectKind::Godot => {
@@ -637,12 +646,64 @@ fn rust_look(app: &App, item: &Item) -> Look {
 }
 
 /// «работает · 2 ч 14 мин» или то, что сказано для покоя.
-fn state(running: Option<(u32, Option<i64>)>, idle: &str) -> String {
+pub(super) fn state(running: Option<(u32, Option<i64>)>, idle: &str) -> String {
     match running {
         Some((_, Some(started))) => format!("{} · {}", t("работает"), i18n::uptime(i18n::now() - started)),
         Some((_, None)) => t("работает").to_owned(),
         None => idle.to_owned(),
     }
+}
+
+/// Запустить предмет с этим профилем; он же станет выбранным для Enter. Эта копия уже работает —
+/// её окно (у службы — страница).
+pub(super) fn launch_profile(app: &mut App, item: &Item, name: &str) {
+    // Выбор запоминается (запись в anvil.toml сделает сам запуск), а запускается именно этот
+    // профиль — даже если работает копия с другим.
+    let changed = choose_profile(app, item, name);
+    app.seen(&item.key);
+    let same = app.runs.iter().rev().find(|r| r.key == item.key && r.running() && r.profile == name);
+    match same.map(|r| (r.pid, r.service)) {
+        Some((pid, false)) => app.focus(&item.name, pid),
+        Some((_, true)) => app.open_page(item.key.clone()),
+        None => {
+            let code = app.profile_of(item).source == crate::config::Source::Code;
+            app.launch_item(item, code);
+        }
+    }
+    if changed && !app.launching(&item.key) {
+        app.save();
+    }
+}
+
+/// Закрепить или открепить.
+pub(super) fn toggle_pin(app: &mut App, key: String) {
+    let pinned = &mut app.config.deck.pinned;
+    match pinned.iter().position(|k| *k == key) {
+        Some(i) => {
+            pinned.remove(i);
+        }
+        None => pinned.push(key),
+    }
+    app.save();
+    app.deck_view.order.clear();
+}
+
+/// Убрать с Пульта (вернуть — в настройках).
+pub(super) fn remove(app: &mut App, key: String) {
+    app.config.deck.removed.push(key);
+    app.save();
+    app.toasts.push(t("Убрано с Пульта — вернуть можно в настройках"), Tone::Neutral);
+}
+
+/// Сделать профиль выбранным (без записи на диск). `true` — выбор изменился.
+pub(super) fn choose_profile(app: &mut App, item: &Item, name: &str) -> bool {
+    let changed = app.config.deck.profile.get(&item.key).map_or("", String::as_str) != name;
+    if name.is_empty() {
+        app.config.deck.profile.remove(&item.key);
+    } else {
+        app.config.deck.profile.insert(item.key.clone(), name.to_owned());
+    }
+    changed
 }
 
 /// Главное действие предмета — то же, что Enter на Пульте. Нужно и палитре.
@@ -655,7 +716,11 @@ pub fn run_main(app: &mut App, item: &Item) {
         Main::Launch => app.launch_item(item, false),
         Main::FromCode => app.launch_item(item, true),
         Main::Focus(pid) => app.focus(&item.name, pid),
-        Main::Journal => app.open_log(&item.key),
+        Main::Journal => {
+            // Из палитры в Кузнице — сначала на Пульт: страница живёт там.
+            app.set_mode(Mode::Deck);
+            app.open_page(item.key.clone());
+        }
         Main::Install => app.install_and_launch(item),
         Main::Editor => app.open_editor(item),
         Main::Nothing => {}
@@ -663,7 +728,7 @@ pub fn run_main(app: &mut App, item: &Item) {
 }
 
 /// Сводка amber-admin, если среди проектов есть amber-admin.
-fn remote_card_data(app: &mut App) -> Option<(Result<crate::amber::Summary, String>, PathBuf)> {
+pub(super) fn remote_card_data(app: &mut App) -> Option<(Result<crate::amber::Summary, String>, PathBuf)> {
     let dir = app
         .projects
         .iter()
@@ -719,8 +784,12 @@ fn right_column(
     recent: &[Recent],
     actions: &mut Vec<Action>,
 ) {
-    if let Some(remote) = remote {
-        remote_card(ui, remote, actions);
+    if let Some((summary, dir)) = remote {
+        w::section_label(ui, t("Удалённые серверы"));
+        ui.add_space(8.0);
+        if remote_card(ui, summary) {
+            actions.push(Action::AmberAdmin(dir.clone()));
+        }
         ui.add_space(18.0);
     }
     if !recent.is_empty() {
@@ -767,11 +836,9 @@ fn recent_card(ui: &mut Ui, recent: &[Recent]) {
     });
 }
 
-fn remote_card(ui: &mut Ui, remote: &(Result<crate::amber::Summary, String>, PathBuf), actions: &mut Vec<Action>) {
-    let (summary, dir) = remote;
+/// Карточка сводки amber-admin; `true` — нажали «Открыть amber-admin».
+pub(super) fn remote_card(ui: &mut Ui, summary: &Result<crate::amber::Summary, String>) -> bool {
     let p = Palette::of(ui);
-    w::section_label(ui, t("Удалённые серверы"));
-    ui.add_space(8.0);
     w::card(ui, |ui| {
         match summary {
             Err(e) => {
@@ -817,10 +884,8 @@ fn remote_card(ui: &mut Ui, remote: &(Result<crate::amber::Summary, String>, Pat
             }
         }
         ui.add_space(10.0);
-        if w::button(ui, Kind::Secondary, Some(Icon::Server), t("Открыть amber-admin")).clicked() {
-            actions.push(Action::AmberAdmin(dir.clone()));
-        }
-    });
+        w::button(ui, Kind::Secondary, Some(Icon::Server), t("Открыть amber-admin")).clicked()
+    })
 }
 
 fn empty(app: &App, ui: &mut Ui, actions: &mut Vec<Action>) {
@@ -845,10 +910,7 @@ fn apply(app: &mut App, ctx: &egui::Context, actions: Vec<Action>) {
     app.deck_view.scroll = false;
     for action in actions {
         match action {
-            Action::Select(key) => {
-                app.seen(&key);
-                app.deck_view.selected = Some(key);
-            }
+            Action::Page(key) => app.open_page(key),
             Action::Main(item) => run_main(app, &item),
             Action::FromCode(item) => {
                 app.deck_view.selected = Some(item.key.clone());
@@ -863,47 +925,11 @@ fn apply(app: &mut App, ctx: &egui::Context, actions: Vec<Action>) {
                 app.view = crate::app::View::Project;
             }
             Action::Editor(item) => app.open_editor(&item),
-            Action::Pin(key) => {
-                let pinned = &mut app.config.deck.pinned;
-                match pinned.iter().position(|k| *k == key) {
-                    Some(i) => {
-                        pinned.remove(i);
-                    }
-                    None => pinned.push(key),
-                }
-                app.save();
-                app.deck_view.order.clear();
-            }
-            Action::Remove(key) => {
-                app.config.deck.removed.push(key);
-                app.save();
-                app.toasts.push(t("Убрано с Пульта — вернуть можно в настройках"), Tone::Neutral);
-            }
+            Action::Pin(key) => toggle_pin(app, key),
+            Action::Remove(key) => remove(app, key),
             Action::Stop(name, pid, dir) => app.stop_confirm = Some((name, pid, dir)),
             Action::StopNow(name, pid) => app.stop_run(name, pid),
-            Action::Profile(item, name) => {
-                // Выбор запоминается (запись в anvil.toml сделает сам запуск), а запускается именно этот
-                // профиль — даже если работает копия с другим.
-                let changed = app.config.deck.profile.get(&item.key).map_or(String::new(), Clone::clone) != name;
-                if name.is_empty() {
-                    app.config.deck.profile.remove(&item.key);
-                } else {
-                    app.config.deck.profile.insert(item.key.clone(), name.clone());
-                }
-                app.seen(&item.key);
-                let same = app.runs.iter().rev().find(|r| r.key == item.key && r.running() && r.profile == name);
-                match same.map(|r| (r.pid, r.service)) {
-                    Some((pid, false)) => app.focus(&item.name, pid),
-                    Some((_, true)) => app.open_log(&item.key),
-                    None => {
-                        let code = app.profile_of(&item).source == crate::config::Source::Code;
-                        app.launch_item(&item, code);
-                    }
-                }
-                if changed && !app.launching(&item.key) {
-                    app.save();
-                }
-            }
+            Action::Profile(item, name) => launch_profile(app, &item, &name),
             Action::Profiles(project) => app.presets_for = Some(project),
             Action::Folder(dir) => app.report(crate::open::folder(&dir)),
             Action::GodotPath => {

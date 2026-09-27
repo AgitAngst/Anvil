@@ -16,6 +16,94 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     force(app, ctx);
     clean(app, ctx);
     uninstall(app, ctx);
+    install(app, ctx);
+    rollback(app, ctx);
+}
+
+/// Работающая установленная копия: её не трогаем, новая версия откроется при следующем запуске.
+fn running_installed(app: &App, bin: &str) -> Option<u32> {
+    let root = crate::installs::root(bin);
+    app.running(bin).iter().find(|r| r.path.as_ref().is_some_and(|p| crate::installs::inside(p, &root))).map(|r| r.pid)
+}
+
+/// «Поставить из кода…» (§5.12): сборка release в задачах, копия в versions, current — на неё.
+fn install(app: &mut App, ctx: &egui::Context) {
+    let Some((path, bin)) = app.install_confirm.clone() else { return };
+    let project = app.projects.iter().find(|p| p.path == path);
+    let git = project.and_then(|p| p.git());
+    let label = crate::installs::local_label(
+        project.and_then(|p| p.meta()).and_then(|m| m.version.as_deref()).unwrap_or("0.0.0"),
+        git.and_then(|g| g.commits.first()).map(|c| c.hash.as_str()),
+        git.is_some_and(|g| g.dirty()),
+    );
+    let name = crate::installs::display_name(&bin);
+    let current = app.installs.get(&bin).and_then(Option::as_ref).and_then(|i| i.current.clone());
+    let running = running_installed(app, &bin);
+    let place = crate::installs::root(&bin).join("versions").join(&label);
+    let body = |ui: &mut egui::Ui| {
+        point(ui, &format!("cargo build --release --bin {bin} — {}", t("в задачах, окно не блокируется")));
+        ui.add_space(6.0);
+        point(ui, &format!("{} {}; {}", t("Копия ляжет в"), place.display(), t("current переключится на неё")));
+        if let Some(pid) = running {
+            ui.add_space(6.0);
+            point(
+                ui,
+                &format!(
+                    "{} {name} (PID {pid}) {}",
+                    t("Работающий"),
+                    t("не трогаю — новая версия откроется при следующем запуске")
+                ),
+            );
+        }
+        if let Some(current) = &current {
+            ui.add_space(6.0);
+            point(ui, &format!("{current} {}", t("остаётся для отката")));
+        }
+    };
+    let heading = format!("{} {name} {label} {}", t("Поставить"), t("из кода?"));
+    match w::confirm(ctx, "anvil-install-code", &heading, body, t("Поставить"), false) {
+        Some(true) => {
+            app.install_confirm = None;
+            app.install_local(&path, &bin);
+        }
+        Some(false) => app.install_confirm = None,
+        None => {}
+    }
+}
+
+/// «Откатить…»: сделать текущей предыдущую установленную версию.
+fn rollback(app: &mut App, ctx: &egui::Context) {
+    let Some((path, bin, version)) = app.rollback_confirm.clone() else { return };
+    let name = crate::installs::display_name(&bin);
+    let current = app.installs.get(&bin).and_then(Option::as_ref).and_then(|i| i.current.clone());
+    let running = running_installed(app, &bin);
+    let body = |ui: &mut egui::Ui| {
+        point(ui, &format!("{} {version}", t("current переключится на")));
+        if let Some(current) = &current {
+            ui.add_space(6.0);
+            point(ui, &format!("{current} {}", t("останется — вернуть можно так же")));
+        }
+        if let Some(pid) = running {
+            ui.add_space(6.0);
+            point(
+                ui,
+                &format!(
+                    "{} {name} (PID {pid}) {}",
+                    t("Работающий"),
+                    t("не трогаю — откат подействует при следующем запуске")
+                ),
+            );
+        }
+    };
+    let heading = format!("{} {name} {} {version}?", t("Откатить"), t("на"));
+    match w::confirm(ctx, "anvil-rollback", &heading, body, t("Откатить"), false) {
+        Some(true) => {
+            app.rollback_confirm = None;
+            app.activate(&path, &bin, &version);
+        }
+        Some(false) => app.rollback_confirm = None,
+        None => {}
+    }
 }
 
 fn uninstall(app: &mut App, ctx: &egui::Context) {

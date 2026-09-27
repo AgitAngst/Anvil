@@ -210,6 +210,7 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
         download: None,
         bytes: false,
         script: None,
+        replace: None,
     }
 }
 
@@ -228,6 +229,7 @@ pub fn download_spec(project: &Path, download: Download, size: u64) -> Spec {
         download: Some(download),
         bytes: true,
         script: None,
+        replace: None,
     }
 }
 
@@ -246,6 +248,7 @@ pub fn script_spec(project: &Path, title: String, steps: Vec<crate::jobs::Step>)
         download: None,
         bytes: false,
         script: Some(steps),
+        replace: None,
     }
 }
 

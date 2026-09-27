@@ -472,3 +472,128 @@ Godot не найден: укажите путь к редактору в мен
 Запустить с профилем	Launch with a profile
 Профили запуска…	Launch profiles…
 исходники	source
+2 файла по 5 МБ	2 files of 5 MB
+Godot не найден	Godot not found
+Godot не найден — укажите путь в карточке «Движок»	Godot not found — set its path in the Engine card
+current переключится на	current switches to
+current переключится на неё	current switches to it
+В Кузнице	In the Forge
+В коде	In code
+В коде после	In code after
+Вывод пишется в	Output goes to
+Вывод служб пишется в файл — служба переживёт закрытие Anvil.	Service output goes to a file — the service outlives Anvil.
+Вывода пока нет.	No output yet.
+Выпусков на GitHub нет.	No releases on GitHub.
+Где взять	Where to get them
+Главная кнопка запускает выбранный профиль	The main button launches the selected profile
+Готов, когда	Ready when
+Данные	Data
+Движок	Engine
+Других программ в проекте нет.	No other programs in this project.
+Журналы	Logs
+Заметки выпуска	Release notes
+Запуски	Runs
+Запусков ещё не было	No runs yet
+Запустить игру	Launch the game
+Запущена не из Anvil — сначала остановите её	Not started by Anvil — stop it first
+Здесь появятся запуски из Anvil: когда, с каким профилем и чем кончились.	Launches from Anvil show up here: when, with which profile and how they ended.
+Игра	Game
+Играть можно: собранной игре движок не нужен.	You can still play: the exported game doesn't need the engine.
+Игру ещё не экспортировали.	The game hasn't been exported yet.
+Из исходников	From source
+Изменить профиль…	Edit profile…
+Как играть	How to play
+Команда	Command
+Копировать	Copy
+Копия ляжет в	A copy goes to
+Локальные запускает Anvil и пишет их вывод в файл. Удалёнными управляет amber-admin — здесь только его сводка.	Anvil starts the local ones and writes their output to a file. Remote ones are managed by amber-admin — this is only its summary.
+На этом компьютере	On this PC
+Найти в журнале	Find in log
+Откатить	Roll back
+Откатить…	Roll back…
+Откатываться некуда: других версий нет.	Nothing to roll back to: no other versions.
+Папка не под git — истории нет	The folder isn't under git — no history
+Папки	Folders
+Пересобрать и перезапустить	Rebuild and restart
+Под фильтр ничего не попало.	Nothing matches the filter.
+Показаны последние 30 запусков.	Showing the last 30 runs.
+После выпуска в коде ничего не менялось.	Nothing changed in code since the release.
+После сборки —	Since the build:
+Последние коммиты	Latest commits
+Поставить из кода…	Install from code…
+Поставьте эту версию редактора через Unity Hub.	Install this editor version with Unity Hub.
+Проект	Project
+Профили	Profiles
+Профиль	Profile
+Профиль…	Profile…
+Путь	Path
+Работает	Running
+Работающий	The running
+Редактор открывается кнопкой «Открыть в Godot».	The editor opens with “Open in Godot”.
+Рендер	Renderer
+Сборка из кода	Build from code
+Сборка не прошла — служба работает дальше.	If the build fails, the service keeps running.
+Сборка старше последних коммитов.	The build is older than the latest commits.
+Сборка — из последнего коммита.	The build is from the latest commit.
+Сборка — из последнего коммита; с тех пор есть правки.	The build is from the latest commit; there are edits since.
+Сборку делали не из Anvil: из какого она коммита, неизвестно.	The build wasn't made by Anvil: its commit is unknown.
+Свежесть	Freshness
+Скопировано	Copied
+Собрана	Built
+Страница	Page
+Только ошибки и предупреждения	Errors and warnings only
+Удалённые	Remote
+Указать путь…	Set path…
+Установлена	Installed
+Файл	File
+Что нового	What's new
+Шаблоны	Templates
+Экспорт и тесты — в Кузнице.	Export and tests live in the Forge.
+Экспорт невозможен: нет шаблонов	Can't export: no templates for
+Экспортировать	Export
+Экспортировать заново	Export again
+актуально	up to date
+без git — не узнать	no git — can't tell
+без аргументов	no arguments
+в задачах, окно не блокируется	runs as a task, the window stays usable
+есть, версия	installed, version
+завершился	exited
+запущен · К окну	running · Show window
+затем остановить	then stop
+и запустить с тем же профилем	and start it again with the same profile
+из кода?	from code?
+на	to
+на GitHub нет	not on GitHub
+найден	found
+не найден	not found
+не собрана	not built
+не трогаю — новая версия откроется при следующем запуске	is left alone — the new version opens next time
+не трогаю — откат подействует при следующем запуске	is left alone — the rollback applies next time
+нет, нужна версия	missing, need version
+новее установленной	newer than installed
+останется — вернуть можно так же	stays — switch back the same way
+остаётся для отката	stays for rollback
+пока не слушает	is not listening yet
+порт	port
+после неё	since then
+после экспорта коммитов не было	no commits since the export
+после экспорта —	since the export:
+появится окно	a window appears
+предварительный	pre-release
+сборка свежая	build is fresh
+сборка старше кода:	build is behind the code:
+служба переживёт закрытие Anvil.	the service outlives Anvil.
+служебный · в Кузнице	a tool · Forge only
+слушает	is listening
+собрана	built
+сразу после запуска	right after launch
+Unity уже открыт	Unity is already open
+Более ранних установленных версий нет	No earlier installed versions
+Игра запущена — закройте её, чтобы экспортировать	The game is running — close it to export
+Откатываться некуда: текущая — самая ранняя из установленных.	Nothing to roll back to: the current one is the earliest installed.
+Проект открывается в редакторе; собранную игру Anvil пока не запускает.	The project opens in the editor; Anvil doesn't launch the built game yet.
+Работает установленная копия: пересобрать и перезапустить можно только сборку из кода	The installed copy is running: only a build from code can be rebuilt and restarted
+Уже пересобирается — ход в консоли	Already rebuilding — progress is in the console
+игра запущена — закройте её, чтобы экспортировать	the game is running — close it to export
+не закрылась за 10 с	didn't close in 10 s
+прежней копии уже нет — новую не запускаю	the old copy is gone — not starting a new one

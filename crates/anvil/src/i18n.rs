@@ -204,6 +204,43 @@ pub fn on_github(version: &str) -> String {
     if english() { format!("{version} on GitHub") } else { format!("есть {version} на GitHub") }
 }
 
+/// «Из проекта Amber» / «From the Amber project».
+pub fn from_project(name: &str) -> String {
+    if english() { format!("From the {name} project") } else { format!("Из проекта {name}") }
+}
+
+/// «в 00:25» / «at 00:25».
+pub fn at(timestamp: i64) -> String {
+    if english() { format!("at {}", clock(timestamp)) } else { format!("в {}", clock(timestamp)) }
+}
+
+/// «26.09 в 21:01» / «26.09 at 21:01».
+pub fn date_at(timestamp: i64) -> String {
+    format!("{} {}", date(timestamp), at(timestamp))
+}
+
+/// «с 00:26» / «since 00:26».
+pub fn since(timestamp: i64) -> String {
+    if english() { format!("since {}", clock(timestamp)) } else { format!("с {}", clock(timestamp)) }
+}
+
+/// «упал в 00:28 через 12 с» / «crashed at 00:28 after 12 s»; не сегодня — с датой:
+/// «упал 20.09 в 00:28 через 12 с».
+pub fn crashed_at(timestamp: i64, took: i64) -> String {
+    let today = when(timestamp) == clock(timestamp);
+    match (english(), today) {
+        (true, true) => format!("crashed at {} after {}", clock(timestamp), span(took)),
+        (true, false) => format!("crashed on {} after {}", date_at(timestamp), span(took)),
+        (false, true) => format!("упал в {} через {}", clock(timestamp), span(took)),
+        (false, false) => format!("упал {} через {}", date_at(timestamp), span(took)),
+    }
+}
+
+/// «ещё 22 — в Кузнице» / «22 more in the Forge».
+pub fn more_in_forge(n: usize) -> String {
+    if english() { format!("{n} more in the Forge") } else { format!("ещё {n} — в Кузнице") }
+}
+
 /// Время работы в чипе строки состояния: «2:14», «0:08».
 pub fn uptime_short(secs: i64) -> String {
     let secs = secs.max(0);

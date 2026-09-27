@@ -8,6 +8,7 @@ mod github;
 pub mod install;
 mod jobs;
 mod overview;
+mod page;
 pub mod palette;
 mod presets;
 mod project;
@@ -51,6 +52,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             app.save();
         }
         match (app.mode, app.view) {
+            (Mode::Deck, _) if app.deck_view.page.is_some() => page::show(app, ui, &deck),
             (Mode::Deck, _) => deck::show(app, ui, &deck),
             (Mode::Forge, View::Project) => project::show(app, ui),
             (Mode::Forge, View::Overview) => overview::show(app, ui),
@@ -189,10 +191,10 @@ fn right_side(app: &mut App, ui: &mut Ui, chips: &[(anvil_ui::Mark, String, Stri
     ui.add_space(4.0);
     ui.spacing_mut().item_spacing.x = 6.0;
     for (mark, name, tail, key) in chips.iter().rev() {
+        // Чип — страница того, что запущено: там журнал, остановка, профили.
         if w::running_chip(ui, mark.accent, mark.icon, name, tail).clicked() {
-            app.deck_view.selected = Some(key.clone());
-            app.deck_view.scroll = true;
             app.set_mode(Mode::Deck);
+            app.open_page(key.clone());
         }
     }
     ui.add_space(2.0);
