@@ -1,6 +1,6 @@
 //! Витрина `anvil-ui`: макет командного центра Anvil и все элементы набора.
 //!
-//! `cargo run -p anvil-ui --example gallery [-- --dark|--light] [--en|--ru] [--accent amber] [--tab elements]
+//! `cargo run -p anvil-ui --example gallery [-- --dark|--light] [--en|--ru] [--accent amber] [--tab elements|deck]
 //!  [--dialog|--settings|--about]`
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -8,7 +8,7 @@
 use std::time::Instant;
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
-use anvil_ui::widgets::{self as w, Toasts};
+use anvil_ui::widgets::{self as w, ChainNode, Toasts};
 use anvil_ui::{Accent, CommonSettings, Icon, Kind, Lang, Palette, ThemeChoice, Tone, semibold};
 use eframe::egui::{self, RichText, Sense, Stroke, Ui, Vec2};
 
@@ -35,7 +35,11 @@ fn main() -> eframe::Result<()> {
     let accent = value("--accent")
         .and_then(|name| Accent::ALL.iter().position(|a| a.name.eq_ignore_ascii_case(&name)))
         .unwrap_or(0);
-    let page = if value("--tab").as_deref() == Some("elements") { Page::Elements } else { Page::Center };
+    let page = match value("--tab").as_deref() {
+        Some("elements") => Page::Elements,
+        Some("deck") => Page::Deck,
+        _ => Page::Center,
+    };
     let open = if has("--dialog") {
         Some(Open::Release)
     } else if has("--settings") {
@@ -82,6 +86,7 @@ enum Open {
 enum Page {
     Center,
     Elements,
+    Deck,
 }
 
 struct Project {
@@ -165,6 +170,7 @@ struct Gallery {
     invert: bool,
     srgb: bool,
     started: Instant,
+    deck_row: usize,
 }
 
 impl Gallery {
@@ -186,6 +192,7 @@ impl Gallery {
             invert: false,
             srgb: true,
             started: Instant::now(),
+            deck_row: 0,
         }
     }
 }
@@ -201,6 +208,7 @@ impl eframe::App for Gallery {
                 chrome::content(ui, |ui| self.project_view(ui));
             }
             Page::Elements => chrome::content(ui, |ui| self.elements(ui)),
+            Page::Deck => chrome::content(ui, |ui| self.deck(ui)),
         }
 
         let ctx = ui.ctx().clone();
@@ -263,7 +271,15 @@ impl Gallery {
             chrome::brand(ui, INFO.icon, INFO.name);
             ui.add_space(14.0);
             let mut page = self.page;
-            w::segmented(ui, &mut page, &[(Page::Center, None, "Командный центр"), (Page::Elements, None, "Элементы")]);
+            w::segmented(
+                ui,
+                &mut page,
+                &[
+                    (Page::Center, None, "Командный центр"),
+                    (Page::Elements, None, "Элементы"),
+                    (Page::Deck, None, "Пульт"),
+                ],
+            );
             self.page = page;
             ui.add_space(14.0);
             w::search_field(ui, &mut self.search, "Найти проект или действие…", Some("Ctrl+K"), 340.0);
@@ -320,6 +336,226 @@ impl Gallery {
                 w::note(ui, "Акцент");
             });
         });
+    }
+
+    /// Элементы Пульта: строки во всех состояниях, знаки, чипы, цепочка, клавиши.
+    fn deck(&mut self, ui: &mut Ui) {
+        let p = Palette::of(ui);
+        ui.label(RichText::new("Пульт").font(semibold(24.0)).color(p.text));
+        w::note(ui, "Строки, знаки и чипы лаунчера. Цвет — чья программа, значок — что она делает.");
+        ui.add_space(18.0);
+
+        w::section_label(ui, "Строки · 44");
+        ui.add_space(8.0);
+        // (знак, имя, подпись, бейдж, источник, моно источника, состояние, работает ли)
+        type Row = (
+            anvil_ui::Mark,
+            &'static str,
+            &'static str,
+            Option<&'static str>,
+            &'static str,
+            Option<&'static str>,
+            &'static str,
+            Option<Tone>,
+        );
+        let rows: [Row; 5] = [
+            (
+                anvil_ui::family::mark_of("amber-desktop").unwrap(),
+                "Amber",
+                "amber-desktop",
+                Some("test упал"),
+                "установлена",
+                Some("0.4.0"),
+                "работает · 2 ч 14 мин",
+                Some(Tone::Success),
+            ),
+            (
+                anvil_ui::family::mark_of("amber-server").unwrap(),
+                "amber-server",
+                "test-18731",
+                None,
+                "сборка",
+                Some("2353af9"),
+                "работает · :18731",
+                Some(Tone::Success),
+            ),
+            (
+                anvil_ui::family::mark_of("tetrachrome").unwrap(),
+                "Tetrachrome",
+                "tetrachrome",
+                None,
+                "не установлена",
+                None,
+                "на GitHub v0.1.0",
+                None,
+            ),
+            (
+                anvil_ui::family::neutral(Icon::Cube),
+                "IQube",
+                "Godot 4.7",
+                None,
+                "экспорт",
+                Some("26.09"),
+                "не запущена",
+                None,
+            ),
+            (
+                anvil_ui::family::mark_of("anvil").unwrap(),
+                "Anvil",
+                "anvil",
+                None,
+                "портативный",
+                Some("0.2.0"),
+                "это окно",
+                Some(Tone::Accent),
+            ),
+        ];
+        w::card_frame(ui).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (i, (mark, name, sub, badge, word, mono, state, tone)) in rows.iter().enumerate() {
+                let id = ui.id().with(("deck-row", i));
+                let r = w::list_row(ui, id, self.deck_row == i, 44.0, name);
+                if r.clicked() {
+                    self.deck_row = i;
+                }
+                let rect = r.rect;
+                let mut row = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(rect.shrink2(Vec2::new(12.0, 0.0)))
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                row.spacing_mut().item_spacing.x = 8.0;
+                w::item_mark(&mut row, mark.accent, mark.icon, 28.0);
+                row.add_space(4.0);
+                let font = if self.deck_row == i { semibold(14.0) } else { egui::FontId::proportional(14.0) };
+                row.label(RichText::new(*name).font(font).color(p.text));
+                w::mono(&mut row, sub, None);
+                if let Some(b) = badge {
+                    w::badge(&mut row, b, Tone::Danger);
+                }
+                row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    w::icon_button(ui, Icon::More, "Ещё");
+                    w::icon_button(ui, if tone.is_some() { Icon::Window } else { Icon::Play }, "Запустить");
+                    ui.add_space(16.0);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(230.0, 30.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            match tone {
+                                Some(t) => {
+                                    w::dot(ui, *t);
+                                    ui.label(RichText::new(*state).size(13.0).color(p.text));
+                                }
+                                None => {
+                                    w::ring(ui);
+                                    ui.label(RichText::new(*state).size(13.0).color(p.weak));
+                                }
+                            }
+                        },
+                    );
+                    ui.add_space(16.0);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(190.0, 30.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            w::source_chip(ui, word, *mono);
+                        },
+                    );
+                });
+                if i + 1 < rows.len() {
+                    let y = rect.bottom();
+                    ui.painter().hline((rect.left() + 12.0)..=(rect.right() - 12.0), y, Stroke::new(1.0, p.border));
+                }
+            }
+        });
+
+        ui.add_space(18.0);
+        w::section_label(ui, "Знаки · 16 · 28 · 40 · 56");
+        ui.add_space(8.0);
+        let mut marks: Vec<anvil_ui::Mark> = anvil_ui::family::MARKS.iter().map(|(_, m)| *m).collect();
+        marks.extend([Icon::Cube, Icon::Gamepad, Icon::Target, Icon::Layers].map(anvil_ui::family::neutral));
+        for size in [16.0, 28.0, 40.0, 56.0] {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                for m in &marks {
+                    w::item_mark(ui, m.accent, m.icon, size);
+                }
+            });
+            ui.add_space(4.0);
+        }
+
+        ui.add_space(18.0);
+        w::section_label(ui, "Чипы, цепочка, стопка");
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            w::source_chip(ui, "установлена", Some("0.4.0"));
+            w::source_chip(ui, "сборка", Some("2353af9"));
+            w::source_chip(ui, "не установлена", None);
+            ui.add_space(14.0);
+            let amber = anvil_ui::family::mark_of("amber-desktop").unwrap();
+            let server = anvil_ui::family::mark_of("amber-server").unwrap();
+            w::running_chip(ui, amber.accent, amber.icon, "Amber", "2:14");
+            w::running_chip(ui, server.accent, server.icon, "amber-server", ":18731");
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            w::chain(ui, &[ChainNode::Running, ChainNode::Running, ChainNode::Crashed], "2 из 3 работают");
+            ui.add_space(20.0);
+            w::chain(ui, &[ChainNode::Starting, ChainNode::Stopped], "запускается");
+            ui.add_space(20.0);
+            let amber = anvil_ui::family::mark_of("amber-desktop").unwrap();
+            let server = anvil_ui::family::mark_of("amber-server").unwrap();
+            w::mark_stack(
+                ui,
+                &[(server.accent, server.icon), (amber.accent, amber.icon), (amber.accent, amber.icon)],
+                p.bg,
+            );
+            ui.add_space(20.0);
+            w::badge(ui, "упал", Tone::Danger);
+            w::badge(ui, "перезапуск", Tone::Accent);
+            w::badge(ui, "свежая", Tone::Success);
+            w::badge(ui, "код новее", Tone::Warning);
+            w::badge(ui, "0.4.0", Tone::Neutral);
+        });
+
+        ui.add_space(18.0);
+        w::section_label(ui, "Кнопки и клавиши");
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let split = w::split_button(ui, Kind::Primary, Some(Icon::Play), "Запустить · test", "Другой профиль");
+            w::menu(&split.menu, 220.0, |ui| {
+                w::menu_item(ui, Some(Icon::Play), "обычный", None);
+                w::menu_item(ui, Some(Icon::Play), "test", None);
+            });
+            w::split_button(ui, Kind::Secondary, Some(Icon::Play), "Играть", "Другой профиль");
+            w::button(ui, Kind::Danger, Some(Icon::Stop), "Остановить");
+        });
+        ui.add_space(6.0);
+        w::key_hints(
+            ui,
+            &[
+                (&["Enter"], "запустить"),
+                (&["Ctrl", "Enter"], "из кода"),
+                (&["Alt", "Enter"], "страница"),
+                (&["Shift", "Enter"], "в Кузнице"),
+            ],
+        );
+        ui.add_space(6.0);
+        w::hotkey_field(
+            ui,
+            &["Ctrl", "Alt", "Space"],
+            "Изменить…",
+            Some((true, "Свободно — работает из любой программы")),
+        );
+        w::hotkey_field(
+            ui,
+            &["Ctrl", "Alt", "Space"],
+            "Изменить…",
+            Some((false, "Занято другой программой — выберите другое")),
+        );
     }
 
     fn task_bar(&mut self, ui: &mut Ui) {

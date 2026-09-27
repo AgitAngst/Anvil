@@ -184,6 +184,40 @@ impl Palette {
     pub fn soft(&self, color: Color32) -> Color32 {
         color.gamma_multiply(if self.dark { 0.16 } else { 0.12 })
     }
+
+    /// Непрозрачная мягкая подложка — мягкая поверх `card`. Из неё бейджи и Danger-кнопка:
+    /// так контраст не зависит от того, на чём они лежат (выбранная строка, панель, карточка).
+    pub fn badge_fill(&self, color: Color32) -> Color32 {
+        over(self.soft(color), self.card)
+    }
+
+    /// Рамка Danger-кнопки: красный наполовину.
+    pub fn danger_line(&self) -> Color32 {
+        self.danger.gamma_multiply(0.5)
+    }
+
+    /// Цвета знака предмета: заливка, значок и внутренняя кромка, если она нужна.
+    ///
+    /// `None` — нейтральный знак (не программа семьи: проект Godot или Unity, набор): поверхность
+    /// `raised`, рамка `border_strong`, значок цвета текста. Янтарь в светлой теме почти не виден на
+    /// светлом фоне, поэтому у него тёмная кромка в 1 px.
+    pub fn mark(&self, accent: Option<Accent>) -> (Color32, Color32, Option<Color32>) {
+        match accent {
+            None => (self.raised, self.text, Some(self.border_strong)),
+            Some(a) => {
+                let s = a.swatch(self.dark);
+                let edge = (!self.dark && a == Accent::AMBER).then(|| Color32::from_black_alpha(89));
+                (s.fill, s.on_fill, edge)
+            }
+        }
+    }
+}
+
+/// Полупрозрачное `top` поверх непрозрачного `under` — каким его видит глаз.
+pub fn over(top: Color32, under: Color32) -> Color32 {
+    let rest = 1.0 - f32::from(top.a()) / 255.0;
+    let mix = |t: u8, u: u8| (f32::from(t) + f32::from(u) * rest).round().min(255.0) as u8;
+    Color32::from_rgb(mix(top.r(), under.r()), mix(top.g(), under.g()), mix(top.b(), under.b()))
 }
 
 fn accent_id() -> egui::Id {
@@ -364,13 +398,6 @@ mod tests {
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
     }
 
-    /// Полупрозрачная подложка поверх фона — так её и видит глаз.
-    fn over(top: Color32, under: Color32) -> Color32 {
-        let rest = 1.0 - f32::from(top.a()) / 255.0;
-        let mix = |t: u8, u: u8| (f32::from(t) + f32::from(u) * rest).round().min(255.0) as u8;
-        Color32::from_rgb(mix(top.r(), under.r()), mix(top.g(), under.g()), mix(top.b(), under.b()))
-    }
-
     #[test]
     fn every_text_reads_on_its_background() {
         let mut failures = Vec::new();
@@ -390,11 +417,22 @@ mod tests {
                     ("надпись главной кнопки", p.on_accent, p.accent),
                     ("акцент на выбранной строке", p.accent_text, over(p.soft(p.accent), p.surface)),
                     ("текст на выбранной строке", p.text, over(p.soft(p.accent), p.surface)),
+                    ("текст на выбранной строке Пульта", p.text, p.raised),
+                    ("текст под курсором", p.text, p.hover),
+                    ("подпись под курсором", p.weak, p.hover),
+                    ("акцентный текст на выбранной строке Пульта", p.accent_text, p.raised),
+                    ("нейтральный знак", p.text, p.raised),
+                    ("Danger-кнопка", p.danger, p.badge_fill(p.danger)),
                 ];
-                for (name, tone) in [("успех", p.success), ("внимание", p.warning), ("ошибка", p.danger)]
-                {
+                for (name, tone) in [
+                    ("подпись", p.weak),
+                    ("акцент", p.accent_text),
+                    ("успех", p.success),
+                    ("внимание", p.warning),
+                    ("ошибка", p.danger),
+                ] {
                     pairs.push((name, tone, p.card));
-                    pairs.push((name, tone, over(p.soft(tone), p.card)));
+                    pairs.push((name, tone, p.badge_fill(tone)));
                 }
                 for (what, text, background) in pairs {
                     let ratio = contrast(text, background);
@@ -405,6 +443,18 @@ mod tests {
             }
         }
         failures.dedup();
+        // Кромка знака Amber в светлой теме — графика: не меньше 3:1 ко всем светлым фонам.
+        let p = Palette::new(false, Accent::EMBER);
+        let (fill, _, edge) = p.mark(Some(Accent::AMBER));
+        let edge = over(edge.expect("у янтаря в светлой теме есть кромка"), fill);
+        for (what, under) in
+            [("bg", p.bg), ("surface", p.surface), ("card", p.card), ("raised", p.raised), ("hover", p.hover)]
+        {
+            let ratio = contrast(edge, under);
+            if ratio < 3.0 {
+                failures.push(format!("кромка знака Amber на {what} — {ratio:.2}:1"));
+            }
+        }
         assert!(
             failures.is_empty(),
             "контраст ниже 4.5:1:

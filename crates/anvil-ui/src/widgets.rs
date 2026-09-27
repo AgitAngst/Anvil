@@ -9,7 +9,7 @@ use eframe::egui::{
 
 use crate::icons::{self, Icon};
 use crate::lang::tr;
-use crate::theme::{Palette, radius, semibold};
+use crate::theme::{Accent, Palette, radius, semibold};
 
 /// Смысловой цвет: бейджи, точки состояния, баннеры, уведомления.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,15 +122,11 @@ pub fn button_sized(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str, siz
             };
             (fill, Color32::TRANSPARENT, if hovered { p.text } else { p.weak })
         }
+        // Заливка непрозрачная и под курсором не темнеет — темнеет рамка: иначе красный текст
+        // теряет контраст в светлой теме.
         Kind::Danger => {
-            let fill = if pressed {
-                p.danger.gamma_multiply(0.3)
-            } else if hovered {
-                p.danger.gamma_multiply(0.22)
-            } else {
-                p.soft(p.danger)
-            };
-            (fill, p.danger.gamma_multiply(0.5), p.danger)
+            let border = if hovered || pressed { p.danger } else { p.danger_line() };
+            (p.badge_fill(p.danger), border, p.danger)
         }
     };
     // Недоступная кнопка любого вида — одна и та же: плоская, с тихим текстом.
@@ -180,7 +176,7 @@ pub fn badge(ui: &mut Ui, text: &str, tone: Tone) -> Response {
     let galley = ui.painter().layout_no_wrap(text.to_owned(), semibold(12.0), color);
     let size = Vec2::new(galley.size().x + 14.0, 20.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
-    ui.painter().rect_filled(rect, 10, p.soft(color));
+    ui.painter().rect_filled(rect, 10, p.badge_fill(color));
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, color);
     response
 }
@@ -190,6 +186,14 @@ pub fn dot(ui: &mut Ui, tone: Tone) -> Response {
     let p = Palette::of(ui);
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
     ui.painter().circle_filled(rect.center(), 4.0, tone.color(&p));
+    response
+}
+
+/// Кольцо вместо точки: «не запущен», «закрыт». Рядом всегда слово.
+pub fn ring(ui: &mut Ui) -> Response {
+    let p = Palette::of(ui);
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+    ui.painter().circle_stroke(rect.center(), 3.25, Stroke::new(1.5, p.weak));
     response
 }
 
@@ -475,7 +479,7 @@ pub fn nav_item(ui: &mut Ui, selected: bool, tone: Tone, text: &str, trailing: O
             egui::pos2(rect.right() - 10.0 - (galley.size().x + 12.0) / 2.0, rect.center().y),
             Vec2::new(galley.size().x + 12.0, 18.0),
         );
-        ui.painter().rect_filled(pill, 9, p.soft(color));
+        ui.painter().rect_filled(pill, 9, p.badge_fill(color));
         ui.painter().galley(pill.center() - galley.size() / 2.0, galley, color);
     }
     focus_ring(ui, rect, &response, radius::CONTROL);
@@ -621,7 +625,7 @@ fn menu_item_toned(ui: &mut Ui, icon: Option<Icon>, text: &str, shortcut: Option
         (true, false) => p.text,
     };
     if hovered {
-        let fill = if danger { p.soft(p.danger) } else { p.hover };
+        let fill = if danger { p.badge_fill(p.danger) } else { p.hover };
         ui.painter().rect_filled(rect, radius::CONTROL, fill);
     }
     if let Some(icon) = icon {
@@ -752,7 +756,7 @@ pub fn confirm(
 pub fn field_row(ui: &mut Ui, key: &str, value: impl FnOnce(&mut Ui)) {
     let p = Palette::of(ui);
     ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(96.0, 22.0), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(110.0, 22.0), Sense::hover());
         ui.painter().text(
             egui::pos2(rect.left(), rect.center().y),
             Align2::LEFT_CENTER,
@@ -767,4 +771,275 @@ pub fn field_row(ui: &mut Ui, key: &str, value: impl FnOnce(&mut Ui)) {
 /// Скруглённый прямоугольник-подложка — для своих раскладок.
 pub fn fill_rect(ui: &Ui, rect: Rect, color: Color32, corner: impl Into<CornerRadius>) {
     ui.painter().rect_filled(rect, corner, color);
+}
+
+// ─── Пульт: знаки, чипы, строки ─────────────────────────────────────────────
+
+/// Нарисовать знак предмета в `rect`: квадрат со скруглением в четверть стороны и значок
+/// посередине. `accent` — цвет программы семьи; `None` — нейтральный знак (Godot, Unity, набор).
+pub fn paint_mark(ui: &Ui, rect: Rect, accent: Option<Accent>, icon: Icon) {
+    let p = Palette::of(ui);
+    let (fill, fg, edge) = p.mark(accent);
+    let corner = (rect.width() * 0.25).round() as u8;
+    let stroke = edge.map_or(Stroke::NONE, |c| Stroke::new(1.0, c));
+    ui.painter().rect(rect, corner, fill, stroke, StrokeKind::Inside);
+    let inner = Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.58));
+    icons::paint(ui.painter(), inner, icon, fg);
+}
+
+/// Знак предмета: 16 — чипы и история, 28 — строки, 40 — заголовок службы, 56 — страница предмета.
+pub fn item_mark(ui: &mut Ui, accent: Option<Accent>, icon: Icon, size: f32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    paint_mark(ui, rect, accent, icon);
+    response
+}
+
+/// Стопка знаков набора: знаки 28, каждый следующий на 18 правее, с кольцом 2 px цвета `under`.
+pub fn mark_stack(ui: &mut Ui, marks: &[(Option<Accent>, Icon)], under: Color32) -> Response {
+    let size = 28.0;
+    let width = if marks.is_empty() { 0.0 } else { size + 18.0 * (marks.len() - 1) as f32 };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, size), Sense::hover());
+    for (i, (accent, icon)) in marks.iter().enumerate() {
+        let r = Rect::from_min_size(egui::pos2(rect.left() + 18.0 * i as f32, rect.top()), Vec2::splat(size));
+        ui.painter().rect_filled(r.expand(2.0), 9, under);
+        paint_mark(ui, r, *accent, *icon);
+    }
+    response
+}
+
+/// Что вернула раздельная кнопка: основная часть и стрелка с меню.
+pub struct SplitResponse {
+    pub main: Response,
+    pub menu: Response,
+}
+
+/// Раздельная кнопка: слева действие, справа стрелка, открывающая меню (`menu(&r.menu, …)`).
+/// Одна пилюля высотой 30; у каждой части свой фокус.
+pub fn split_button(ui: &mut Ui, kind: Kind, icon: Option<Icon>, text: &str, menu_hint: &str) -> SplitResponse {
+    let p = Palette::of(ui);
+    let enabled = ui.is_enabled();
+    let font = if kind == Kind::Primary { semibold(14.0) } else { FontId::proportional(14.0) };
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, Color32::PLACEHOLDER);
+    let gap = if icon.is_some() { 7.0 } else { 0.0 };
+    let content_w = if icon.is_some() { 16.0 } else { 0.0 } + gap + galley.size().x;
+    let main_w = 24.0 + content_w;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(main_w + 28.0, 30.0), Sense::hover());
+    let main_rect = Rect::from_min_size(rect.min, Vec2::new(main_w, 30.0));
+    let menu_rect = Rect::from_min_max(egui::pos2(main_rect.right(), rect.top()), rect.max);
+    let main = ui.interact(main_rect, ui.id().with(("split-main", text)), Sense::click());
+    let menu = ui.interact(menu_rect, ui.id().with(("split-menu", text)), Sense::click());
+
+    let (base, border, fg, divider) = match (enabled, kind) {
+        (false, _) => (p.raised, p.border, p.faint, p.border),
+        (true, Kind::Primary) => (p.accent, Color32::TRANSPARENT, p.on_accent, p.on_accent.gamma_multiply(0.3)),
+        (true, _) => (p.raised, p.border, p.text, p.border),
+    };
+    let zone_fill = |r: &Response| {
+        if !enabled || !(r.hovered() || r.is_pointer_button_down_on()) {
+            return base;
+        }
+        match kind {
+            Kind::Primary => p.accent.lerp_to_gamma(if p.dark { Color32::WHITE } else { Color32::BLACK }, 0.08),
+            _ => p.hover,
+        }
+    };
+    let painter = ui.painter();
+    let r = radius::CONTROL;
+    painter.rect_filled(main_rect, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, zone_fill(&main));
+    painter.rect_filled(menu_rect, CornerRadius { nw: 0, sw: 0, ne: r, se: r }, zone_fill(&menu));
+    painter.rect_stroke(rect, r, Stroke::new(1.0, border), StrokeKind::Inside);
+    painter.vline(main_rect.right(), rect.y_range(), Stroke::new(1.0, divider));
+
+    let mut x = main_rect.left() + 12.0;
+    if let Some(icon) = icon {
+        let ir = Rect::from_min_size(egui::pos2(x, rect.center().y - 8.0), Vec2::splat(16.0));
+        icons::paint(painter, ir, icon, fg);
+        x += 16.0 + gap;
+    }
+    painter.galley(egui::pos2(x, rect.center().y - galley.size().y / 2.0), galley, fg);
+    icons::paint(painter, Rect::from_center_size(menu_rect.center(), Vec2::splat(16.0)), Icon::ArrowDown, fg);
+
+    focus_ring(ui, main_rect, &main, radius::CONTROL);
+    focus_ring(ui, menu_rect, &menu, radius::CONTROL);
+    name(&main, WidgetType::Button, text);
+    name(&menu, WidgetType::Button, menu_hint);
+    let menu = menu.on_hover_text(menu_hint);
+    if enabled {
+        SplitResponse {
+            main: main.on_hover_cursor(CursorIcon::PointingHand),
+            menu: menu.on_hover_cursor(CursorIcon::PointingHand),
+        }
+    } else {
+        SplitResponse { main, menu }
+    }
+}
+
+/// Чип источника: что запустится. «установлена `0.4.0`», «сборка `2353af9`», «не установлена».
+/// Без заливки, в рамке — одинаково читается на любом фоне строки.
+pub fn source_chip(ui: &mut Ui, word: &str, mono: Option<&str>) -> Response {
+    let p = Palette::of(ui);
+    let word_g = ui.painter().layout_no_wrap(word.to_owned(), FontId::proportional(12.0), p.weak);
+    let mono_g = mono.map(|m| ui.painter().layout_no_wrap(m.to_owned(), FontId::monospace(12.5), p.weak));
+    let space = if mono_g.is_some() { 4.0 } else { 0.0 };
+    let inner = word_g.size().x + space + mono_g.as_ref().map_or(0.0, |g| g.size().x);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(inner + 14.0, 20.0), Sense::hover());
+    ui.painter().rect_stroke(rect, radius::SMALL, Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
+    let y = rect.center().y;
+    let w = word_g.size();
+    ui.painter().galley(egui::pos2(rect.left() + 7.0, y - w.y / 2.0), word_g, p.weak);
+    if let Some(g) = mono_g {
+        let size = g.size();
+        ui.painter().galley(egui::pos2(rect.left() + 7.0 + w.x + space, y - size.y / 2.0), g, p.weak);
+    }
+    response
+}
+
+/// Чип «Запущено» в строке состояния: знак 16, имя, хвост моно (`2:14`, `:18731`). Нажимается.
+pub fn running_chip(ui: &mut Ui, accent: Option<Accent>, icon: Icon, label: &str, tail: &str) -> Response {
+    let p = Palette::of(ui);
+    let name_g = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(12.0), p.text);
+    let tail_g = ui.painter().layout_no_wrap(tail.to_owned(), FontId::monospace(12.5), p.weak);
+    let tail_w = if tail.is_empty() { 0.0 } else { 6.0 + tail_g.size().x };
+    let width = 3.0 + 16.0 + 6.0 + name_g.size().x + tail_w + 9.0;
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 22.0), Sense::click());
+    let fill = if response.hovered() { p.hover } else { p.raised };
+    ui.painter().rect(rect, 11, fill, Stroke::new(1.0, p.border), StrokeKind::Inside);
+    let mark = Rect::from_min_size(egui::pos2(rect.left() + 3.0, rect.center().y - 8.0), Vec2::splat(16.0));
+    paint_mark(ui, mark, accent, icon);
+    let y = rect.center().y;
+    let n = name_g.size();
+    let x = mark.right() + 6.0;
+    ui.painter().galley(egui::pos2(x, y - n.y / 2.0), name_g, p.text);
+    if !tail.is_empty() {
+        let t = tail_g.size();
+        ui.painter().galley(egui::pos2(x + n.x + 6.0, y - t.y / 2.0), tail_g, p.weak);
+    }
+    focus_ring(ui, rect, &response, 11);
+    name(&response, WidgetType::Button, &format!("{label} {tail}"));
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// Узел цепочки набора.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainNode {
+    Running,
+    Stopped,
+    Crashed,
+    Starting,
+}
+
+/// Цепочка набора: узлы по порядку шагов и справа текст («2 из 3 работают»).
+pub fn chain(ui: &mut Ui, nodes: &[ChainNode], text: &str) -> Response {
+    let p = Palette::of(ui);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(13.0), p.text);
+    let nodes_w = if nodes.is_empty() { 0.0 } else { 10.0 + 22.0 * (nodes.len() - 1) as f32 };
+    let text_w = if text.is_empty() { 0.0 } else { 10.0 + galley.size().x };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(nodes_w + text_w, 20.0), Sense::hover());
+    let painter = ui.painter();
+    let y = rect.center().y;
+    for (i, node) in nodes.iter().enumerate() {
+        let cx = rect.left() + 5.0 + 22.0 * i as f32;
+        if i + 1 < nodes.len() {
+            let link = Rect::from_min_size(egui::pos2(cx + 5.0, y - 1.0), Vec2::new(12.0, 2.0));
+            painter.rect_filled(link, 0, p.border_strong);
+        }
+        let c = egui::pos2(cx, y);
+        match node {
+            ChainNode::Running => {
+                painter.circle_filled(c, 5.0, p.success);
+            }
+            ChainNode::Stopped => {
+                painter.circle_stroke(c, 4.25, Stroke::new(1.5, p.weak));
+            }
+            ChainNode::Crashed => {
+                painter.circle_filled(c, 5.0, p.danger);
+                let s = Stroke::new(1.5, p.card);
+                painter.line_segment([c + Vec2::new(-2.0, -2.0), c + Vec2::new(2.0, 2.0)], s);
+                painter.line_segment([c + Vec2::new(2.0, -2.0), c + Vec2::new(-2.0, 2.0)], s);
+            }
+            ChainNode::Starting => {
+                painter.circle_stroke(c, 4.25, Stroke::new(1.5, p.border_strong));
+                let start = -std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_4;
+                let points: Vec<egui::Pos2> = (0..=8)
+                    .map(|k| {
+                        let a = start + std::f32::consts::FRAC_PI_2 * k as f32 / 8.0;
+                        c + Vec2::new(a.cos(), a.sin()) * 4.25
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(points, Stroke::new(1.5, p.accent_text)));
+            }
+        }
+    }
+    if !text.is_empty() {
+        let g = galley.size();
+        painter.galley(egui::pos2(rect.left() + nodes_w + 10.0, y - g.y / 2.0), galley, p.text);
+    }
+    response
+}
+
+/// Ряд подсказок клавиш: группы «клавиши — подпись», между группами 16.
+/// `groups`: например `&[(&["Enter"], "запустить"), (&["Ctrl", "Enter"], "из кода")]`.
+pub fn key_hints(ui: &mut Ui, groups: &[(&[&str], &str)]) {
+    let p = Palette::of(ui);
+    ui.horizontal(|ui| {
+        ui.set_min_height(30.0);
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (i, (keys, label)) in groups.iter().enumerate() {
+            if i > 0 {
+                ui.add_space(16.0);
+            }
+            for (k, key) in keys.iter().enumerate() {
+                if k > 0 {
+                    ui.add_space(3.0);
+                }
+                kbd(ui, key);
+            }
+            ui.add_space(6.0);
+            ui.label(RichText::new(*label).size(12.0).color(p.weak));
+        }
+    });
+}
+
+/// Поле сочетания клавиш: клавиши, «Изменить…», под ними — свободно ли сочетание.
+/// Возвращает ответ кнопки «Изменить…». `status`: `(true, "Свободно — …")` или `(false, "Занято …")`.
+pub fn hotkey_field(ui: &mut Ui, keys: &[&str], change: &str, status: Option<(bool, &str)>) -> Response {
+    let p = Palette::of(ui);
+    let response = ui
+        .horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            for key in keys {
+                kbd(ui, key);
+            }
+            ui.add_space(7.0);
+            button(ui, Kind::Ghost, None, change)
+        })
+        .inner;
+    if let Some((free, text)) = status {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            dot(ui, if free { Tone::Success } else { Tone::Danger });
+            let color = if free { p.weak } else { p.text };
+            ui.label(RichText::new(text).size(13.0).color(color));
+        });
+    }
+    response
+}
+
+/// Строка списка Пульта и быстрого запуска: во всю ширину, высотой `height`. Рисует только фон:
+/// под курсором — `hover`, выбранная — `raised` и полоска акцента слева. Колонки рисует вызывающий
+/// в `response.rect`; кнопки поверх строки заводить после неё, чтобы щелчок доставался им.
+pub fn list_row(ui: &mut Ui, id: egui::Id, selected: bool, height: f32, label: &str) -> Response {
+    let p = Palette::of(ui);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
+    let response = ui.interact(rect, id, Sense::click());
+    if selected {
+        ui.painter().rect_filled(rect, radius::CONTROL, p.raised);
+        let bar = Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - 14.0), Vec2::new(3.0, 28.0));
+        ui.painter().rect_filled(bar, 2, p.accent);
+    } else if response.hovered() {
+        ui.painter().rect_filled(rect, radius::CONTROL, p.hover);
+    }
+    focus_ring(ui, rect, &response, radius::CONTROL);
+    response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
+    response
 }

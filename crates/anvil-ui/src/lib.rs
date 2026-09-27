@@ -6,12 +6,14 @@
 
 pub mod appicon;
 pub mod chrome;
+pub mod family;
 pub mod icons;
 pub mod lang;
 pub mod theme;
 pub mod widgets;
 
 pub use chrome::{AppInfo, CommonSettings};
+pub use family::Mark;
 pub use icons::Icon;
 pub use lang::{Lang, tr};
 pub use theme::{Accent, Palette, ThemeChoice, choose, install, semibold, set_accent};

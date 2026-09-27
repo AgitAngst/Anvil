@@ -11,10 +11,16 @@ use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     ArrowDown,
+    /// Стрелка назад со стержнем: «назад», «на Пульт».
+    ArrowLeft,
     ArrowRight,
     ArrowUp,
+    /// Голова робота: бот.
+    Bot,
     /// Ветка git.
     Branch,
+    /// Точка и расходящиеся волны: служба, сервер как процесс.
+    Broadcast,
     /// Облачко реплики: беседа, чат. Знак Amber.
     Chat,
     Check,
@@ -25,6 +31,8 @@ pub enum Icon {
     /// `</>`: открыть в редакторе.
     Code,
     Copy,
+    /// Куб в перспективе: проект Godot (IQube).
+    Cube,
     Download,
     /// Четыре угла: вписать, во весь размер.
     Expand,
@@ -32,6 +40,8 @@ pub enum Icon {
     /// Кадр плёнки: видео, медиа. Знак FFMincer.
     Film,
     Folder,
+    /// Геймпад: игра, проект Unity.
+    Gamepad,
     Gear,
     /// Молоток: собрать.
     Hammer,
@@ -50,6 +60,8 @@ pub enum Icon {
     Package,
     Pause,
     Pencil,
+    /// Канцелярская кнопка: закрепить.
+    Pin,
     Play,
     Plus,
     /// Стрелка вперёд: повторить отменённое.
@@ -62,6 +74,8 @@ pub enum Icon {
     Server,
     Stop,
     Sun,
+    /// Мишень: полигон, стенд.
+    Target,
     Terminal,
     /// Четыре плитки: каналы, сетка. Знак Tetrachrome.
     Tiles,
@@ -69,15 +83,20 @@ pub enum Icon {
     /// Стрелка назад: отменить.
     Undo,
     Warning,
+    /// Окно с заголовком: «к окну».
+    Window,
 }
 
 impl Icon {
     /// Все значки набора — для витрины и выбора в программах.
-    pub const ALL: [Icon; 44] = [
+    pub const ALL: [Icon; 52] = [
         Icon::ArrowDown,
+        Icon::ArrowLeft,
         Icon::ArrowRight,
         Icon::ArrowUp,
+        Icon::Bot,
         Icon::Branch,
+        Icon::Broadcast,
         Icon::Chat,
         Icon::Check,
         Icon::ChevronUp,
@@ -85,11 +104,13 @@ impl Icon {
         Icon::Close,
         Icon::Code,
         Icon::Copy,
+        Icon::Cube,
         Icon::Download,
         Icon::Expand,
         Icon::File,
         Icon::Film,
         Icon::Folder,
+        Icon::Gamepad,
         Icon::Gear,
         Icon::Hammer,
         Icon::Image,
@@ -103,6 +124,7 @@ impl Icon {
         Icon::Package,
         Icon::Pause,
         Icon::Pencil,
+        Icon::Pin,
         Icon::Play,
         Icon::Plus,
         Icon::Redo,
@@ -113,11 +135,13 @@ impl Icon {
         Icon::Server,
         Icon::Stop,
         Icon::Sun,
+        Icon::Target,
         Icon::Terminal,
         Icon::Tiles,
         Icon::Trash,
         Icon::Undo,
         Icon::Warning,
+        Icon::Window,
     ];
 }
 
@@ -147,6 +171,10 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
         Icon::ArrowDown => {
             line(vec![at(6.0, 9.5), at(12.0, 15.5), at(18.0, 9.5)]);
         }
+        Icon::ArrowLeft => {
+            line(vec![at(19.0, 12.0), at(5.5, 12.0)]);
+            line(vec![at(11.0, 6.5), at(5.5, 12.0), at(11.0, 17.5)]);
+        }
         Icon::ArrowRight => {
             line(vec![at(9.5, 6.0), at(15.5, 12.0), at(9.5, 18.0)]);
         }
@@ -154,12 +182,29 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             line(vec![at(12.0, 19.0), at(12.0, 5.5)]);
             line(vec![at(6.5, 11.0), at(12.0, 5.5), at(17.5, 11.0)]);
         }
+        Icon::Bot => {
+            boxed(at(5.0, 8.0), at(19.0, 19.0), 3.0);
+            line(vec![at(12.0, 8.0), at(12.0, 5.3)]);
+            line(vec![at(2.8, 12.0), at(2.8, 15.0)]);
+            line(vec![at(21.2, 12.0), at(21.2, 15.0)]);
+            for (x, y) in [(12.0, 4.2), (9.5, 13.3), (14.5, 13.3)] {
+                push(Shape::circle_filled(at(x, y), 1.3 * scale, color));
+            }
+        }
         Icon::Branch => {
             push(Shape::circle_stroke(at(7.0, 5.5), 2.2 * scale, stroke));
             push(Shape::circle_stroke(at(7.0, 18.5), 2.2 * scale, stroke));
             push(Shape::circle_stroke(at(17.0, 7.5), 2.2 * scale, stroke));
             line(vec![at(7.0, 7.7), at(7.0, 16.3)]);
             line(vec![at(17.0, 9.7), at(17.0, 11.0), at(15.0, 13.5), at(9.0, 14.5), at(7.0, 16.3)]);
+        }
+        Icon::Broadcast => {
+            // Две пары дуг вокруг точки: ближние радиусом 4.5, дальние — 8.
+            arc(12.0, 12.0, 4.5, 0.75 * PI, 1.25 * PI);
+            arc(12.0, 12.0, 4.5, -0.25 * PI, 0.25 * PI);
+            arc(12.0, 12.0, 8.0, 0.7778 * PI, 1.2222 * PI);
+            arc(12.0, 12.0, 8.0, -0.2222 * PI, 0.2222 * PI);
+            push(Shape::circle_filled(at(12.0, 12.0), 1.8 * scale, color));
         }
         Icon::Chat => {
             // Скруглённое облачко с хвостиком внизу слева.
@@ -199,6 +244,11 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             boxed(at(8.5, 8.5), at(19.0, 19.0), 2.0);
             line(vec![at(5.0, 15.0), at(5.0, 5.0), at(15.0, 5.0)]);
         }
+        Icon::Cube => {
+            push(Shape::closed_line(vec![at(4.0, 8.0), at(16.0, 8.0), at(16.0, 20.0), at(4.0, 20.0)], stroke));
+            line(vec![at(4.0, 8.0), at(8.0, 4.0), at(20.0, 4.0), at(20.0, 16.0), at(16.0, 20.0)]);
+            line(vec![at(16.0, 8.0), at(20.0, 4.0)]);
+        }
         Icon::Download => {
             line(vec![at(12.0, 4.5), at(12.0, 15.5)]);
             line(vec![at(7.5, 11.0), at(12.0, 15.5), at(16.5, 11.0)]);
@@ -234,6 +284,17 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
                 at(3.5, 6.0),
                 at(3.5, 7.0),
             ]);
+        }
+        Icon::Gamepad => {
+            // Корпус — «стадион» 9 × 9 с полукругами по бокам; слева крестовина, справа две кнопки.
+            let mut points: Vec<Pos2> = Vec::new();
+            points.extend(arc_points(16.5, 12.5, 4.5, -PI / 2.0, PI / 2.0, 12).into_iter().map(|(x, y)| at(x, y)));
+            points.extend(arc_points(7.5, 12.5, 4.5, PI / 2.0, 1.5 * PI, 12).into_iter().map(|(x, y)| at(x, y)));
+            push(Shape::closed_line(points, stroke));
+            line(vec![at(7.5, 10.8), at(7.5, 14.2)]);
+            line(vec![at(5.8, 12.5), at(9.2, 12.5)]);
+            push(Shape::circle_filled(at(15.5, 11.3), 1.1 * scale, color));
+            push(Shape::circle_filled(at(17.5, 13.7), 1.1 * scale, color));
         }
         Icon::Gear => {
             push(Shape::circle_stroke(at(12.0, 12.0), 3.0 * scale, stroke));
@@ -331,6 +392,11 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             line(vec![at(5.0, 19.0), at(6.0, 15.0), at(16.0, 5.0), at(19.0, 8.0), at(9.0, 18.0), at(5.0, 19.0)]);
             line(vec![at(14.0, 7.0), at(17.0, 10.0)]);
         }
+        Icon::Pin => {
+            line(vec![at(8.5, 4.0), at(15.5, 4.0)]);
+            line(vec![at(10.0, 4.0), at(10.0, 9.5), at(7.0, 13.0), at(17.0, 13.0), at(14.0, 9.5), at(14.0, 4.0)]);
+            line(vec![at(12.0, 13.0), at(12.0, 20.5)]);
+        }
         Icon::Play => {
             let points = vec![at(8.0, 5.5), at(18.5, 12.0), at(8.0, 18.5)];
             push(Shape::convex_polygon(points, color, Stroke::NONE));
@@ -387,6 +453,11 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
                 line(vec![at(12.0 + 6.8 * c, 12.0 + 6.8 * s), at(12.0 + 9.2 * c, 12.0 + 9.2 * s)]);
             }
         }
+        Icon::Target => {
+            push(Shape::circle_stroke(at(12.0, 12.0), 8.5 * scale, stroke));
+            push(Shape::circle_stroke(at(12.0, 12.0), 5.0 * scale, stroke));
+            push(Shape::circle_filled(at(12.0, 12.0), 1.6 * scale, color));
+        }
         Icon::Terminal => {
             boxed(at(3.5, 5.0), at(20.5, 19.0), 2.0);
             line(vec![at(7.0, 9.5), at(10.0, 12.0), at(7.0, 14.5)]);
@@ -416,6 +487,10 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             push(Shape::closed_line(outline, stroke));
             line(vec![at(12.0, 9.5), at(12.0, 14.0)]);
             push(Shape::circle_filled(at(12.0, 16.8), 1.1 * scale, color));
+        }
+        Icon::Window => {
+            boxed(at(3.5, 5.0), at(20.5, 19.0), 2.0);
+            line(vec![at(3.5, 9.5), at(20.5, 9.5)]);
         }
     }
     out.into_inner()
