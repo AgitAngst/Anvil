@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn amber_becomes_four_items_with_family_names() {
         let amber = rust(
-            r"D:\dev\amber",
+            "/dev/amber",
             vec![
                 bin("amber-admin", true),
                 bin("amber-bot", false),
@@ -297,12 +297,12 @@ mod tests {
             ]
         );
         assert_eq!(items[2].mark.icon, Icon::Chat);
-        assert_eq!(items[2].key, r"d:\dev\amber|amber-desktop");
+        assert_eq!(items[2].key, "/dev/amber|amber-desktop");
     }
 
     #[test]
     fn engines_get_neutral_marks_and_versions() {
-        let mut godot = rust(r"D:\dev\IQube", Vec::new());
+        let mut godot = rust("/dev/IQube", Vec::new());
         godot.kind = Kind::Godot;
         godot.meta = None;
         godot.engine = Some(crate::engines::Info {
@@ -314,7 +314,7 @@ mod tests {
             editor: None,
         });
         let mut unity = godot.clone();
-        unity.path = PathBuf::from(r"D:\dev\Claude_Sandbox");
+        unity.path = PathBuf::from("/dev/Claude_Sandbox");
         unity.kind = Kind::Unity;
         unity.engine.as_mut().unwrap().version = None;
         let items = items([&godot, &unity], |p| p.ends_with("Claude_Sandbox").then(|| "target".to_owned()));
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn default_profile_comes_first_and_follows_install() {
-        let amber = rust(r"D:\dev\amber", vec![bin("amber-desktop", true)]);
+        let amber = rust("/dev/amber", vec![bin("amber-desktop", true)]);
         let item = items([&amber], |_| None).remove(0);
         let presets = vec![
             Preset {
@@ -348,14 +348,14 @@ mod tests {
 
     #[test]
     fn pinned_first_then_recent_and_anvil_last() {
-        let anvil = rust(r"D:\dev\Anvil", vec![bin("anvil", true)]);
-        let tools = rust(r"D:\dev\Tools", vec![bin("alpha", true), bin("beta", true), bin("gamma", true)]);
+        let anvil = rust("/dev/Anvil", vec![bin("anvil", true)]);
+        let tools = rust("/dev/Tools", vec![bin("alpha", true), bin("beta", true), bin("gamma", true)]);
         let items = items([&anvil, &tools], |_| None);
         let mut deck = DeckSettings::default();
-        deck.pinned.push(key(Path::new(r"D:\dev\Tools"), "gamma"));
-        deck.launched.insert(key(Path::new(r"D:\dev\Tools"), "beta"), 100);
-        deck.launched.insert(key(Path::new(r"D:\dev\Anvil"), "anvil"), 999);
-        deck.removed.push(key(Path::new(r"D:\dev\Tools"), "alpha"));
+        deck.pinned.push(key(Path::new("/dev/Tools"), "gamma"));
+        deck.launched.insert(key(Path::new("/dev/Tools"), "beta"), 100);
+        deck.launched.insert(key(Path::new("/dev/Anvil"), "anvil"), 999);
+        deck.removed.push(key(Path::new("/dev/Tools"), "alpha"));
         let order = order(&items, &deck);
         let names: Vec<&str> = order.iter().map(|k| k.rsplit('|').next().unwrap()).collect();
         assert_eq!(names, ["gamma", "beta", "anvil"]);
