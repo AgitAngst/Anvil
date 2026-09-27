@@ -130,10 +130,8 @@ pub fn background(app: &mut App, ctx: &egui::Context) {
     if state != app.hotkey_seen {
         if state == crate::hotkey::State::Busy {
             let keys = app.hotkey.combo().map(|c| c.keys().join("+")).unwrap_or_default();
-            let text = format!(
-                "{keys}: {}",
-                t("сочетание занято другой программой — быстрый запуск по щелчку на значке в трее")
-            );
+            let text =
+                format!("{keys}: {}", t("сочетание занято другой программой — выберите другое: Настройки → Запуск"));
             app.toasts.push(text, Tone::Warning);
         }
         app.hotkey_seen = state;
@@ -338,6 +336,10 @@ fn tray_menu(app: &mut App) {
 
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
     use egui::{Key, KeyboardShortcut, Modifiers};
+    // Настройки ждут новое сочетание — нажатое принадлежит им.
+    if app.hotkey_capture {
+        return;
+    }
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F5)) {
         app.refresh();
         app.fetch();

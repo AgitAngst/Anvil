@@ -105,8 +105,28 @@ fn modified(path: &Path) -> Option<i64> {
     time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64)
 }
 
+/// Установленные через Unity Hub редакторы: версии по возрастанию.
+pub fn unity_editors() -> Vec<String> {
+    let mut versions: Vec<String> = unity_roots()
+        .into_iter()
+        .filter_map(|root| std::fs::read_dir(root).ok())
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().join("Editor").join("Unity.exe").is_file())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    versions.sort();
+    versions.dedup();
+    versions
+}
+
 /// Редактор Unity нужной версии: папка Unity Hub по умолчанию или та, что задана в Hub.
 pub fn unity_editor(version: &str) -> Option<PathBuf> {
+    unity_roots().into_iter().map(|root| root.join(version).join("Editor").join("Unity.exe")).find(|exe| exe.is_file())
+}
+
+/// Папки, куда Unity Hub ставит редакторы.
+fn unity_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(r"C:\Program Files\Unity\Hub\Editor")];
     if let Some(appdata) = std::env::var_os("APPDATA") {
         let file = PathBuf::from(appdata).join("UnityHub").join("secondaryInstallPath.json");
@@ -117,7 +137,7 @@ pub fn unity_editor(version: &str) -> Option<PathBuf> {
             }
         }
     }
-    roots.into_iter().map(|root| root.join(version).join("Editor").join("Unity.exe")).find(|exe| exe.is_file())
+    roots
 }
 
 /// Рендеры Godot 4, как их пишет `config/features` (там же версия и, например, `C#`).

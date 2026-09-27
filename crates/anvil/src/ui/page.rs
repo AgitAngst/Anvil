@@ -1293,12 +1293,15 @@ fn services(
 ) {
     let p = Palette::of(ui);
     ui.label(RichText::new(t("Серверы и боты")).font(semibold(24.0)).color(p.text));
-    w::note(
-        ui,
+    // «Писать вывод: Ничего» — не обещать файл.
+    let note = if app.config.runs.output == crate::config::Output::Nothing {
+        t("Локальные запускает Anvil. Удалёнными управляет amber-admin — здесь только его сводка.")
+    } else {
         t(
             "Локальные запускает Anvil и пишет их вывод в файл. Удалёнными управляет amber-admin — здесь только его сводка.",
-        ),
-    );
+        )
+    };
+    w::note(ui, note);
     ui.add_space(18.0);
     let remote = super::deck::remote_card_data(app);
     let left = |ui: &mut Ui, actions: &mut Vec<Action>| {
@@ -1548,15 +1551,23 @@ fn service_detail(app: &mut App, ui: &mut Ui, item: &Item, look: &Look, origin: 
         });
     });
     ui.add_space(14.0);
-    let log = run
-        .as_ref()
-        .and_then(|r| r.log.clone())
-        .or_else(|| app.runs.iter().rev().filter(|r| r.key == item.key).find_map(|r| r.log.clone()));
-    log_card(app, ui, item, log, origin, actions);
+    // Журнал — последнего запуска. Его вывод не писался («Писать вывод: Ничего») — так и сказать, а
+    // не показывать прежний, будто он живой.
+    let log = last.as_ref().and_then(|r| r.log.clone());
+    let unlogged = last.is_some() && log.is_none();
+    log_card(app, ui, item, log, unlogged, origin, actions);
 }
 
 /// Журнал службы: поиск, «только ошибки», копирование, строки по §5.9.
-fn log_card(app: &mut App, ui: &mut Ui, item: &Item, log: Option<PathBuf>, origin: f32, actions: &mut Vec<Action>) {
+fn log_card(
+    app: &mut App,
+    ui: &mut Ui,
+    item: &Item,
+    log: Option<PathBuf>,
+    unlogged: bool,
+    origin: f32,
+    actions: &mut Vec<Action>,
+) {
     let p = Palette::of(ui);
     let lines = log.as_deref().map(|path| app.log_lines(path)).unwrap_or_default();
     let mut find = std::mem::take(&mut app.deck_view.log_find);
@@ -1612,7 +1623,12 @@ fn log_card(app: &mut App, ui: &mut Ui, item: &Item, log: Option<PathBuf>, origi
             ui.spacing_mut().item_spacing.y = 0.0;
             if log.is_none() {
                 ui.set_min_height(height);
-                w::note(ui, t("Журнала ещё нет: его пишет запуск из Anvil"));
+                let text = if unlogged {
+                    t("Вывод последнего запуска не писался в файл.")
+                } else {
+                    t("Журнала ещё нет: его пишет запуск из Anvil")
+                };
+                w::note(ui, text);
                 return;
             }
             if shown.is_empty() {
@@ -1654,7 +1670,9 @@ fn log_card(app: &mut App, ui: &mut Ui, item: &Item, log: Option<PathBuf>, origi
         w::divider(ui);
         egui::Frame::new().inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
             let place = log.as_deref().map(short_path).unwrap_or_default();
-            let text = if place.is_empty() {
+            let text = if unlogged {
+                t("Писать ли вывод в файл — Настройки → Запуск → «Писать вывод».").to_owned()
+            } else if place.is_empty() {
                 t("Вывод служб пишется в файл — служба переживёт закрытие Anvil.").to_owned()
             } else {
                 format!(

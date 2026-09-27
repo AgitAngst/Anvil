@@ -38,6 +38,8 @@ pub struct Config {
     pub quick: QuickSettings,
     /// Окно и трей.
     pub window: WindowSettings,
+    /// Запуски: что писать в журналы, когда останавливать принудительно.
+    pub runs: RunSettings,
     /// Версия файла настроек: по ней старые файлы один раз дополняются новым (см. [`migrate`]).
     /// В файлах 0.2 поля нет — это версия 0.
     #[serde(default)]
@@ -71,12 +73,54 @@ pub struct WindowSettings {
     pub close_to_tray: bool,
     /// Подсказку «Anvil в трее» уже показывали.
     pub tray_hint_shown: bool,
+    /// На чём открываться: Пульт, Кузница или где был.
+    pub open_on: OpenOn,
+    /// Где был в прошлый раз (для «Где был»): Пульт или Кузница.
+    pub last: OpenOn,
 }
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { close_to_tray: true, tray_hint_shown: false }
+        Self { close_to_tray: true, tray_hint_shown: false, open_on: OpenOn::Deck, last: OpenOn::Deck }
     }
+}
+
+/// На чём открывается окно.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenOn {
+    #[default]
+    Deck,
+    Forge,
+    /// Где был в прошлый раз.
+    Last,
+}
+
+/// Запуски: что писать в журналы, когда останавливать принудительно.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunSettings {
+    /// Чей вывод писать в файл.
+    pub output: Output,
+    /// Через сколько секунд после мягкой остановки спросить про принудительную.
+    pub force_after: u32,
+}
+
+impl Default for RunSettings {
+    fn default() -> Self {
+        Self { output: Output::Services, force_after: 5 }
+    }
+}
+
+/// Чей вывод пишется в `run\…\out.log`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Output {
+    /// Службы и сборки из кода (установленные программы — нет: бережём диск).
+    #[default]
+    Services,
+    All,
+    Nothing,
 }
 
 /// Что Пульт помнит о предметах. Ключ предмета — `<папка проекта в нижнем регистре>|<бинарник>`
@@ -90,6 +134,8 @@ pub struct DeckSettings {
     pub removed: Vec<String>,
     /// Когда предмет запускали с Пульта, секунды Unix: по этому сортируется группа.
     pub launched: BTreeMap<String, i64>,
+    /// Псевдонимы закреплённых: точное совпадение в поиске стоит первым (§5.11).
+    pub aliases: BTreeMap<String, String>,
     /// Выбранный профиль предмета (имя); нет — «обычный».
     pub profile: BTreeMap<String, String>,
 }
@@ -176,6 +222,7 @@ impl Default for Config {
             godot: None,
             quick: QuickSettings::default(),
             window: WindowSettings::default(),
+            runs: RunSettings::default(),
             version: VERSION,
             common: CommonSettings::default(),
         }

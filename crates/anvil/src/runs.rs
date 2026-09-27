@@ -409,6 +409,17 @@ fn wait_same(pid: u32, _started: i64, mut every_10s: impl FnMut()) -> Option<u32
     None
 }
 
+/// Сколько ждать мягкой остановки, прежде чем спросить про принудительную (настройка «Запуск»).
+static FORCE_AFTER: AtomicU64 = AtomicU64::new(5);
+
+pub fn set_force_after(secs: u32) {
+    FORCE_AFTER.store(u64::from(secs.clamp(1, 300)), Ordering::Relaxed);
+}
+
+pub fn force_after() -> Duration {
+    Duration::from_secs(FORCE_AFTER.load(Ordering::Relaxed))
+}
+
 /// Мягко остановить: окну — «закройся» (как крестиком), консольной службе — Ctrl+Break.
 /// Ctrl+Break посылает маленький помощник (`anvil --ctrl-break <pid>`): чтобы дотянуться до чужой
 /// консоли, к ней надо присоединиться, а у отладочного Anvil своя консоль.

@@ -257,6 +257,47 @@ pub fn already_running(bin: &str, profile: &str) -> String {
     }
 }
 
+/// Окно занятого exe: что будет при «Закрыть программу и собрать».
+pub fn close_then_force(secs: u64, launch_after: bool) -> String {
+    match (english(), launch_after) {
+        (false, true) => format!(
+            "Программа получит команду закрыться, как от крестика; через {secs} с — принудительно. Потом сборка и запуск новой."
+        ),
+        (false, false) => format!(
+            "Программа получит команду закрыться, как от крестика; через {secs} с — принудительно. Несохранённое в ней может пропасть."
+        ),
+        (true, true) => format!(
+            "The program is asked to close, as if its close button was pressed; after {secs} s it is stopped forcibly. Then the new build is made and started."
+        ),
+        (true, false) => format!(
+            "The program is asked to close, as if its close button was pressed; after {secs} s it is stopped forcibly. Unsaved work in it may be lost."
+        ),
+    }
+}
+
+/// «Если не закроется за 5 с — спрошу…» / «If it doesn't close in 5 s…».
+pub fn ask_before_force(secs: u64) -> String {
+    if english() {
+        format!("If it doesn't close in {secs} s, I'll ask before forcing it")
+    } else {
+        format!("Если не закроется за {secs} с — спрошу, остановить ли принудительно")
+    }
+}
+
+/// «не закрылась за 5 с» — запись в журнале задачи.
+pub fn not_closed_in(secs: u64) -> String {
+    if english() { format!("didn't close in {secs} s") } else { format!("не закрылась за {secs} с") }
+}
+
+/// «не закрылся за 5 с. Остановить принудительно?».
+pub fn force_question(secs: u64) -> String {
+    if english() {
+        format!("didn't close in {secs} s. Force stop?")
+    } else {
+        format!("не закрылся за {secs} с. Остановить принудительно?")
+    }
+}
+
 /// «ещё 22 — в Кузнице» / «22 more in the Forge».
 pub fn more_in_forge(n: usize) -> String {
     if english() { format!("{n} more in the Forge") } else { format!("ещё {n} — в Кузнице") }

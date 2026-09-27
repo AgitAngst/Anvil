@@ -5,6 +5,7 @@
 
 mod amber;
 mod app;
+mod autostart;
 mod builds;
 mod config;
 mod deck;
@@ -48,6 +49,11 @@ impl eframe::App for Anvil {
         ui::draw(&mut self.0, ui);
     }
 
+    fn on_exit(&mut self) {
+        // Псевдоним, набранный без выхода из поля, — на диск и при выходе.
+        self.0.flush();
+    }
+
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         anvil_ui::chrome::clear_color(visuals, app::ACCENT)
     }
@@ -64,19 +70,24 @@ fn main() -> eframe::Result<()> {
         }
     }
     // Anvil с этими настройками уже работает (спрятан в трей) — показать его и выйти.
-    if !instance::claim(&config::path()) {
+    let claim = instance::claim(&config::path());
+    if claim == instance::Claim::Taken {
         return Ok(());
     }
+    // Автозапуск (`--tray`) — сразу спрятанным в трей. Но не после обновления: перезапуск передаёт
+    // прежние аргументы, а пользователь только что смотрел на окно.
+    let tray_start = autostart::tray_start() && claim == instance::Claim::Fresh;
     // Следы прошлого обновления (*.old-…, папка загрузки) — прочь.
     anvil_update::cleanup();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Anvil")
+            .with_visible(!tray_start)
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([1040.0, 640.0])
             .with_icon(std::sync::Arc::new(anvil_ui::appicon::icon_data(app::ACCENT, Icon::Hammer))),
         centered: true,
         ..Default::default()
     };
-    eframe::run_native("Anvil", options, Box::new(|cc| Ok(Box::new(Anvil(app::App::new(cc))))))
+    eframe::run_native("Anvil", options, Box::new(move |cc| Ok(Box::new(Anvil(app::App::new(cc, tray_start))))))
 }

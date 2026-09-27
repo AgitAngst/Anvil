@@ -82,22 +82,27 @@ fn key_name(vk: u32) -> String {
 pub struct Hotkey {
     pub pressed: Receiver<()>,
     state: Arc<Mutex<State>>,
-    combo: Option<Combo>,
+    combo: Arc<Mutex<Option<Combo>>>,
+    /// Поток с очередью сообщений: ему шлётся «перерегистрировать».
+    #[cfg(windows)]
+    thread: Arc<Mutex<Option<u32>>>,
 }
 
 impl Hotkey {
-    /// Запустить поток. `wake` зовётся после каждого нажатия — разбудить окно (оно может быть
-    /// спрятано в трей).
+    /// Запустить поток. `wake` зовётся после каждого нажатия и смены состояния — разбудить окно
+    /// (оно может быть спрятано в трей).
     pub fn spawn(combo: Option<Combo>, wake: impl Fn() + Send + 'static) -> Hotkey {
         let (tx, pressed) = std::sync::mpsc::channel();
         let state = Arc::new(Mutex::new(if combo.is_some() { State::Pending } else { State::Invalid }));
+        let combo = Arc::new(Mutex::new(combo));
         #[cfg(windows)]
         {
-            let s = state.clone();
+            let thread = Arc::new(Mutex::new(None));
+            let (s, c, t) = (state.clone(), combo.clone(), thread.clone());
             let _ = std::thread::Builder::new()
                 .name("anvil-hotkey".into())
-                .spawn(move || imp::run(tx, s, combo, Box::new(wake)));
-            Hotkey { pressed, state, combo }
+                .spawn(move || imp::run(tx, s, c, t, Box::new(wake)));
+            Hotkey { pressed, state, combo, thread }
         }
         #[cfg(not(windows))]
         {
@@ -112,7 +117,23 @@ impl Hotkey {
     }
 
     pub fn combo(&self) -> Option<Combo> {
-        self.combo
+        self.combo.lock().ok().and_then(|c| *c)
+    }
+
+    /// Сменить сочетание (настройки); `None` — снять (пока в настройках ждут новое).
+    pub fn set(&self, combo: Option<Combo>) {
+        if let Ok(mut c) = self.combo.lock() {
+            *c = combo;
+        }
+        // Не на Windows регистрировать некому — как в `spawn`, сразу «не задано».
+        let next = if cfg!(windows) && combo.is_some() { State::Pending } else { State::Invalid };
+        if let Ok(mut s) = self.state.lock() {
+            *s = next;
+        }
+        #[cfg(windows)]
+        if let Some(thread) = self.thread.lock().ok().and_then(|t| *t) {
+            imp::reregister(thread);
+        }
     }
 }
 
@@ -124,18 +145,31 @@ type Pressed = std::sync::mpsc::Sender<()>;
 mod imp {
     use super::{Combo, Pressed, State};
     use std::sync::{Arc, Mutex};
+    use windows_sys::Win32::System::Threading::GetCurrentThreadId;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, PostThreadMessageW, WM_APP, WM_HOTKEY};
 
     const ID: i32 = 1;
+    /// «Перерегистрировать»: сочетание сменили в настройках.
+    const REREGISTER: u32 = WM_APP + 1;
 
-    pub fn run(tx: Pressed, state: Arc<Mutex<State>>, combo: Option<Combo>, wake: Box<dyn Fn() + Send>) {
+    pub fn run(
+        tx: Pressed,
+        state: Arc<Mutex<State>>,
+        combo: Arc<Mutex<Option<Combo>>>,
+        thread: Arc<Mutex<Option<u32>>>,
+        wake: Box<dyn Fn() + Send>,
+    ) {
         // SAFETY: у потока своя очередь сообщений; регистрация и снятие — в этом же потоке.
         unsafe {
-            let register = |state: &Arc<Mutex<State>>| {
-                let result = match combo {
+            if let Ok(mut t) = thread.lock() {
+                *t = Some(GetCurrentThreadId());
+            }
+            let register = || {
+                UnregisterHotKey(std::ptr::null_mut(), ID);
+                let result = match combo.lock().ok().and_then(|c| *c) {
                     Some(c) => {
                         let mut mods = MOD_NOREPEAT;
                         for (on, flag) in
@@ -157,18 +191,32 @@ mod imp {
                     *s = result;
                 }
             };
-            register(&state);
+            register();
             wake();
             let mut msg: MSG = std::mem::zeroed();
             while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-                if msg.message == WM_HOTKEY && msg.wParam == ID as usize {
-                    if tx.send(()).is_err() {
-                        break;
+                match msg.message {
+                    WM_HOTKEY if msg.wParam == ID as usize => {
+                        if tx.send(()).is_err() {
+                            break;
+                        }
+                        wake();
                     }
-                    wake();
+                    REREGISTER => {
+                        register();
+                        wake();
+                    }
+                    _ => {}
                 }
             }
             UnregisterHotKey(std::ptr::null_mut(), ID);
+        }
+    }
+
+    pub fn reregister(thread: u32) {
+        // SAFETY: сообщение без указателей; поток разберёт его в своей очереди.
+        unsafe {
+            PostThreadMessageW(thread, REREGISTER, 0, 0);
         }
     }
 }

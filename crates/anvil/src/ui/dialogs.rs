@@ -173,16 +173,8 @@ fn locked(app: &mut App, ctx: &egui::Context) {
         ) {
             choice = Some(Resolve::MoveAside);
         }
-        let stop_text = if running_after {
-            t(
-                "Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Потом сборка и запуск новой.",
-            )
-        } else {
-            t(
-                "Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Несохранённое в ней может пропасть.",
-            )
-        };
-        if option(ui, Icon::Stop, t("Закрыть программу и собрать"), stop_text) {
+        let stop_text = crate::i18n::close_then_force(crate::runs::force_after().as_secs(), running_after);
+        if option(ui, Icon::Stop, t("Закрыть программу и собрать"), &stop_text) {
             choice = Some(Resolve::Stop);
         }
         if option(
@@ -222,7 +214,7 @@ fn stop(app: &mut App, ctx: &egui::Context) {
     let body = |ui: &mut egui::Ui| {
         point(ui, &crate::i18n::stop_line(service, &name, pid));
         ui.add_space(6.0);
-        point(ui, t("Если не закроется за 5 с — спрошу, остановить ли принудительно"));
+        point(ui, &crate::i18n::ask_before_force(crate::runs::force_after().as_secs()));
     };
     let heading = format!("{} {name}?", t("Остановить"));
     match w::confirm(ctx, "anvil-stop", &heading, body, t("Остановить"), true) {
@@ -244,7 +236,7 @@ fn force(app: &mut App, ctx: &egui::Context) {
         ui.add_space(6.0);
         point(ui, t("Несохранённое в памяти пропадёт. Данные на диске останутся"));
     };
-    let heading = format!("{name}: {}", t("не закрылся за 5 с. Остановить принудительно?"));
+    let heading = format!("{name}: {}", crate::i18n::force_question(crate::runs::force_after().as_secs()));
     match w::confirm(ctx, "anvil-force", &heading, body, t("Остановить принудительно"), true) {
         Some(true) => {
             app.force_confirm = None;

@@ -125,6 +125,8 @@ struct Row {
     target: Option<(Box<crate::deck::Item>, Option<String>)>,
     /// Что сделает Enter — подпись у выбранной строки: «запустить», «к окну», «журнал».
     verb: String,
+    /// Псевдоним закреплённого: набран точно — строка первая (§5.11).
+    alias: Option<String>,
     command: Command,
 }
 
@@ -146,6 +148,7 @@ impl Row {
             crashed: false,
             target: None,
             verb: String::new(),
+            alias: None,
             command,
         }
     }
@@ -745,14 +748,25 @@ fn arrange(rows: &[Row], query: &str, layout: bool, quick: bool) -> Vec<(Section
         .collect();
     // Раздел, потом совпадение, при равном — упавшее выше, потом порядок строк.
     scored.sort();
-    scored.into_iter().map(|(section, _, _, i)| (section, i)).collect()
+    // Точно набранный псевдоним закреплённого — первым, над всеми разделами.
+    // В любой раскладке, как и остальной поиск (§5.11).
+    let query = words.join(" ");
+    let other = layout.then(|| swapped.join(" "));
+    let exact = |i: usize| rows[i].alias.as_deref().is_some_and(|a| a == query || other.as_deref() == Some(a));
+    let (mut first, rest): (Vec<_>, Vec<_>) = scored.into_iter().partition(|&(_, _, _, i)| exact(i));
+    first.extend(rest);
+    first.into_iter().map(|(section, _, _, i)| (section, i)).collect()
 }
 
 /// Каждое слово должно найтись; чем чаще это начало слова, тем выше строка. `swapped` — те же
 /// слова в другой раскладке: берётся лучшее из двух.
 fn score(row: &Row, words: &[String], swapped: Option<&[String]>) -> Option<usize> {
-    let texts =
-        [row.title.to_lowercase(), row.detail.as_deref().unwrap_or_default().to_lowercase(), row.extra.to_lowercase()];
+    let texts = [
+        row.title.to_lowercase(),
+        row.detail.as_deref().unwrap_or_default().to_lowercase(),
+        row.extra.to_lowercase(),
+        row.alias.as_deref().unwrap_or_default().to_lowercase(),
+    ];
     let starts = |word: &str| {
         texts
             .iter()
@@ -791,6 +805,11 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
         });
         let pin_keys = pinned.filter(|n| *n <= 9).map(|n| format!("Alt+{n}"));
         let launched = app.config.deck.launched.get(&item.key).copied();
+        // Как запрос: строчными, пробелы — по одному.
+        let alias = pinned
+            .and(app.config.deck.aliases.get(&item.key))
+            .map(|a| a.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
+            .filter(|a| !a.is_empty());
         let boxed = || Box::new(item.clone());
         if item.kind != ProjectKind::Rust || item.bin.is_none() {
             // Godot и Unity: одна строка — главное действие.
@@ -815,6 +834,7 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
                 crashed: false,
                 target: Some((boxed(), None)),
                 verb: lower(&look.hint),
+                alias: alias.clone(),
                 command: Command::Launch(boxed(), None),
             });
             continue;
@@ -888,7 +908,12 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
                 mono: true,
                 state: state.clone(),
                 keys: if is_chosen { pin_keys.clone() } else { None },
-                extra: format!("{bin} {} {}", profile.label(), t("запустить")),
+                extra: format!(
+                    "{bin} {} {} {}",
+                    profile.label(),
+                    t("запустить"),
+                    if is_chosen { alias.clone().unwrap_or_default() } else { String::new() }
+                ),
                 section: Section::Launch,
                 running,
                 pin: if is_chosen { pinned.filter(|n| *n <= 9) } else { None },
@@ -896,6 +921,7 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
                 crashed: matches!(state, Some((Some(Tone::Danger), _))),
                 target: Some((boxed(), Some(profile.name.clone()))),
                 verb,
+                alias: if is_chosen { alias.clone() } else { None },
                 command,
             });
             if is_chosen {
@@ -915,6 +941,7 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
                     crashed: false,
                     target: Some((boxed(), None)),
                     verb: t("собрать и запустить").to_owned(),
+                    alias: None,
                     command: Command::FromCode(boxed(), None),
                 });
             }
@@ -936,6 +963,7 @@ fn rows(app: &mut App, quick: bool) -> Vec<Row> {
                 crashed: false,
                 target: Some((boxed(), None)),
                 verb: t("поставить").to_owned(),
+                alias: None,
                 command: Command::InstallCode(item.project.clone(), bin.clone()),
             });
         }
@@ -1221,6 +1249,22 @@ mod tests {
         );
         // В окне — ещё действия Кузницы.
         assert_eq!(arrange(&rows, "", true, false).last(), Some(&(Section::Other, 4)));
+    }
+
+    #[test]
+    fn exact_alias_comes_first() {
+        let mut amber = item("Amber", None);
+        amber.section = Section::Launch;
+        let mut server = item("amber-server · test", None);
+        server.section = Section::Launch;
+        server.alias = Some("as".into());
+        let rows = [amber, server, item("Настройки", Some("Amber"))];
+        assert_eq!(found(&rows, "as"), vec![1]);
+        assert_eq!(found(&rows, "AS"), vec![1]);
+        // В другой раскладке — тоже точно.
+        assert_eq!(found(&rows, "фы"), vec![1]);
+        // Не точно — как обычное совпадение: «am» — начало имени у обоих.
+        assert_eq!(found(&rows, "am"), vec![0, 1, 2]);
     }
 
     #[test]

@@ -20,10 +20,22 @@ fn name(config: &Path, what: &str) -> String {
     format!("Local\\AgitAngst.Anvil.{hash:016x}.{what}")
 }
 
-/// Занять место. `false` — Anvil с этими настройками уже работает: ему сказано показаться, этому —
-/// выйти. Если прежний закрывается (перезапуск после обновления), подождать его до 5 с.
+/// Чем кончилась попытка занять место.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Claim {
+    /// Anvil с этими настройками не работал.
+    Fresh,
+    /// Прежний закрылся, пока ждали, — перезапуск (после обновления).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Restarted,
+    /// Anvil с этими настройками уже работает: ему сказано показаться, этому — выйти.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Taken,
+}
+
+/// Занять место. Если прежний закрывается (перезапуск после обновления), подождать его до 5 с.
 #[cfg(windows)]
-pub fn claim(config: &Path) -> bool {
+pub fn claim(config: &Path) -> Claim {
     use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, WAIT_ABANDONED, WAIT_OBJECT_0};
     use windows_sys::Win32::System::Threading::{
         CreateMutexW, EVENT_MODIFY_STATE, OpenEventW, SetEvent, WaitForSingleObject,
@@ -35,7 +47,7 @@ pub fn claim(config: &Path) -> bool {
     unsafe {
         let mutex = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
         if mutex.is_null() || GetLastError() != ERROR_ALREADY_EXISTS {
-            return true;
+            return Claim::Fresh;
         }
         let event_name = wide(&name(config, "show"));
         let event = OpenEventW(EVENT_MODIFY_STATE, 0, event_name.as_ptr());
@@ -44,13 +56,13 @@ pub fn claim(config: &Path) -> bool {
             windows_sys::Win32::Foundation::CloseHandle(event);
         }
         let result = WaitForSingleObject(mutex, 5000);
-        result == WAIT_OBJECT_0 || result == WAIT_ABANDONED
+        if result == WAIT_OBJECT_0 || result == WAIT_ABANDONED { Claim::Restarted } else { Claim::Taken }
     }
 }
 
 #[cfg(not(windows))]
-pub fn claim(_config: &Path) -> bool {
-    true
+pub fn claim(_config: &Path) -> Claim {
+    Claim::Fresh
 }
 
 /// Ждать, пока второй запуск попросит показаться; тогда — `Show` в канал трея и разбудить окно.

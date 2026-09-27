@@ -100,7 +100,7 @@ pub struct Download {
 #[derive(Debug, Clone)]
 pub enum Before {
     /// Попросить программу закрыться (окно — как крестиком, службу — Ctrl+Break); не закрылась за
-    /// 5 с — остановить. Второе — служба ли это.
+    /// `runs::force_after` — остановить. Второе — служба ли это.
     Stop(u32, bool),
     /// Переименовать занятый exe, чтобы сборка могла записать новый.
     MoveAside(PathBuf),
@@ -276,7 +276,7 @@ impl Runner {
             match step {
                 Before::Stop(pid, service) => {
                     self.note(id, format!("› stop PID {pid}"));
-                    if let Err(e) = crate::runs::stop_blocking(*pid, *service, Duration::from_secs(5)) {
+                    if let Err(e) = crate::runs::stop_blocking(*pid, *service, crate::runs::force_after()) {
                         self.note(id, format!("  {e}"));
                     }
                 }
@@ -384,14 +384,16 @@ impl Runner {
                 self.note(id, format!("› stop PID {pid}"));
                 self.send(Event::Stopping(pid));
                 crate::runs::soft_stop(pid, replace.service);
-                if crate::procs::wait_exit(pid, Duration::from_secs(10)) {
+                // Один раз: число в записи совпадёт с ожиданием, даже если настройку сменят сейчас.
+                let wait = crate::runs::force_after();
+                if crate::procs::wait_exit(pid, wait) {
                     if let Some(launch) = &spec.after {
                         crate::runs::wait_log(launch, Duration::from_secs(3));
                     }
                 } else {
                     // Не закрылась — новая не запускается: две копии поделили бы порт и данные.
                     // Принудительно — только после вопроса.
-                    self.note(id, format!("› PID {pid}: {}", crate::i18n::t("не закрылась за 10 с")));
+                    self.note(id, format!("› PID {pid}: {}", crate::i18n::not_closed_in(wait.as_secs())));
                     self.send(Event::StopTimedOut(pid));
                     outcome.ok = false;
                 }

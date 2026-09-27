@@ -232,8 +232,7 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
         fresh
     });
     if let Some(n) = pinned {
-        let pins: Vec<&Item> =
-            items.iter().filter(|i| !i.is_self() && app.config.deck.pinned.contains(&i.key)).collect();
+        let pins = crate::deck::numbered(items, &app.config.deck);
         if let Some(item) = pins.get(n) {
             actions.push(Action::Main(Box::new((*item).clone())));
         }
@@ -706,6 +705,8 @@ pub(super) fn toggle_pin(app: &mut App, key: String) {
     match pinned.iter().position(|k| *k == key) {
         Some(i) => {
             pinned.remove(i);
+            // Псевдоним — у закрепления: открепили — уходит и он (как в настройках).
+            app.config.deck.aliases.remove(&key);
         }
         None => pinned.push(key),
     }

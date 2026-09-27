@@ -229,6 +229,14 @@ pub struct App {
     pub hotkey: crate::hotkey::Hotkey,
     /// Каким состояние сочетания видели в прошлый раз: «занято» сообщается один раз.
     pub hotkey_seen: crate::hotkey::State,
+    /// Настройки ждут новое сочетание: следующее нажатое станет им.
+    pub hotkey_capture: bool,
+    /// В `config` есть незаписанное на диск (псевдоним пишется, когда поле отпустили): `flush`.
+    pub config_dirty: bool,
+    /// Вкладка настроек.
+    pub settings_tab: usize,
+    /// Запуск с `--tray`: первые кадры eframe сам показывает окно — прятать снова.
+    hide_again: u8,
     /// Щелчки по уведомлениям Windows: `open:<ключ>`, `log:<ключ>`, `again:<ключ>`, `show`.
     pub clicks: Receiver<String>,
     /// Окно спрятано в трей.
@@ -260,7 +268,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext) -> Self {
+    /// `tray_start` — автозапуск с `--tray` (и не перезапуск после обновления): окно сразу в трее.
+    pub fn new(cc: &eframe::CreationContext, tray_start: bool) -> Self {
         let config_path = config::path();
         let (config, config_error, migrated) = config::load(&config_path);
         anvil_ui::install(&cc.egui_ctx, ACCENT, config.common.theme);
@@ -282,6 +291,7 @@ impl App {
         let (stop_tx, stop_rx) = std::sync::mpsc::channel();
         let notifier = Arc::new(crate::notify::Notifier::new(config.notify, config_path.with_file_name("cache")));
         notifier.set_crash(config.notify_crash);
+        crate::runs::set_force_after(config.runs.force_after);
         let (job_commands, job_events, _) = jobs::spawn(cc.egui_ctx.clone(), notifier.clone());
         // Трей, сочетание и щелчки по уведомлениям будят окно, даже спрятанное.
         let wake = |ctx: &egui::Context| {
@@ -303,6 +313,13 @@ impl App {
             anvil_update::Config::new("anvil", env!("CARGO_PKG_VERSION"), "AgitAngst/Anvil"),
             cc.egui_ctx.clone(),
         );
+        // На чём открываться — настройка «Запуск»: Пульт, Кузница или где был.
+        let mode = match (config.window.open_on, config.window.last) {
+            (crate::config::OpenOn::Forge, _) | (crate::config::OpenOn::Last, crate::config::OpenOn::Forge) => {
+                Mode::Forge
+            }
+            _ => Mode::Deck,
+        };
         let mut app = Self {
             selected: config.selected.clone(),
             config,
@@ -313,7 +330,7 @@ impl App {
             scanning: true,
             refreshed_at: None,
             view: View::Project,
-            mode: Mode::Deck,
+            mode,
             deck_view: DeckView::default(),
             builds: HashMap::new(),
             godot_editor: None,
@@ -378,6 +395,10 @@ impl App {
             tray_rx,
             hotkey,
             hotkey_seen: crate::hotkey::State::Pending,
+            hotkey_capture: false,
+            config_dirty: false,
+            settings_tab: 0,
+            hide_again: 0,
             clicks,
             hidden: false,
             quitting: false,
@@ -395,6 +416,11 @@ impl App {
         };
         if let Some(error) = config_error {
             app.toasts.push(format!("{}: {error}", t("Настройки не прочитаны")), Tone::Danger);
+        }
+        // Автозапуск при входе в Windows — сразу в трей (если трей есть; иначе окно, как обычно).
+        if tray_start && app.tray.is_some() {
+            app.hidden = true;
+            app.hide_again = 6;
         }
         if migrated {
             app.save();
@@ -423,6 +449,13 @@ impl App {
         self.save();
     }
 
+    /// Забыть заданный путь к Godot: искать в `PATH`.
+    pub fn reset_godot(&mut self) {
+        self.config.godot = None;
+        self.godot_editor = None;
+        self.save();
+    }
+
     /// Сохранить свой токен GitHub (`None` — забыть).
     pub fn set_token(&mut self, token: Option<String>) {
         self.gh_auth = None;
@@ -435,6 +468,7 @@ impl App {
     }
 
     pub fn save(&mut self) {
+        self.config_dirty = false;
         if let Err(e) = config::save(&self.config_path, &self.config) {
             self.toasts.push(format!("{}: {e}", t("Настройки не сохранены")), Tone::Danger);
         }
@@ -588,7 +622,8 @@ impl App {
     /// Обзор ↔ карточка проекта (`Ctrl+0`). Обзор живёт в Кузнице.
     pub fn toggle_view(&mut self) {
         if self.mode == Mode::Deck {
-            self.mode = Mode::Forge;
+            // Через `set_mode`: общий выбор и «Где был». Он может открыть карточку — обзор после.
+            self.set_mode(Mode::Forge);
             self.view = View::Overview;
             return;
         }
@@ -633,12 +668,26 @@ impl App {
             }
         }
         self.mode = mode;
+        // «Где был» — запомнить, где (пишется, только если изменилось).
+        if self.config.window.open_on == crate::config::OpenOn::Last {
+            let last = if mode == Mode::Forge { crate::config::OpenOn::Forge } else { crate::config::OpenOn::Deck };
+            if self.config.window.last != last {
+                self.config.window.last = last;
+                self.save();
+            }
+        }
     }
 
     // ─── Окно и трей ───────────────────────────────────────────────────────────
 
     /// Крестик, фокус быстрого запуска, запоминание места окна. Зовётся и у спрятанного окна.
     fn window_tick(&mut self, ctx: &egui::Context) {
+        // Запуск в трей: eframe показывает окно после первого кадра — спрятать снова.
+        if self.hide_again > 0 && self.hidden && self.quick.is_none() {
+            self.hide_again -= 1;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            ctx.request_repaint();
+        }
         let (close, focused, minimized, maximized, outer, inner) = ctx.input(|i| {
             let v = i.viewport();
             (
@@ -667,6 +716,11 @@ impl App {
                     );
                 }
             }
+        }
+        // Ждали новое сочетание, а окно спрятали, свернули или сделали быстрым запуском — настроек
+        // не видно, нажатие ловить некому: вернуть прежнее, иначе сочетания нет нигде.
+        if self.hotkey_capture && (self.hidden || minimized || self.quick.is_some()) {
+            self.cancel_hotkey_capture();
         }
         match (self.quick.is_some(), focused) {
             (true, Some(true)) => self.quick_focused = true,
@@ -709,8 +763,24 @@ impl App {
         self.ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     }
 
+    /// Бросить ожидание нового сочетания: вернуть прежнее из настроек.
+    pub fn cancel_hotkey_capture(&mut self) {
+        if self.hotkey_capture {
+            self.hotkey_capture = false;
+            self.hotkey.set(crate::hotkey::Combo::parse(&self.config.quick.hotkey));
+        }
+    }
+
+    /// Записать настройки, если есть незаписанное (псевдоним, набранный без выхода из поля).
+    pub fn flush(&mut self) {
+        if self.config_dirty {
+            self.save();
+        }
+    }
+
     /// Спрятать окно в трей.
     pub fn hide_window(&mut self) {
+        self.flush();
         self.hidden = true;
         self.ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
@@ -925,14 +995,15 @@ impl App {
         crate::deck::chosen(&profiles, self.config.deck.profile.get(&item.key).map(String::as_str)).clone()
     }
 
-    /// Метка запуска игры: без журнала (игра — не служба), профиль «обычный».
+    /// Метка запуска игры: журнал — только при «Писать вывод: Всё» (игра — не служба), профиль
+    /// «обычный».
     fn game_tag(&self, item: &crate::deck::Item, source: String) -> crate::runs::Tag {
         crate::runs::Tag {
             key: item.key.clone(),
             name: item.name.clone(),
             profile: String::new(),
             source,
-            log: false,
+            log: self.config.runs.output == crate::config::Output::All,
             service: false,
             from_code: false,
         }
@@ -952,8 +1023,13 @@ impl App {
             name: item.name.clone(),
             profile: profile.name.clone(),
             source,
-            // Вывод пишется у служб и у сборок из кода; у установленных программ — нет (бережём SSD).
-            log: service || from_code,
+            // По умолчанию вывод пишется у служб и у сборок из кода; у установленных программ — нет
+            // (бережём SSD). «Всё» и «Ничего» — настройка «Запуск».
+            log: match self.config.runs.output {
+                crate::config::Output::Services => service || from_code,
+                crate::config::Output::All => true,
+                crate::config::Output::Nothing => false,
+            },
             service,
             from_code,
         }
@@ -1438,7 +1514,7 @@ impl App {
         let (tx, ctx) = (self.stop_tx.clone(), self.ctx.clone());
         std::thread::spawn(move || {
             crate::runs::soft_stop(pid, service);
-            let note = if crate::procs::wait_exit(pid, Duration::from_secs(5)) {
+            let note = if crate::procs::wait_exit(pid, crate::runs::force_after()) {
                 StopNote::Stopped(name)
             } else {
                 StopNote::Timeout(name, pid)

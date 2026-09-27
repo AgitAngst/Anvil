@@ -230,6 +230,12 @@ fn main_program<'a>(project: &Path, programs: &[&'a Bin]) -> Option<&'a str> {
     programs.iter().find(|b| names.iter().any(|n| b.name.eq_ignore_ascii_case(n))).map(|b| b.name.as_str())
 }
 
+/// Закреплённые так, как их нумеруют Alt+1…9 (Пульт, палитра, трей, настройки): `items` — уже в
+/// порядке Пульта, сам Anvil не считается.
+pub fn numbered<'a>(items: &'a [Item], deck: &DeckSettings) -> Vec<&'a Item> {
+    items.iter().filter(|i| !i.is_self() && deck.pinned.contains(&i.key)).collect()
+}
+
 /// Порядок строк: по группам; внутри — закреплённые в порядке закрепления, потом недавно
 /// запущенные, потом по имени. Сам Anvil — последний среди программ. Убранные не показываются.
 pub fn order(items: &[Item], deck: &DeckSettings) -> Vec<String> {

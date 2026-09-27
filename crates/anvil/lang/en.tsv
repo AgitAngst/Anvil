@@ -128,8 +128,6 @@ cargo clean удалит папку сборки целиком. Следующ�
 Очистить сборку…	Clean build…
 Ошибки и предупреждения	Errors and warnings
 Проверки	Checks
-Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Несохранённое в ней может пропасть.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Unsaved work in it may be lost.
-Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Потом сборка и запуск новой.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Then the new build is made and started.
 Программа сейчас запущена	The program is running
 Сборка	Build
 Сборка пойдёт в папку anvil внутри target: запущенная программа не мешает, но собираться придётся с нуля.	The build goes to an anvil folder inside target: the running program is not in the way, but everything is built from scratch.
@@ -355,7 +353,6 @@ Amber не стоит	Amber not installed
 Собрать debug	Build debug
 Собрать release	Build release
 Собрать и запустить amber-admin из проекта	Build and run amber-admin from the project
-Уведомление Windows, если задача шла дольше 15 с, а окно Anvil было не в фокусе.	A Windows notification when a task took over 15 s and the Anvil window was not focused.
 Уведомлять о конце долгих задач	Notify when long tasks finish
 в сети	online
 не проверен	not checked
@@ -437,12 +434,10 @@ Godot не найден: укажите путь к редактору в мен
 Проект уже открыт в Unity	The project is already open in Unity
 Экспортировать и играть	Export and play
 Добавить профиль	Add a profile
-Если не закроется за 5 с — спрошу, остановить ли принудительно	If it doesn't close in 5 s, I'll ask before forcing it
 Когда считать запущенным: port:18731 — порт слушает, window — окно появилось, 5s — через 5 с. Пусто — сразу.	When it counts as started: port:18731 — the port listens, window — a window appeared, 5s — after 5 s. Empty — at once.
 Недавно	Recent
 Несохранённое в памяти пропадёт. Данные на диске останутся	Unsaved state in memory is lost. Data on disk stays
 Остановить принудительно	Force stop
-Про программы, запущенные из Anvil: код выхода словами. Окно впереди — сообщение в окне.	For programs launched from Anvil: the exit code in words. When the window is in front, the message shows in the window.
 Профили запуска	Launch profiles
 Профили…	Profiles…
 Профиль — это бинарник, откуда его брать и с какими аргументами: например, клиент с тестовым профилем из кода. «Обычный» профиль есть всегда: установленная копия без аргументов.	A profile is a binary, where to take it from and which arguments to pass: for example, the client with a test profile, built from code. The “default” profile always exists: the installed copy without arguments.
@@ -456,7 +451,6 @@ Godot не найден: укажите путь к редактору в мен
 и его дочерних процессов	and its children
 код	code
 нарушение доступа	access violation
-не закрылся за 5 с. Остановить принудительно?	didn't close in 5 s. Force stop?
 нет нужной DLL	a required DLL is missing
 обычный	default
 остановлен через	stopped after
@@ -594,7 +588,6 @@ Unity уже открыт	Unity is already open
 Работает установленная копия: пересобрать и перезапустить можно только сборку из кода	The installed copy is running: only a build from code can be rebuilt and restarted
 Уже пересобирается — ход в консоли	Already rebuilding — progress is in the console
 игра запущена — закройте её, чтобы экспортировать	the game is running — close it to export
-не закрылась за 10 с	didn't close in 10 s
 прежней копии уже нет — новую не запускаю	the old copy is gone — not starting a new one
 Anvil работает в трее	Anvil is in the tray
 Enter — отодвинуть exe и собрать · Esc — отмена	Enter — move the exe aside and build · Esc — cancel
@@ -612,7 +605,6 @@ Enter — отодвинуть exe и собрать · Esc — отмена	Ent
 Собрать из кода и запустить	Build from code and launch
 в Кузнице	in the Forge
 к окну	show window
-сочетание занято другой программой — быстрый запуск по щелчку на значке в трее	the shortcut is taken by another program — use quick launch by clicking the tray icon
 страница	page
 установить	install
 занято	taken
@@ -621,3 +613,59 @@ Enter — отодвинуть exe и собрать · Esc — отмена	Ent
 поставить	install
 поставить и запустить	install and launch
 собрать и запустить	build and launch
+10 с	10 s
+30 с	30 s
+5 с	5 s
+Alt+1…9 в быстром запуске и на Пульте — по этому порядку. Псевдоним: набрать его точно — предмет первым.	Alt+1…9 in quick launch and on the Deck follow this order. Alias: type it exactly and the item comes first.
+Git (просто репозиторий)	Git (just a repository)
+Виды проектов	Project kinds
+Всё	Everything
+Выбрать…	Choose…
+Вывод установленных программ не пишется — бережём диск. На запуск — до двух файлов по 5 МБ.	Installed programs' output isn't saved, to spare the disk. Up to two files of 5 MB per run.
+Выход из Anvil ничего не останавливает: запущенное продолжит работать.	Quitting Anvil stops nothing: what is running keeps running.
+Выше	Up
+Где был	Last used
+Движки	Engines
+Журналы и данные	Logs and data
+Закреплённое	Pinned
+Закрывать быстрый запуск после запуска	Close quick launch after launching
+Занято другой программой — выберите другое	Taken by another program — choose another
+Запись Anvil в «Автозагрузке» Windows (реестр, раздел Run) с этим exe.	An Anvil entry in Windows startup (the registry Run key) with this exe.
+Запускать Anvil при входе в Windows, сразу в трей	Start Anvil in the tray when I sign in to Windows
+Изменить…	Change…
+Искать в PATH	Search PATH
+Искать и в русской раскладке («фь еу» = «am te»)	Also match the Russian layout (“фь еу” = “am te”)
+Крестик прячет Anvil в трей	The close button hides Anvil to the tray
+Кузнице	Forge
+Нажмите сочетание… · Esc — отмена	Press a shortcut… · Esc to cancel
+Ниже	Down
+Ничего	Nothing
+Ничего не закреплено — закрепить можно в меню строки Пульта (Ctrl+P).	Nothing is pinned — pin items from a Deck row's menu (Ctrl+P).
+Ничего не убрано.	Nothing is removed.
+Нужен для:	Needed for:
+Общее	General
+Окно и трей	Window and tray
+Открывать на	Open on
+Писать вывод	Save output
+Принудительно останавливать через	Force stop after
+Проект открывается в версии из его ProjectVersion.txt.	A project opens in the version from its ProjectVersion.txt.
+Пульте	Deck
+Редакторы из Unity Hub	Editors from Unity Hub
+Свободно — работает из любой программы	Free — works from any program
+Службы и сборки	Services and builds
+Сочетание клавиш	Shortcut
+Сочетание не задано	No shortcut set
+Столько ждать, пока программа закроется сама; потом — вопрос, остановить ли принудительно.	How long to wait for a program to close by itself; then you're asked whether to force it.
+Трея нет: значок не создался	No tray: the icon couldn't be created
+не найдены	not found
+не установлен	not installed
+нужен	needs
+псевдоним	alias
+сочетание занято другой программой — выберите другое: Настройки → Запуск	the shortcut is taken by another program — choose another in Settings → Launch
+Вывод запусков в файлы не пишется.	Run output isn't saved to files.
+Вывод последнего запуска не писался в файл.	The last run's output wasn't saved to a file.
+Группы на Пульте идут в своём порядке	Groups on the Deck keep their own order
+Локальные запускает Anvil. Удалёнными управляет amber-admin — здесь только его сводка.	Anvil starts the local ones. Remote ones are managed by amber-admin — this is only its summary.
+Писать ли вывод в файл — Настройки → Запуск → «Писать вывод».	Whether output is saved to a file: Settings → Launch → Save output.
+Пишется вывод всех запусков — и установленных программ, и игр. На запуск — до двух файлов по 5 МБ.	Output of every run is saved — installed programs and games too. Up to two files of 5 MB per run.
+не на Пульте	not on the Deck
