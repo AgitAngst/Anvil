@@ -104,7 +104,6 @@ origin не ответил у	origin did not respond for
 чисто	clean
 cargo clean удалит папку сборки целиком. Следующая сборка пойдёт с нуля и будет долгой.	cargo clean deletes the whole build folder. The next build starts from scratch and takes a while.
 Вывод	Output
-Добавить пресет	Add preset
 Задачи	Tasks
 Закрыть лог	Close log
 Закрыть программу и собрать	Close the program and build
@@ -128,12 +127,7 @@ cargo clean удалит папку сборки целиком. Следующ�
 Очистить сборку	Clean the build of
 Очистить сборку…	Clean build…
 Ошибки и предупреждения	Errors and warnings
-Пресет	Preset
-Пресет — это бинарник и аргументы: например, клиент с тестовым профилем. Главная кнопка «Запустить» берёт выбранный пресет.	A preset is a binary plus arguments, for example a client with a test profile. The main Run button uses the chosen preset.
-Пресеты запуска	Run presets
-Пресеты запуска…	Run presets…
 Проверки	Checks
-Программа получит команду закрыться, как от крестика окна. Если за 5 секунд не закроется — будет остановлена принудительно, несохранённое в ней пропадёт.	The program is asked to close, as if its window's close button was pressed. If it is still running after 5 seconds it is stopped forcibly, and unsaved work in it is lost.
 Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Несохранённое в ней может пропасть.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Unsaved work in it may be lost.
 Программа получит команду закрыться, как от крестика; через 5 секунд — принудительно. Потом сборка и запуск новой.	The program is asked to close, as if its close button was pressed; after 5 seconds it is stopped forcibly. Then the new build is made and started.
 Программа сейчас запущена	The program is running
@@ -144,7 +138,6 @@ cargo clean удалит папку сборки целиком. Следующ�
 Собрать в отдельную папку	Build into a separate folder
 Собрать и запустить	Build and run
 Тесты	Tests
-Удалить пресет	Delete preset
 Что запускать	What to run
 авто	auto
 аргументы, например --profile test	arguments, e.g. --profile test
@@ -444,3 +437,38 @@ Godot не найден: укажите путь к редактору в мен
 Папка установки	Install folder
 Проект уже открыт в Unity	The project is already open in Unity
 Экспортировать и играть	Export and play
+Добавить профиль	Add a profile
+Если не закроется за 5 с — спрошу, остановить ли принудительно	If it doesn't close in 5 s, I'll ask before forcing it
+Когда считать запущенным: port:18731 — порт слушает, window — окно появилось, 5s — через 5 с. Пусто — сразу.	When it counts as started: port:18731 — the port listens, window — a window appeared, 5s — after 5 s. Empty — at once.
+Недавно	Recent
+Несохранённое в памяти пропадёт. Данные на диске останутся	Unsaved state in memory is lost. Data on disk stays
+Остановить принудительно	Force stop
+Про программы, запущенные из Anvil: код выхода словами. Окно впереди — сообщение в окне.	For programs launched from Anvil: the exit code in words. When the window is in front, the message shows in the window.
+Профили запуска	Launch profiles
+Профили…	Profiles…
+Профиль — это бинарник, откуда его брать и с какими аргументами: например, клиент с тестовым профилем из кода. «Обычный» профиль есть всегда: установленная копия без аргументов.	A profile is a binary, where to take it from and which arguments to pass: for example, the client with a test profile, built from code. The “default” profile always exists: the installed copy without arguments.
+Уведомлять, если программа упала	Notify when a program crashes
+Удалить профиль	Delete the profile
+аварийное завершение	abnormal termination
+готов: port:18731	ready: port:18731
+для	for
+закрылся	closed
+закрыт через	closed after
+и его дочерних процессов	and its children
+код	code
+нарушение доступа	access violation
+не закрылся за 5 с. Остановить принудительно?	didn't close in 5 s. Force stop?
+нет нужной DLL	a required DLL is missing
+обычный	default
+остановлен через	stopped after
+паника Rust	Rust panic
+переполнение стека	stack overflow
+прерван Ctrl+C	interrupted by Ctrl+C
+профиль	profile
+упал через	crashed after
+установленная	installed
+Журнала ещё нет: его пишет запуск из Anvil	No log yet: it is written by a launch from Anvil
+(выбран)	(chosen)
+Запустить с профилем	Launch with a profile
+Профили запуска…	Launch profiles…
+исходники	source

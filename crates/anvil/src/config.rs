@@ -24,6 +24,8 @@ pub struct Config {
     pub build_jobs: u32,
     /// Уведомление Windows, когда долгая задача кончилась, а окно не в фокусе.
     pub notify: bool,
+    /// Уведомление Windows, когда запущенная из Anvil программа упала, а окно не впереди.
+    pub notify_crash: bool,
     /// Какие проекты показывать: `rust`; на будущее — `godot`, `unity`, `git` (просто репозиторий).
     pub kinds: Vec<String>,
     /// Настройки проектов; ключ — путь к проекту.
@@ -50,6 +52,8 @@ pub struct DeckSettings {
     pub removed: Vec<String>,
     /// Когда предмет запускали с Пульта, секунды Unix: по этому сортируется группа.
     pub launched: BTreeMap<String, i64>,
+    /// Выбранный профиль предмета (имя); нет — «обычный».
+    pub profile: BTreeMap<String, String>,
 }
 
 /// Что Anvil помнит о проекте.
@@ -68,14 +72,40 @@ pub struct ProjectSettings {
     pub icon: Option<String>,
 }
 
-/// Сохранённый запуск: какой бинарник и с какими аргументами.
+/// Профиль запуска (в 0.2 — «пресет»): какой бинарник, откуда и с какими аргументами.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preset {
     pub name: String,
     pub bin: String,
-    /// Аргументы строкой, как в терминале: `--profile test`.
+    /// Аргументы строкой, как в терминале: `--profile test`. `%VAR%` раскрывается.
     pub args: String,
+    /// Откуда запускать: сборка из кода (так было в 0.2) или установленная копия.
+    pub source: Source,
+    /// Рабочая папка; не задана — корень проекта (из кода) или папка установки.
+    pub cwd: Option<PathBuf>,
+    /// Переменные окружения сверх унаследованных.
+    pub env: BTreeMap<String, String>,
+    /// Когда считать запущенным: `port:18731`, `window`, `5s`; пусто — сразу.
+    pub ready: String,
+}
+
+/// Откуда профиль берёт exe.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    /// `target\release`: перед запуском `cargo build --release`.
+    #[default]
+    Code,
+    /// `%LOCALAPPDATA%\Programs\<бинарник>\current`.
+    Installed,
+}
+
+impl Preset {
+    /// Порт из условия готовности `port:18731` — для чипа «amber-server :18731».
+    pub fn port(&self) -> Option<u16> {
+        self.ready.strip_prefix("port:")?.trim().parse().ok()
+    }
 }
 
 impl Config {
@@ -101,6 +131,7 @@ impl Default for Config {
             selected: None,
             build_jobs: 0,
             notify: true,
+            notify_crash: true,
             kinds: vec!["rust".to_owned(), "godot".to_owned(), "unity".to_owned()],
             projects: BTreeMap::new(),
             deck: DeckSettings::default(),
@@ -194,7 +225,12 @@ mod tests {
         };
         let amber = config.project_mut(Path::new(r"D:\dev_personal\amber"));
         amber.release = true;
-        amber.presets.push(Preset { name: "Тест".into(), bin: "amber-desktop".into(), args: "--profile t".into() });
+        amber.presets.push(Preset {
+            name: "Тест".into(),
+            bin: "amber-desktop".into(),
+            args: "--profile t".into(),
+            ..Preset::default()
+        });
         assert_eq!(config.project(Path::new(r"D:\DEV_PERSONAL\Amber")).presets.len(), 1);
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
@@ -217,6 +253,15 @@ kinds = ['rust']",
         assert_eq!(old.kinds, ["rust"]);
         let fresh: Config = toml::from_str(&toml::to_string_pretty(&Config::default()).unwrap()).unwrap();
         assert_eq!(fresh.version, VERSION);
+    }
+
+    #[test]
+    fn old_presets_become_profiles_from_code() {
+        let text = "[projects.'d:\\x']\npresets = [{ name = 'test', bin = 'amber-server', args = '--addr 1', ready = 'port:18731' }]";
+        let config: Config = toml::from_str(text).unwrap();
+        let preset = &config.project(Path::new(r"D:\x")).presets[0];
+        assert_eq!(preset.source, Source::Code);
+        assert_eq!(preset.port(), Some(18731));
     }
 
     #[test]

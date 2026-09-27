@@ -172,6 +172,7 @@ pub fn spec(project: &Path, meta: Option<&Meta>, task: &Task, release: bool, job
                 exe: launch::exe_path(&target, release, bin),
                 args: run_args.clone(),
                 dir: project.to_path_buf(),
+                ..Launch::default()
             });
         }
         Task::Install { bin, label } => {
@@ -268,7 +269,10 @@ pub fn locked(meta: Option<&Meta>, task: &Task, release: bool, snapshot: &crate:
 pub fn resolve(spec: &mut Spec, locked: &[Locked], how: Resolve, meta: Option<&Meta>, release: bool) {
     match how {
         Resolve::MoveAside => spec.before.extend(locked.iter().map(|l| Before::MoveAside(l.exe.clone()))),
-        Resolve::Stop => spec.before.extend(locked.iter().flat_map(|l| l.pids.iter().map(|pid| Before::Stop(*pid)))),
+        Resolve::Stop => {
+            // Служба ли — знает окно (по своим запускам) и поправит флаг; по умолчанию — окно.
+            spec.before.extend(locked.iter().flat_map(|l| l.pids.iter().map(|pid| Before::Stop(*pid, false))))
+        }
         Resolve::SeparateDir => {
             let base = meta.map(|m| m.target_dir.clone()).unwrap_or_else(|| spec.project.join("target"));
             let separate = base.join("anvil");
@@ -300,7 +304,8 @@ pub fn run_target(
     let meta = meta?;
     if let Some(name) = chosen {
         if let Some(preset) = presets.iter().find(|p| p.name == name && meta.bins.iter().any(|b| b.name == p.bin)) {
-            return Some((preset.name.clone(), preset.bin.clone(), launch::split_args(&preset.args)));
+            let args = launch::split_args(&launch::expand_env(&preset.args));
+            return Some((preset.name.clone(), preset.bin.clone(), args));
         }
         if meta.bins.iter().any(|b| b.name == name) {
             return Some((name.to_owned(), name.to_owned(), Vec::new()));
@@ -394,8 +399,12 @@ mod tests {
     #[test]
     fn run_target_prefers_chosen_preset_then_bin() {
         let m = meta();
-        let presets =
-            vec![Preset { name: "Тест".into(), bin: "amber-desktop".into(), args: "--profile uitest".into() }];
+        let presets = vec![Preset {
+            name: "Тест".into(),
+            bin: "amber-desktop".into(),
+            args: "--profile uitest".into(),
+            ..Preset::default()
+        }];
         let (label, bin, args) = run_target(Some(&m), &presets, Some("Тест")).unwrap();
         assert_eq!((label.as_str(), bin.as_str()), ("Тест", "amber-desktop"));
         assert_eq!(args, ["--profile", "uitest"]);

@@ -14,6 +14,17 @@ pub fn folder(path: &Path) -> Result<(), String> {
     result.map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// Открыть файл программой по умолчанию (журнал `.log` — Блокнотом или тем, что назначено).
+pub fn file(path: &Path) -> Result<(), String> {
+    let dir = path.parent().unwrap_or(path);
+    // Проводник открывает файл назначенной программой; через cmd `&` или `%` в пути ломали бы команду.
+    #[cfg(windows)]
+    let result = run::command("explorer.exe", dir).arg(path).spawn();
+    #[cfg(not(windows))]
+    let result = run::command("xdg-open", dir).arg(path).spawn();
+    result.map(|_| ()).map_err(|e| e.to_string())
+}
+
 /// Терминал в папке: Windows Terminal, если он есть, иначе обычная консоль.
 pub fn terminal(path: &Path) -> Result<(), String> {
     #[cfg(windows)]

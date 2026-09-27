@@ -5,19 +5,21 @@
 //! `name.exe.old-<время>`), а программа доработает из переименованного файла.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::Duration;
 
 use crate::procs::{self, Snapshot};
-use crate::run;
 
-/// Что запустить после сборки.
-#[derive(Debug, Clone)]
+/// Что запустить.
+#[derive(Debug, Clone, Default)]
 pub struct Launch {
     pub exe: PathBuf,
     pub args: Vec<String>,
     /// Рабочая папка — корень проекта.
     pub dir: PathBuf,
+    /// Переменные окружения сверх унаследованных.
+    pub env: Vec<(String, String)>,
+    /// Чей это запуск (предмет Пульта и профиль): такой запуск попадает в историю, его код выхода
+    /// известен, а вывод службы пишется в файл.
+    pub tag: Option<crate::runs::Tag>,
 }
 
 pub const EXE_SUFFIX: &str = std::env::consts::EXE_SUFFIX;
@@ -31,40 +33,35 @@ pub fn profile_dir(release: bool) -> &'static str {
     if release { "release" } else { "debug" }
 }
 
-/// Запустить программу отдельно от Anvil. Консольная получает своё окно, оконная — просто стартует.
+/// Запустить программу отдельно от Anvil (подробности — [`crate::runs::start`]).
 pub fn start(launch: &Launch) -> Result<u32, String> {
-    let mut cmd = Command::new(&launch.exe);
-    cmd.args(&launch.args).current_dir(&launch.dir).stdin(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP);
-    }
-    cmd.spawn().map(|child| child.id()).map_err(|e| e.to_string())
+    crate::runs::start(launch)
 }
 
-/// Попросить программу закрыться (как крестиком окна); не закрылась за 5 с — остановить.
-pub fn stop(pid: u32, dir: &Path) -> Result<(), String> {
-    let pid_text = pid.to_string();
-    #[cfg(windows)]
-    {
-        let _ = run::command("taskkill", dir).args(["/PID", &pid_text]).output();
-        if procs::wait_exit(pid, Duration::from_secs(5)) {
-            return Ok(());
+/// `%VAR%` в аргументах профиля → значение переменной окружения; неизвестная остаётся как есть.
+pub fn expand_env(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) if end > 0 && after[..end].chars().all(|c| c.is_alphanumeric() || c == '_') => {
+                let name = &after[..end];
+                match std::env::var(name) {
+                    Ok(value) => out.push_str(&value),
+                    Err(_) => out.push_str(&rest[start..start + end + 2]),
+                }
+                rest = &after[end + 1..];
+            }
+            _ => {
+                out.push('%');
+                rest = after;
+            }
         }
-        run::output("taskkill", dir, &["/F", "/PID", &pid_text]).map(|_| ())?;
-        if procs::wait_exit(pid, Duration::from_secs(3)) { Ok(()) } else { Err(format!("PID {pid}: still running")) }
     }
-    #[cfg(not(windows))]
-    {
-        let _ = run::command("kill", dir).arg(&pid_text).output();
-        if procs::wait_exit(pid, Duration::from_secs(5)) {
-            return Ok(());
-        }
-        run::output("kill", dir, &["-9", &pid_text]).map(|_| ())
-    }
+    out.push_str(rest);
+    out
 }
 
 /// Отодвинуть занятый exe: переименовать рядом, чтобы сборка записала новый.
@@ -141,6 +138,14 @@ mod tests {
         assert_eq!(split_args(r#"--profile "my test"  -v"#), ["--profile", "my test", "-v"]);
         assert_eq!(split_args(r#"--name """#), ["--name", ""]);
         assert!(split_args("   ").is_empty());
+    }
+
+    #[test]
+    fn env_variables_expand_in_args() {
+        // SAFETY: тест однопоточный по этой переменной; имя уникальное.
+        unsafe { std::env::set_var("ANVIL_TEST_DIR", r"C:\data") };
+        assert_eq!(expand_env(r"--db %ANVIL_TEST_DIR%\amber.db"), r"--db C:\data\amber.db");
+        assert_eq!(expand_env("100% sure %NO_SUCH_VAR_X%"), "100% sure %NO_SUCH_VAR_X%");
     }
 
     #[test]

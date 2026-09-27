@@ -88,8 +88,9 @@ pub struct Download {
 
 #[derive(Debug, Clone)]
 pub enum Before {
-    /// Попросить программу закрыться; не закрылась за 5 с — остановить.
-    Stop(u32),
+    /// Попросить программу закрыться (окно — как крестиком, службу — Ctrl+Break); не закрылась за
+    /// 5 с — остановить. Второе — служба ли это.
+    Stop(u32, bool),
     /// Переименовать занятый exe, чтобы сборка могла записать новый.
     MoveAside(PathBuf),
 }
@@ -151,8 +152,6 @@ pub enum Event {
     Units(JobId, u32),
     Diag(JobId, Diag),
     Finished(JobId, Outcome),
-    /// Сообщение не о задаче: например, итог остановки программы.
-    Note(String, bool),
 }
 
 pub enum Cmd {
@@ -240,9 +239,9 @@ impl Runner {
         self.send(Event::Started(id));
         for step in &spec.before {
             match step {
-                Before::Stop(pid) => {
+                Before::Stop(pid, service) => {
                     self.note(id, format!("› stop PID {pid}"));
-                    if let Err(e) = launch::stop(*pid, &spec.project) {
+                    if let Err(e) = crate::runs::stop_blocking(*pid, *service, Duration::from_secs(5)) {
                         self.note(id, format!("  {e}"));
                     }
                 }

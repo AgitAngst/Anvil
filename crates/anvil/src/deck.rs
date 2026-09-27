@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anvil_ui::{Icon, Mark, family};
 
-use crate::config::DeckSettings;
+use crate::config::{DeckSettings, Preset, Source};
 use crate::registry::{Bin, Kind};
 use crate::worker::{self, Project};
 
@@ -57,6 +57,59 @@ impl Item {
     pub fn is_self(&self) -> bool {
         self.bin.as_deref() == Some(env!("CARGO_PKG_NAME"))
     }
+}
+
+/// Профиль предмета так, как его запускает Пульт.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Profile {
+    /// Пусто — встроенный «обычный».
+    pub name: String,
+    pub source: Source,
+    pub args: String,
+    pub cwd: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+    /// Порт из условия готовности — для чипа «:18731».
+    pub port: Option<u16>,
+}
+
+impl Profile {
+    /// Имя для людей: «обычный», «test».
+    pub fn label(&self) -> String {
+        if self.name.is_empty() { crate::i18n::t("обычный").to_owned() } else { self.name.clone() }
+    }
+}
+
+/// Профили предмета: всегда есть «обычный» (установленная копия без аргументов, а если не
+/// установлено — сборка из кода), за ним — профили проекта для этого бинарника.
+pub fn profiles(item: &Item, presets: &[Preset], installed: bool) -> Vec<Profile> {
+    let builtin = Profile {
+        name: String::new(),
+        source: if installed { Source::Installed } else { Source::Code },
+        args: String::new(),
+        cwd: None,
+        env: Vec::new(),
+        port: None,
+    };
+    // Без имени или с повторённым именем профиль не выбрать (выбор хранится по имени) — такие пропускаются.
+    let mut seen = std::collections::HashSet::new();
+    let own = presets
+        .iter()
+        .filter(|p| item.bin.as_deref() == Some(p.bin.as_str()))
+        .filter(move |p| !p.name.trim().is_empty() && seen.insert(p.name.clone()))
+        .map(|p| Profile {
+            name: p.name.clone(),
+            source: p.source,
+            args: p.args.clone(),
+            cwd: p.cwd.clone(),
+            env: p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            port: p.port(),
+        });
+    std::iter::once(builtin).chain(own).collect()
+}
+
+/// Выбранный профиль: по имени, иначе «обычный».
+pub fn chosen<'a>(profiles: &'a [Profile], name: Option<&str>) -> &'a Profile {
+    name.and_then(|n| profiles.iter().find(|p| p.name == n)).unwrap_or(&profiles[0])
 }
 
 pub fn key(project: &Path, what: &str) -> String {
@@ -270,6 +323,27 @@ mod tests {
         assert_eq!(items[1].caption, "Unity");
         assert_eq!(items[1].mark.icon, Icon::Target);
         assert!(items.iter().all(|i| i.group == Group::Games && i.no_git));
+    }
+
+    #[test]
+    fn default_profile_comes_first_and_follows_install() {
+        let amber = rust(r"D:\dev\amber", vec![bin("amber-desktop", true)]);
+        let item = items([&amber], |_| None).remove(0);
+        let presets = vec![
+            Preset {
+                name: "test".into(),
+                bin: "amber-desktop".into(),
+                args: "--profile test".into(),
+                ..Preset::default()
+            },
+            Preset { name: "other".into(), bin: "amber-server".into(), ..Preset::default() },
+        ];
+        let list = profiles(&item, &presets, true);
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].source, Source::Installed);
+        assert_eq!(chosen(&list, Some("test")).args, "--profile test");
+        assert_eq!(chosen(&list, Some("gone")).name, "");
+        assert_eq!(profiles(&item, &[], false)[0].source, Source::Code);
     }
 
     #[test]

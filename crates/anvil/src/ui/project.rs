@@ -152,6 +152,8 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         Action::Task(task) => {
             app.start_task(dir, task);
         }
+        // Своя сборка из кода — без вопроса, остальное — с подтверждением (§5.12); подпись кнопки — так же.
+        Action::Stop(name, pid) if app.own_run(pid) => app.stop_run(name, pid),
         Action::Stop(name, pid) => app.stop_confirm = Some((name, pid, dir.to_path_buf())),
         Action::CleanAsk => app.clean_confirm = Some(dir.to_path_buf()),
         Action::Presets => app.presets_for = Some(dir.to_path_buf()),
@@ -317,7 +319,7 @@ fn toolbar(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action>)
                 }
             }
             w::menu_separator(ui);
-            if w::menu_item(ui, Some(Icon::Pencil), t("Пресеты запуска…"), None).clicked() {
+            if w::menu_item(ui, Some(Icon::Pencil), t("Профили запуска…"), None).clicked() {
                 actions.push(Action::Presets);
             }
         });
@@ -568,7 +570,13 @@ fn bins_card(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     match running.first() {
                         Some(first) => {
-                            if w::icon_button(ui, Icon::Stop, t("Остановить")).clicked() {
+                            // Своя сборка из кода — сразу; остальное — с вопросом, и подпись с многоточием.
+                            let hint = if app.own_run(first.pid) {
+                                t("Остановить")
+                            } else {
+                                t("Остановить…")
+                            };
+                            if w::icon_button(ui, Icon::Stop, hint).clicked() {
                                 actions.push(Action::Stop(bin.name.clone(), first.pid));
                             }
                         }

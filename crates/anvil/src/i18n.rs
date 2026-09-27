@@ -124,6 +124,13 @@ pub fn date(timestamp: i64) -> String {
     format!("{d:02}.{mo:02}")
 }
 
+/// Сегодня — время, раньше — дата: «00:28», «26.09».
+pub fn when(timestamp: i64) -> String {
+    let (today, then) = (local(now()), local(timestamp));
+    let same_day = (today.0, today.1) == (then.0, then.1) && now() - timestamp < 86_400;
+    if same_day { clock(timestamp) } else { date(timestamp) }
+}
+
 /// Сколько работает, до минуты: «меньше минуты», «8 мин», «2 ч 14 мин».
 pub fn uptime(secs: i64) -> String {
     let secs = secs.max(0);
@@ -133,6 +140,62 @@ pub fn uptime(secs: i64) -> String {
         format!("{} {}", secs / 60, t("мин"))
     } else {
         format!("{} {} {} {}", secs / 3600, t("ч"), secs % 3600 / 60, t("мин"))
+    }
+}
+
+/// Сколько длилось: «12 с», «38 мин», «2 ч 14 мин» — для законченного запуска.
+pub fn span(secs: i64) -> String {
+    let secs = secs.max(0);
+    if secs < 60 { format!("{secs} {}", t("с")) } else { uptime(secs) }
+}
+
+/// «Amber · test упал» / «Amber · test crashed»; пустое `who` — одно слово. «упал» у CI переводится
+/// иначе («failed»), поэтому здесь своя пара.
+pub fn crashed(who: &str) -> String {
+    let word = if english() { "crashed" } else { "упал" };
+    if who.is_empty() { word.to_owned() } else { format!("{who} {word}") }
+}
+
+/// «через 12 с после запуска» / «12 s after launch».
+pub fn after_launch(secs: i64) -> String {
+    if english() {
+        format!("{} after launch", span(secs))
+    } else {
+        format!("через {} после запуска", span(secs))
+    }
+}
+
+/// Первый пункт подтверждения остановки: что именно будет сделано.
+pub fn stop_line(service: bool, name: &str, pid: u32) -> String {
+    match (english(), service) {
+        (false, true) => format!("Пошлю Ctrl+Break службе {name}, PID {pid}: она закроется сама"),
+        (false, false) => format!("Закрою окно {name}, PID {pid}, как крестиком"),
+        (true, true) => format!("I'll send Ctrl+Break to {name}, PID {pid}; it should shut down on its own"),
+        (true, false) => format!("I'll close {name}, PID {pid}, like the close button"),
+    }
+}
+
+/// «Недавно» о работающем запуске: «запущен из сборки 2353af9», «запущен · установлена 0.4.0».
+/// `source` — как в истории: русское слово и значение.
+pub fn started(source: &str) -> String {
+    let (word, rest) = source.split_once(' ').unwrap_or((source, ""));
+    match (english(), word) {
+        (false, "сборка") => format!("запущен из сборки {rest}").trim_end().to_owned(),
+        (true, "сборка") => format!("started from build {rest}").trim_end().to_owned(),
+        (false, _) => format!("запущен · {} {rest}", source_word(word)).trim_end().to_owned(),
+        (true, _) => format!("started · {} {rest}", source_word(word)).trim_end().to_owned(),
+    }
+}
+
+/// Слово источника из истории запусков. Оно хранится по-русски («сборка 2353af9»), чтобы история
+/// не зависела от языка, а на экране переводится.
+pub fn source_word(word: &str) -> String {
+    match word {
+        "сборка" => t("сборка").to_owned(),
+        "установлена" => t("установлена").to_owned(),
+        "экспорт" => t("экспорт").to_owned(),
+        "исходники" => t("исходники").to_owned(),
+        other => other.to_owned(),
     }
 }
 
@@ -148,8 +211,13 @@ pub fn uptime_short(secs: i64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Для тестов: говорить по-русски.
+    pub fn russian() {
+        ENGLISH.store(false, Ordering::Relaxed);
+    }
 
     #[test]
     fn uptime_to_the_minute() {

@@ -5,6 +5,7 @@
 
 mod amber;
 mod app;
+mod builds;
 mod config;
 mod deck;
 mod deps;
@@ -21,6 +22,7 @@ mod procs;
 mod registry;
 mod release;
 mod run;
+mod runs;
 mod rustsec;
 mod tasks;
 mod ui;
@@ -46,6 +48,15 @@ impl eframe::App for Anvil {
 }
 
 fn main() -> eframe::Result<()> {
+    // Помощник мягкой остановки: `anvil --ctrl-break <pid>` посылает Ctrl+Break консольной службе.
+    #[cfg(windows)]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.get(1).map(String::as_str) == Some("--ctrl-break") {
+            let ok = args.get(2).and_then(|p| p.parse().ok()).is_some_and(runs::ctrl_break);
+            std::process::exit(if ok { 0 } else { 1 });
+        }
+    }
     // Следы прошлого обновления (*.old-…, папка загрузки) — прочь.
     anvil_update::cleanup();
     let options = eframe::NativeOptions {

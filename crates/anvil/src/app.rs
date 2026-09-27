@@ -70,9 +70,19 @@ enum After {
     /// Перечитать тулчейн: Rust обновился.
     Toolchain,
     /// Запустить только что поставленную программу: «Поставить v0.1.0 и запустить».
-    Launch(String),
+    Launch(Box<crate::deck::Item>),
     /// Запустить собранный exe: игру после экспорта Godot. Имя — для уведомления об ошибке.
-    LaunchExe(String, PathBuf),
+    LaunchExe(String, PathBuf, Option<crate::runs::Tag>),
+    /// Запомнить, из какого коммита собран exe.
+    Built(PathBuf, crate::builds::Build),
+}
+
+/// Что вышло из остановки, начатой окном.
+pub enum StopNote {
+    Stopped(String),
+    /// Мягко не закрылся за отведённое время — спросить, остановить ли принудительно.
+    Timeout(String, u32),
+    Failed(String, String),
 }
 
 pub struct App {
@@ -137,7 +147,24 @@ pub struct App {
     pub amber: crate::amber::Watch,
     deps_commands: Sender<deps::Cmd>,
     deps_events: Receiver<deps::Event>,
-    after_job: HashMap<JobId, After>,
+    after_job: HashMap<JobId, Vec<After>>,
+    /// История запусков (последние 200) — `cache\runs.json`.
+    pub runs: Vec<crate::runs::Run>,
+    runs_path: PathBuf,
+    run_events: Receiver<crate::runs::Event>,
+    stop_tx: Sender<StopNote>,
+    stop_rx: Receiver<StopNote>,
+    /// Не закрылся мягко: спросить про принудительную остановку (имя, PID, когда процесс запущен —
+    /// чтобы не остановить чужой процесс, получивший тот же PID).
+    pub force_confirm: Option<(String, u32, Option<i64>)>,
+    /// Коммит сборки, ждущей решения в окне занятого exe.
+    locked_head: Option<crate::builds::Build>,
+    /// Профили правили — сохранить при закрытии окна.
+    pub presets_dirty: bool,
+    /// Из какого коммита собраны exe (`cache\builds.json`).
+    pub build_info: crate::builds::Builds,
+    builds_path: PathBuf,
+    ctx: egui::Context,
     /// Поле «свой токен» в настройках (не хранится нигде, кроме keyring после «Сохранить»).
     pub token_input: String,
     gh_commands: Sender<github::Cmd>,
@@ -145,7 +172,6 @@ pub struct App {
     gh_targets: Vec<Target>,
     job_commands: Sender<jobs::Cmd>,
     job_events: Receiver<jobs::Event>,
-    job_notes: Sender<jobs::Event>,
     /// Уведомления о конце долгих задач: решает поток задач, окно сообщает настройку.
     pub notifier: Arc<crate::notify::Notifier>,
     next_job: JobId,
@@ -166,8 +192,21 @@ impl App {
         i18n::set(&cc.egui_ctx, config.common.language);
 
         let (commands, events) = worker::spawn(cc.egui_ctx.clone());
+        let cache = config_path.with_file_name("cache");
+        let _ = std::fs::create_dir_all(&cache);
+        let runs_path = cache.join("runs.json");
+        let runs = crate::runs::load(&runs_path);
+        let next_run = runs.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        let run_events = crate::runs::init(cc.egui_ctx.clone(), crate::runs::default_dir(&config_path), next_run);
+        // Что осталось работать с прошлого раза — снова под присмотром: код выхода не потеряется.
+        for run in runs.iter().filter(|r| r.running()) {
+            crate::runs::watch(run);
+        }
+        let builds_path = cache.join("builds.json");
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel();
         let notifier = Arc::new(crate::notify::Notifier::new(config.notify, config_path.with_file_name("cache")));
-        let (job_commands, job_events, job_notes) = jobs::spawn(cc.egui_ctx.clone(), notifier.clone());
+        notifier.set_crash(config.notify_crash);
+        let (job_commands, job_events, _) = jobs::spawn(cc.egui_ctx.clone(), notifier.clone());
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -217,13 +256,23 @@ impl App {
             deps_commands,
             deps_events,
             after_job: HashMap::new(),
+            runs,
+            runs_path,
+            run_events,
+            stop_tx,
+            stop_rx,
+            force_confirm: None,
+            locked_head: None,
+            presets_dirty: false,
+            build_info: crate::builds::load(&builds_path),
+            builds_path,
+            ctx: cc.egui_ctx.clone(),
             token_input: String::new(),
             gh_commands,
             gh_events,
             gh_targets: Vec::new(),
             job_commands,
             job_events,
-            job_notes,
             notifier,
             next_job: 1,
             units: tasks::load_units(&units_path),
@@ -295,6 +344,19 @@ impl App {
                 }
                 deps::Event::Toolchain(toolchain) => self.toolchain = Some(toolchain),
                 deps::Event::Busy(path) => self.deps_busy = path,
+            }
+        }
+        while let Ok(event) = self.run_events.try_recv() {
+            self.apply_run(event);
+        }
+        while let Ok(note) = self.stop_rx.try_recv() {
+            match note {
+                StopNote::Stopped(name) => self.toasts.push(format!("{name} {}", t("остановлен")), Tone::Success),
+                StopNote::Timeout(name, pid) => {
+                    let started = self.procs.values().flatten().find(|r| r.pid == pid).and_then(|r| r.started);
+                    self.force_confirm = Some((name, pid, started));
+                }
+                StopNote::Failed(name, e) => self.toasts.push(format!("{name}: {e}"), Tone::Danger),
             }
         }
         while let Ok(event) = self.gh_events.try_recv() {
@@ -512,22 +574,26 @@ impl App {
         }
         let started = match item.kind {
             registry::Kind::Rust => {
-                let Some(bin) = item.bin.clone() else { return };
-                let installed = self.installs.get(&bin).is_some_and(Option::is_some);
-                if installed && !from_code {
-                    self.launch_installed(&bin)
+                let profile = self.profile_of(item);
+                let installed = item.bin.as_ref().is_some_and(|b| self.installs.get(b).is_some_and(Option::is_some));
+                if installed && !from_code && profile.source == crate::config::Source::Installed {
+                    self.launch_installed_as(item, &profile)
                 } else {
                     // Занятый exe — окно выбора; задача ещё не встала, но выбор сделан.
-                    self.start_task_as(&item.project, Task::Run { bin, args: Vec::new() }, true);
+                    self.run_from_code(item, &profile);
                     true
                 }
             }
             registry::Kind::Godot if from_code => self.export_and_play(item),
             registry::Kind::Godot => {
-                let project = self.projects.iter().find(|p| p.path == item.project);
-                let export = project.and_then(|p| p.engine.as_ref()).and_then(|e| e.export.clone());
-                match export.filter(|e| e.is_file()) {
-                    Some(exe) => self.start_program(&item.name, &exe, &[], None),
+                let engine = self.projects.iter().find(|p| p.path == item.project).and_then(|p| p.engine.as_ref());
+                let export = engine.and_then(|e| e.export.clone()).filter(|e| e.is_file());
+                let at = engine.and_then(|e| e.exported_at).map(i18n::date).unwrap_or_default();
+                match export {
+                    Some(exe) => {
+                        let tag = self.game_tag(item, format!("экспорт {at}"));
+                        self.start_tagged(&item.name, &exe, &[], None, Some(tag))
+                    }
                     None => self.play_from_source(item),
                 }
             }
@@ -539,6 +605,100 @@ impl App {
         }
     }
 
+    /// Выбранный профиль предмета.
+    pub fn profile_of(&self, item: &crate::deck::Item) -> crate::deck::Profile {
+        let installed = item.bin.as_ref().is_some_and(|b| self.installs.get(b).is_some_and(Option::is_some));
+        let presets = self.config.project(&item.project).presets;
+        let profiles = crate::deck::profiles(item, &presets, installed);
+        crate::deck::chosen(&profiles, self.config.deck.profile.get(&item.key).map(String::as_str)).clone()
+    }
+
+    /// Метка запуска игры: без журнала (игра — не служба), профиль «обычный».
+    fn game_tag(&self, item: &crate::deck::Item, source: String) -> crate::runs::Tag {
+        crate::runs::Tag {
+            key: item.key.clone(),
+            name: item.name.clone(),
+            profile: String::new(),
+            source,
+            log: false,
+            service: false,
+            from_code: false,
+        }
+    }
+
+    /// Метка запуска: чей он, какой профиль, откуда.
+    fn tag(
+        &self,
+        item: &crate::deck::Item,
+        profile: &crate::deck::Profile,
+        source: String,
+        from_code: bool,
+    ) -> crate::runs::Tag {
+        let service = item.group == crate::deck::Group::Services;
+        crate::runs::Tag {
+            key: item.key.clone(),
+            name: item.name.clone(),
+            profile: profile.name.clone(),
+            source,
+            // Вывод пишется у служб и у сборок из кода; у установленных программ — нет (бережём SSD).
+            log: service || from_code,
+            service,
+            from_code,
+        }
+    }
+
+    /// Установленная копия с аргументами профиля.
+    fn launch_installed_as(&mut self, item: &crate::deck::Item, profile: &crate::deck::Profile) -> bool {
+        let Some(bin) = item.bin.clone() else { return false };
+        let current = installs::root(&bin).join("current");
+        let version =
+            self.installs.get(&bin).and_then(Option::as_ref).and_then(|i| i.current.clone()).unwrap_or_default();
+        let launch = crate::launch::Launch {
+            exe: current.join(format!("{bin}{}", std::env::consts::EXE_SUFFIX)),
+            args: crate::launch::split_args(&crate::launch::expand_env(&profile.args)),
+            dir: profile.cwd.clone().unwrap_or(current),
+            env: profile.env.clone(),
+            // Источник хранится по-русски: история не зависит от языка (см. `i18n::source_word`).
+            tag: Some(self.tag(item, profile, format!("установлена {version}"), false)),
+        };
+        match crate::launch::start(&launch) {
+            Ok(_) => true,
+            Err(e) => {
+                self.toasts.push(format!("{}: {e}", item.name), Tone::Danger);
+                false
+            }
+        }
+    }
+
+    /// Собрать release из кода и запустить с профилем: сборка — задачей в консоли, запуск — после.
+    fn run_from_code(&mut self, item: &crate::deck::Item, profile: &crate::deck::Profile) {
+        let Some(bin) = item.bin.clone() else { return };
+        let args = crate::launch::split_args(&crate::launch::expand_env(&profile.args));
+        let head = self.head(&item.project);
+        let source = match &head {
+            Some(build) => format!("сборка {}", crate::builds::label(build)),
+            None => "сборка".to_owned(),
+        };
+        let tag = self.tag(item, profile, source, true);
+        let (env, cwd) = (profile.env.clone(), profile.cwd.clone());
+        self.start_task_with(&item.project, Task::Run { bin, args }, true, move |spec| {
+            if let Some(after) = &mut spec.after {
+                after.tag = Some(tag);
+                after.env = env;
+                if let Some(dir) = cwd {
+                    after.dir = dir;
+                }
+            }
+        });
+    }
+
+    /// Коммит, из которого соберётся проект сейчас: HEAD и есть ли правки.
+    fn head(&self, project: &Path) -> Option<crate::builds::Build> {
+        let git = self.projects.iter().find(|p| p.path == project)?.git()?;
+        let commit = git.commits.first()?.hash.clone();
+        Some(crate::builds::Build { commit, dirty: git.dirty(), at: i18n::now() })
+    }
+
     /// Godot из исходников: движок запускает главную сцену проекта, без экспорта.
     pub fn play_from_source(&mut self, item: &crate::deck::Item) -> bool {
         let Some(godot) = self.godot_editor() else {
@@ -546,7 +706,8 @@ impl App {
             return false;
         };
         let dir = item.project.to_string_lossy().into_owned();
-        self.start_program(&item.name, &godot, &["--path".into(), dir], Some(&item.project))
+        let tag = self.game_tag(item, "исходники".to_owned());
+        self.start_tagged(&item.name, &godot, &["--path".into(), dir], Some(&item.project), Some(tag))
     }
 
     /// Godot: экспортировать игру под Windows (задача в консоли, ошибки видны там же) и запустить.
@@ -574,7 +735,8 @@ impl App {
         let title = format!("godot --export-release \"Windows Desktop\" {}", export.display());
         let steps = vec![jobs::Step::Run(godot.to_string_lossy().into_owned(), args)];
         let id = self.enqueue(tasks::script_spec(&item.project, title, steps));
-        self.after_job.insert(id, After::LaunchExe(item.name.clone(), export));
+        let tag = self.game_tag(item, format!("экспорт {}", i18n::date(i18n::now())));
+        self.after_job.entry(id).or_default().push(After::LaunchExe(item.name.clone(), export, Some(tag)));
         true
     }
 
@@ -613,8 +775,20 @@ impl App {
 
     /// Запустить exe отдельно от Anvil; ошибку — в уведомление. `true` — запустилось.
     fn start_program(&mut self, name: &str, exe: &Path, args: &[String], dir: Option<&Path>) -> bool {
+        self.start_tagged(name, exe, args, dir, None)
+    }
+
+    /// То же с меткой: запуск попадёт в историю, код выхода будет известен.
+    fn start_tagged(
+        &mut self,
+        name: &str,
+        exe: &Path,
+        args: &[String],
+        dir: Option<&Path>,
+        tag: Option<crate::runs::Tag>,
+    ) -> bool {
         let dir = dir.map(Path::to_path_buf).or_else(|| exe.parent().map(Path::to_path_buf)).unwrap_or_default();
-        let launch = crate::launch::Launch { exe: exe.to_path_buf(), args: args.to_vec(), dir };
+        let launch = crate::launch::Launch { exe: exe.to_path_buf(), args: args.to_vec(), dir, env: Vec::new(), tag };
         match crate::launch::start(&launch) {
             Ok(_) => true,
             Err(e) => {
@@ -637,7 +811,8 @@ impl App {
         };
         let release = release.clone();
         if let Some(id) = self.install_release(&item.project, &bin, &release) {
-            self.after_job.insert(id, After::Launch(bin));
+            let _ = bin;
+            self.after_job.entry(id).or_default().push(After::Launch(Box::new(item.clone())));
             self.mark_launched(&item.key);
         }
     }
@@ -670,14 +845,72 @@ impl App {
 
     /// То же, но с явным профилем: «Собрать release» из палитры не трогает переключатель проекта.
     pub fn start_task_as(&mut self, path: &Path, task: Task, release: bool) -> Option<JobId> {
+        // Запуск из Кузницы тоже попадает в историю: чей он и какой профиль (по аргументам).
+        let tag = match &task {
+            Task::Run { bin, args } => {
+                let item = self.deck_items().into_iter().find(|i| i.project == path && i.bin.as_ref() == Some(bin));
+                item.map(|item| {
+                    let presets = self.config.project(path).presets;
+                    let preset = presets.iter().find(|p| {
+                        &p.bin == bin && crate::launch::split_args(&crate::launch::expand_env(&p.args)) == *args
+                    });
+                    let profile = crate::deck::Profile {
+                        name: preset.map(|p| p.name.clone()).unwrap_or_default(),
+                        source: crate::config::Source::Code,
+                        args: String::new(),
+                        cwd: preset.and_then(|p| p.cwd.clone()),
+                        env: preset
+                            .map(|p| p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                            .unwrap_or_default(),
+                        port: None,
+                    };
+                    let source = match self.head(path) {
+                        Some(build) => format!("сборка {}", crate::builds::label(&build)),
+                        None => "сборка".to_owned(),
+                    };
+                    (self.tag(&item, &profile, source, true), profile)
+                })
+            }
+            _ => None,
+        };
+        self.start_task_with(path, task, release, move |spec| {
+            if let (Some(after), Some((tag, profile))) = (&mut spec.after, tag) {
+                after.tag.get_or_insert(tag);
+                if after.env.is_empty() {
+                    after.env = profile.env;
+                }
+                if let Some(dir) = profile.cwd {
+                    after.dir = dir;
+                }
+            }
+        })
+    }
+
+    /// Поставить задачу, поправив её перед постановкой (метка запуска, окружение, папка).
+    /// Сборка exe из кода запоминает коммит — отсюда «сборка 2353af9».
+    fn start_task_with(
+        &mut self,
+        path: &Path,
+        task: Task,
+        release: bool,
+        tweak: impl FnOnce(&mut jobs::Spec),
+    ) -> Option<JobId> {
         let project = self.projects.iter().find(|p| p.path == path)?;
         let meta = project.meta().cloned();
-        let spec = tasks::spec(path, meta.as_ref(), &task, release, self.config.build_jobs);
+        let mut spec = tasks::spec(path, meta.as_ref(), &task, release, self.config.build_jobs);
+        tweak(&mut spec);
+        let exe = spec.after.as_ref().map(|a| a.exe.clone()).or_else(|| spec.install.as_ref().map(|i| i.exe.clone()));
+        let head = self.head(path);
         let locked = tasks::locked(meta.as_ref(), &task, release, &self.procs);
         if locked.is_empty() {
-            Some(self.enqueue(spec))
+            let id = self.enqueue(spec);
+            if let (Some(exe), Some(build)) = (exe, head) {
+                self.after_job.entry(id).or_default().push(After::Built(exe, build));
+            }
+            Some(id)
         } else {
             self.locked = Some((spec, locked, task, release));
+            self.locked_head = head;
             None
         }
     }
@@ -689,7 +922,21 @@ impl App {
         let meta = self.projects.iter().find(|p| p.path == spec.project).and_then(|p| p.meta()).cloned();
         let release = !matches!(task, Task::Test) && release;
         tasks::resolve(&mut spec, &locked, how, meta.as_ref(), release);
-        self.enqueue(spec);
+        // «Закрыть и собрать»: остановка — своя, не падение; у службы — Ctrl+Break.
+        for before in &mut spec.before {
+            if let jobs::Before::Stop(pid, service) = before {
+                for run in self.runs.iter_mut().filter(|r| r.pid == *pid && r.running()) {
+                    run.stopping = true;
+                    *service = run.service;
+                }
+            }
+        }
+        let exe = spec.after.as_ref().map(|a| a.exe.clone()).or_else(|| spec.install.as_ref().map(|i| i.exe.clone()));
+        let head = self.locked_head.take();
+        let id = self.enqueue(spec);
+        if let (Some(exe), Some(build)) = (exe, head) {
+            self.after_job.entry(id).or_default().push(After::Built(exe, build));
+        }
     }
 
     pub fn enqueue(&mut self, mut spec: jobs::Spec) -> JobId {
@@ -740,16 +987,135 @@ impl App {
         let _ = self.job_commands.send(jobs::Cmd::Cancel(id));
     }
 
-    /// Остановить запущенную программу (после подтверждения) — в фоне, итог придёт уведомлением.
-    pub fn stop_program(&mut self, name: String, pid: u32, dir: PathBuf) {
-        let notes = self.job_notes.clone();
+    /// Остановить мягко: окно — как крестиком, служба — Ctrl+Break. Не закрылась за 5 с — окно
+    /// спросит, остановить ли принудительно (§5.12). Всё — в фоне.
+    pub fn stop_run(&mut self, name: String, pid: u32) {
+        let service = self.runs.iter().rev().find(|r| r.pid == pid && r.running()).is_some_and(|r| r.service);
+        for run in self.runs.iter_mut().filter(|r| r.pid == pid && r.running()) {
+            run.stopping = true;
+        }
+        let (tx, ctx) = (self.stop_tx.clone(), self.ctx.clone());
         std::thread::spawn(move || {
-            let event = match crate::launch::stop(pid, &dir) {
-                Ok(()) => jobs::Event::Note(format!("{name} {}", t("остановлен")), true),
-                Err(e) => jobs::Event::Note(format!("{name}: {e}"), false),
+            crate::runs::soft_stop(pid, service);
+            let note = if crate::procs::wait_exit(pid, Duration::from_secs(5)) {
+                StopNote::Stopped(name)
+            } else {
+                StopNote::Timeout(name, pid)
             };
-            let _ = notes.send(event);
+            let _ = tx.send(note);
+            ctx.request_repaint();
         });
+    }
+
+    /// Остановить принудительно (после подтверждения) — вместе с дочерними процессами. Только если
+    /// это всё ещё тот же процесс: иначе PID мог достаться другому.
+    pub fn force_stop(&mut self, name: String, pid: u32, started: Option<i64>) {
+        let now = self.procs.values().flatten().find(|r| r.pid == pid).map(|r| r.started);
+        let same = match (now, started) {
+            (None, _) => false,
+            (Some(Some(a)), Some(b)) => (a - b).abs() <= 3,
+            (Some(_), _) => true,
+        };
+        if !same {
+            self.toasts.push(format!("{name} {}", t("остановлен")), Tone::Success);
+            return;
+        }
+        let (tx, ctx) = (self.stop_tx.clone(), self.ctx.clone());
+        std::thread::spawn(move || {
+            let note = match crate::runs::force_stop(pid) {
+                Ok(()) => StopNote::Stopped(name),
+                Err(e) => StopNote::Failed(name, e),
+            };
+            let _ = tx.send(note);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Принудительно не останавливать: программа остаётся работать, и её конец снова считается
+    /// настоящим (упадёт — будет «упал», а не «остановлен»).
+    pub fn cancel_stop(&mut self, pid: u32) {
+        for run in self.runs.iter_mut().filter(|r| r.pid == pid && r.running()) {
+            run.stopping = false;
+        }
+    }
+
+    /// Свой ли это запуск из кода: такой останавливается без вопроса.
+    pub fn own_run(&self, pid: u32) -> bool {
+        self.runs.iter().rev().find(|r| r.pid == pid && r.running()).is_some_and(|r| r.from_code)
+    }
+
+    // ─── Запуски ───────────────────────────────────────────────────────────────
+
+    fn apply_run(&mut self, event: crate::runs::Event) {
+        match event {
+            crate::runs::Event::Started(run) => self.runs.push(*run),
+            crate::runs::Event::Exited { id, code, at } => {
+                let Some(run) = self.runs.iter_mut().find(|r| r.id == id) else { return };
+                // Процесс закончился сам — спрашивать про принудительную остановку уже незачем.
+                if self.force_confirm.as_ref().is_some_and(|(_, pid, _)| *pid == run.pid) {
+                    self.force_confirm = None;
+                }
+                run.ended = Some(at);
+                run.code = code;
+                run.end = match (run.stopping, code) {
+                    (true, _) => crate::runs::End::Stopped,
+                    (false, Some(0)) => crate::runs::End::Closed,
+                    (false, Some(_)) => crate::runs::End::Crashed,
+                    (false, None) => crate::runs::End::Lost,
+                };
+                if run.end == crate::runs::End::Crashed {
+                    run.seen = false;
+                    let run = run.clone();
+                    self.crashed(&run);
+                }
+            }
+        }
+        crate::runs::save(&self.runs_path, &self.runs);
+    }
+
+    /// Программа упала: уведомление Windows, если окно не впереди, иначе — в окне.
+    fn crashed(&mut self, run: &crate::runs::Run) {
+        let who = if run.profile.is_empty() { run.name.clone() } else { format!("{} · {}", run.name, run.profile) };
+        let title = i18n::crashed(&who);
+        let took = run.ended.unwrap_or(run.started) - run.started;
+        let code = run.code.map(crate::runs::code_text).unwrap_or_default();
+        let body = format!("{} · {} {code}", i18n::after_launch(took), t("код"));
+        if !self.notifier.crash(title.clone(), capital(&body)) {
+            self.toasts.push(format!("{title} — {body}"), Tone::Danger);
+        }
+    }
+
+    /// Журнал службы: файл вывода последнего запуска — в редакторе по умолчанию.
+    /// Журнал внутри Anvil — на странице службы (П4).
+    pub fn open_log(&mut self, key: &str) {
+        let log = self.runs.iter().rev().find(|r| r.key == key).and_then(|r| r.log.clone());
+        match log {
+            Some(path) => {
+                let result = crate::open::file(&path);
+                self.report(result);
+            }
+            None => self.toasts.push(t("Журнала ещё нет: его пишет запуск из Anvil"), Tone::Neutral),
+        }
+    }
+
+    /// Падение предмета, которое ещё не видели (последнее по времени).
+    pub fn unseen_crash(&self, key: &str) -> Option<&crate::runs::Run> {
+        self.runs
+            .iter()
+            .filter(|r| r.key == key && r.end == crate::runs::End::Crashed && !r.seen)
+            .max_by_key(|r| r.ended.unwrap_or(r.started))
+    }
+
+    /// Падение видели — погасить бейдж «упал».
+    pub fn seen(&mut self, key: &str) {
+        let mut changed = false;
+        for run in self.runs.iter_mut().filter(|r| r.key == key && !r.seen) {
+            run.seen = true;
+            changed = true;
+        }
+        if changed {
+            crate::runs::save(&self.runs_path, &self.runs);
+        }
     }
 
     fn job_mut(&mut self, id: JobId) -> Option<&mut Job> {
@@ -780,24 +1146,40 @@ impl App {
                 }
             }
             jobs::Event::Finished(id, outcome) => self.finished(ctx, id, outcome),
-            jobs::Event::Note(text, ok) => self.toasts.push(text, if ok { Tone::Success } else { Tone::Danger }),
         }
     }
 
     fn finished(&mut self, ctx: &egui::Context, id: JobId, outcome: jobs::Outcome) {
-        match self.after_job.remove(&id) {
-            Some(After::Deps(path)) => self.check_deps(vec![path], true),
-            Some(After::Toolchain) => self.check_toolchain(true),
-            Some(After::Launch(bin)) if outcome.ok && matches!(outcome.installed, Some(Ok(_))) => {
-                self.installs.insert(bin.clone(), installs::scan(&bin));
-                self.launch_installed(&bin);
+        for after in self.after_job.remove(&id).unwrap_or_default() {
+            match after {
+                After::Deps(path) => self.check_deps(vec![path], true),
+                After::Toolchain => self.check_toolchain(true),
+                After::Launch(item) if outcome.ok && matches!(outcome.installed, Some(Ok(_))) => {
+                    if let Some(bin) = &item.bin {
+                        self.installs.insert(bin.clone(), installs::scan(bin));
+                    }
+                    // Только что поставленное — «обычным» профилем из установки, с меткой.
+                    let profile = crate::deck::Profile {
+                        name: String::new(),
+                        source: crate::config::Source::Installed,
+                        args: String::new(),
+                        cwd: None,
+                        env: Vec::new(),
+                        port: None,
+                    };
+                    self.launch_installed_as(&item, &profile);
+                }
+                After::LaunchExe(name, exe, tag) if outcome.ok => {
+                    self.start_tagged(&name, &exe, &[], None, tag);
+                }
+                After::Built(exe, mut build) if outcome.ok => {
+                    // Время — конец сборки: по нему видно, не пересобрали ли exe потом без Anvil.
+                    build.at = i18n::now();
+                    self.build_info.insert(crate::builds::key(&exe), build);
+                    crate::builds::save(&self.builds_path, &self.build_info);
+                }
+                _ => {}
             }
-            Some(After::Launch(_)) => {}
-            Some(After::LaunchExe(name, exe)) if outcome.ok => {
-                self.start_program(&name, &exe, &[], None);
-            }
-            Some(After::LaunchExe(..)) => {}
-            None => {}
         }
         let Some(job) = self.job_mut(id) else { return };
         let took = job.started.map_or(Duration::ZERO, |s| s.elapsed());
@@ -990,7 +1372,7 @@ impl App {
             }
         };
         let id = self.enqueue(spec);
-        self.after_job.insert(id, after);
+        self.after_job.entry(id).or_default().push(after);
         self.log_open = true;
     }
 
@@ -1012,4 +1394,10 @@ pub fn duration(d: Duration) -> String {
     } else {
         format!("{} {} {:02} {}", secs / 60, t("мин"), secs % 60, t("с"))
     }
+}
+
+/// С заглавной: «через 12 с после запуска» в начале уведомления — «Через 12 с после запуска».
+fn capital(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }

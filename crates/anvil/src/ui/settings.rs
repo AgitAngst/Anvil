@@ -155,6 +155,15 @@ fn build(app: &mut App, ui: &mut Ui) {
         app.save();
     }
     w::note(ui, t("Уведомление Windows, если задача шла дольше 15 с, а окно Anvil было не в фокусе."));
+    ui.add_space(4.0);
+    let mut crash = app.config.notify_crash;
+    w::switch(ui, &mut crash, t("Уведомлять, если программа упала"));
+    if crash != app.config.notify_crash {
+        app.config.notify_crash = crash;
+        app.notifier.set_crash(crash);
+        app.save();
+    }
+    w::note(ui, t("Про программы, запущенные из Anvil: код выхода словами. Окно впереди — сообщение в окне."));
 }
 
 fn path_row(ui: &mut Ui, text: &str, trailing: impl FnOnce(&mut Ui)) {

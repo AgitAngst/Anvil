@@ -20,12 +20,28 @@ const AUMID: &str = "AgitAngst.Anvil";
 /// Настройка «уведомлять» (её меняет окно) и папка для значка.
 pub struct Notifier {
     enabled: AtomicBool,
+    crash: AtomicBool,
     cache: PathBuf,
 }
 
 impl Notifier {
     pub fn new(enabled: bool, cache: PathBuf) -> Self {
-        Self { enabled: AtomicBool::new(enabled), cache }
+        Self { enabled: AtomicBool::new(enabled), crash: AtomicBool::new(true), cache }
+    }
+
+    /// Уведомлять ли о падениях программ, запущенных из Anvil.
+    pub fn set_crash(&self, on: bool) {
+        self.crash.store(on, Ordering::Relaxed);
+    }
+
+    /// Программа упала, а окно не впереди (свёрнуто, в трее, перекрыто) — уведомить.
+    /// `true` — уведомление ушло в Windows.
+    pub fn crash(&self, title: String, body: String) -> bool {
+        let show_it = self.crash.load(Ordering::Relaxed) && !in_front();
+        if show_it {
+            show(title, body, self.cache.clone());
+        }
+        show_it
     }
 
     pub fn set_enabled(&self, on: bool) {

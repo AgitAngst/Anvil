@@ -131,6 +131,11 @@ pub fn snapshot() -> Snapshot {
     Snapshot::new()
 }
 
+/// Жив ли процесс.
+pub fn alive(pid: u32) -> bool {
+    !wait_exit(pid, std::time::Duration::ZERO)
+}
+
 /// Дождаться, пока процесс завершится. `true` — завершился (или его уже нет).
 #[cfg(windows)]
 pub fn wait_exit(pid: u32, timeout: std::time::Duration) -> bool {

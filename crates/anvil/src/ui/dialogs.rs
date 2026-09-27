@@ -13,6 +13,7 @@ use crate::worker;
 pub fn show(app: &mut App, ctx: &egui::Context) {
     locked(app, ctx);
     stop(app, ctx);
+    force(app, ctx);
     clean(app, ctx);
     uninstall(app, ctx);
 }
@@ -118,25 +119,54 @@ fn locked(app: &mut App, ctx: &egui::Context) {
     }
 }
 
+/// Пункт подтверждения: короткое тире и текст (§5.8).
+fn point(ui: &mut egui::Ui, text: &str) {
+    let p = Palette::of(ui);
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("–").color(p.weak));
+        ui.label(RichText::new(text).color(p.text));
+    });
+}
+
 fn stop(app: &mut App, ctx: &egui::Context) {
     let Some((name, pid, dir)) = app.stop_confirm.clone() else { return };
+    let service = app.runs.iter().rev().find(|r| r.pid == pid && r.running()).is_some_and(|r| r.service);
     let body = |ui: &mut egui::Ui| {
-        w::note(
-            ui,
-            t(
-                "Программа получит команду закрыться, как от крестика окна. Если за 5 секунд не закроется — будет остановлена принудительно, несохранённое в ней пропадёт.",
-            ),
-        );
-        ui.add_space(4.0);
-        w::mono(ui, &format!("PID {pid}"), None);
+        point(ui, &crate::i18n::stop_line(service, &name, pid));
+        ui.add_space(6.0);
+        point(ui, t("Если не закроется за 5 с — спрошу, остановить ли принудительно"));
     };
     let heading = format!("{} {name}?", t("Остановить"));
     match w::confirm(ctx, "anvil-stop", &heading, body, t("Остановить"), true) {
         Some(true) => {
             app.stop_confirm = None;
-            app.stop_program(name, pid, dir);
+            let _ = dir;
+            app.stop_run(name, pid);
         }
         Some(false) => app.stop_confirm = None,
+        None => {}
+    }
+}
+
+/// Не закрылся мягко — спросить про принудительную остановку.
+fn force(app: &mut App, ctx: &egui::Context) {
+    let Some((name, pid, started)) = app.force_confirm.clone() else { return };
+    let body = |ui: &mut egui::Ui| {
+        point(ui, &format!("taskkill /T {} PID {pid} {}", t("для"), t("и его дочерних процессов")));
+        ui.add_space(6.0);
+        point(ui, t("Несохранённое в памяти пропадёт. Данные на диске останутся"));
+    };
+    let heading = format!("{name}: {}", t("не закрылся за 5 с. Остановить принудительно?"));
+    match w::confirm(ctx, "anvil-force", &heading, body, t("Остановить принудительно"), true) {
+        Some(true) => {
+            app.force_confirm = None;
+            app.force_stop(name, pid, started);
+        }
+        // Передумали — программа работает дальше, и её конец снова считается настоящим.
+        Some(false) => {
+            app.force_confirm = None;
+            app.cancel_stop(pid);
+        }
         None => {}
     }
 }

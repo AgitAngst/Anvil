@@ -46,6 +46,34 @@ pub struct Look {
     hint: String,
     /// Где стоит установленная копия — для «Папка установки».
     install_dir: Option<PathBuf>,
+    /// Порт службы из профиля — хвост чипа «amber-server :18731».
+    port: Option<u16>,
+    /// Бейдж падения: «test упал», пока страницу не открыли.
+    badge: Option<String>,
+    /// Работает своя сборка из кода: «Остановить» без вопроса.
+    own: bool,
+    /// Выбран не «обычный» профиль — его имя.
+    profile: Option<String>,
+}
+
+impl Look {
+    /// Строка без особенностей: заготовка для движков и самого Anvil.
+    fn quiet() -> Look {
+        Look {
+            chip: (String::new(), None),
+            running: None,
+            this: false,
+            state: String::new(),
+            main: Main::Nothing,
+            icon: Icon::Play,
+            hint: String::new(),
+            install_dir: None,
+            port: None,
+            badge: None,
+            own: false,
+            profile: None,
+        }
+    }
 }
 
 /// Пульт на этот кадр: предметы в порядке строк и как они выглядят. Считается один раз и нужен
@@ -77,7 +105,11 @@ impl Frame {
             .filter(|(i, l)| !i.is_self() && !l.this)
             .filter_map(|(i, l)| {
                 let (_, started) = l.running?;
-                let tail = started.map(|s| i18n::uptime_short(i18n::now() - s)).unwrap_or_default();
+                // У службы с портом — порт, у остальных — сколько работает.
+                let tail = match l.port {
+                    Some(port) => format!(":{port}"),
+                    None => started.map(|s| i18n::uptime_short(i18n::now() - s)).unwrap_or_default(),
+                };
                 Some((i.mark, i.name.clone(), tail, i.key.clone()))
             })
             .collect()
@@ -95,6 +127,9 @@ enum Action {
     Pin(String),
     Remove(String),
     Stop(String, u32, PathBuf),
+    StopNow(String, u32),
+    Profile(Box<Item>, String),
+    Profiles(PathBuf),
     Folder(PathBuf),
     GodotPath,
     AmberAdmin(PathBuf),
@@ -108,11 +143,13 @@ pub fn show(app: &mut App, ui: &mut Ui, frame: &Frame) {
 
     ui.label(RichText::new(t("Пульт")).font(semibold(24.0)).color(p.text));
     let running = looks.iter().filter(|l| l.running.is_some() && !l.this).count();
-    let subtitle = format!(
-        "{} · {}",
-        i18n::count(running, ["работает", "работают", "работают"], ["running", "running"]),
-        i18n::count(items.len(), ["в списке", "в списке", "в списке"], ["item", "items"]),
-    );
+    let crashed = looks.iter().filter(|l| l.badge.is_some()).count();
+    let mut parts = vec![i18n::count(running, ["работает", "работают", "работают"], ["running", "running"])];
+    if crashed > 0 {
+        parts.push(i18n::count(crashed, ["упал", "упали", "упали"], ["crashed", "crashed"]));
+    }
+    parts.push(i18n::count(items.len(), ["в списке", "в списке", "в списке"], ["item", "items"]));
+    let subtitle = parts.join(" · ");
     w::note(ui, subtitle);
     ui.add_space(18.0);
 
@@ -123,9 +160,11 @@ pub fn show(app: &mut App, ui: &mut Ui, frame: &Frame) {
     }
 
     let remote = remote_card_data(app);
+    let recent = recent(app, items);
+    let right = remote.is_some() || !recent.is_empty();
     let wide = ui.available_width() >= 1100.0;
     let right_w = 380.0;
-    if wide && remote.is_some() {
+    if wide && right {
         ui.horizontal_top(|ui| {
             let left_w = ui.available_width() - right_w - 14.0;
             ui.allocate_ui_with_layout(Vec2::new(left_w, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -135,14 +174,14 @@ pub fn show(app: &mut App, ui: &mut Ui, frame: &Frame) {
             ui.add_space(14.0);
             ui.allocate_ui_with_layout(Vec2::new(right_w, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
                 ui.set_width(right_w);
-                right_column(ui, remote.as_ref(), &mut actions);
+                right_column(ui, remote.as_ref(), &recent, &mut actions);
             });
         });
     } else {
         groups(app, ui, frame, &mut actions);
-        if remote.is_some() {
+        if right {
             ui.add_space(4.0);
-            right_column(ui, remote.as_ref(), &mut actions);
+            right_column(ui, remote.as_ref(), &recent, &mut actions);
         }
     }
     apply(app, ui.ctx(), actions);
@@ -244,8 +283,11 @@ fn groups(app: &App, ui: &mut Ui, frame: &Frame, actions: &mut Vec<Action>) {
 /// Строка предмета: знак, имя и подпись, источник, состояние, главное действие и меню.
 fn row(app: &App, ui: &mut Ui, item: &Item, look: &Look, selected: bool, actions: &mut Vec<Action>) {
     let p = Palette::of(ui);
-    let label =
-        format!("{}, {}, {} {}", item.name, look.state, look.chip.0, look.chip.1.as_deref().unwrap_or_default());
+    let chip = format!("{} {}", look.chip.0, look.chip.1.as_deref().unwrap_or_default());
+    let label = match &look.badge {
+        Some(badge) => format!("{}, {badge}, {}, {chip}", item.name, look.state),
+        None => format!("{}, {}, {chip}", item.name, look.state),
+    };
     let id = egui::Id::new(("deck-row", &item.key));
     let response = w::list_row(ui, id, selected, 44.0, &label);
     if selected && app.deck_view.scroll {
@@ -281,6 +323,11 @@ fn row(app: &App, ui: &mut Ui, item: &Item, look: &Look, selected: bool, actions
     name_ui.label(RichText::new(&item.name).font(font).color(p.text));
     if !item.caption.is_empty() {
         w::mono(&mut name_ui, &item.caption, None);
+    } else if let Some(profile) = &look.profile {
+        w::mono(&mut name_ui, profile, None);
+    }
+    if let Some(badge) = &look.badge {
+        w::badge(&mut name_ui, badge, Tone::Danger);
     }
     if item.no_git {
         w::badge(&mut name_ui, t("без git"), Tone::Neutral);
@@ -328,6 +375,25 @@ fn menu(app: &App, more: &egui::Response, item: &Item, look: &Look, actions: &mu
     w::menu(more, 290.0, |ui| {
         match item.kind {
             ProjectKind::Rust if !item.is_self() => {
+                // Профили: щелчок — запустить с этим профилем; он же станет выбранным для Enter.
+                let installed = item.bin.as_ref().is_some_and(|b| app.installs.get(b).is_some_and(Option::is_some));
+                let presets = app.config.project(&item.project).presets;
+                let chosen = app.config.deck.profile.get(&item.key).cloned().unwrap_or_default();
+                w::section_label(ui, t("Запустить с профилем"));
+                for profile in crate::deck::profiles(item, &presets, installed) {
+                    let (icon, text) = if profile.name == chosen {
+                        (Icon::Check, format!("{} {}", profile.label(), t("(выбран)")))
+                    } else {
+                        (Icon::Play, profile.label())
+                    };
+                    if w::menu_item(ui, Some(icon), &text, None).clicked() {
+                        actions.push(Action::Profile(Box::new(item.clone()), profile.name.clone()));
+                    }
+                }
+                if w::menu_item(ui, Some(Icon::Pencil), t("Профили…"), None).clicked() {
+                    actions.push(Action::Profiles(item.project.clone()));
+                }
+                w::menu_separator(ui);
                 if w::menu_item(ui, Some(Icon::Hammer), t("Запустить из кода"), Some("Ctrl+Enter")).clicked()
                 {
                     actions.push(Action::FromCode(Box::new(item.clone())));
@@ -372,6 +438,12 @@ fn menu(app: &App, more: &egui::Response, item: &Item, look: &Look, actions: &mu
         }
         w::menu_separator(ui);
         match look.running.filter(|_| !look.this) {
+            // Своя сборка из кода — без вопроса; установленное и чужое — с подтверждением (§5.12).
+            Some((pid, _)) if look.own => {
+                if w::menu_item_danger(ui, Some(Icon::Stop), t("Остановить")).clicked() {
+                    actions.push(Action::StopNow(item.name.clone(), pid));
+                }
+            }
             Some((pid, _)) => {
                 if w::menu_item_danger(ui, Some(Icon::Stop), t("Остановить…")).clicked() {
                     actions.push(Action::Stop(item.name.clone(), pid, item.project.clone()));
@@ -417,16 +489,7 @@ fn look(app: &App, item: &Item, godot_found: bool) -> Look {
             } else {
                 (Main::Nothing, Icon::Play, t("Нет сборки, и Godot не найден").to_owned())
             };
-            Look {
-                chip,
-                state: state(running, t("не запущена")),
-                running,
-                this: false,
-                main,
-                icon,
-                hint,
-                install_dir: None,
-            }
+            Look { chip, state: state(running, t("не запущена")), running, main, icon, hint, ..Look::quiet() }
         }
         ProjectKind::Unity => {
             let engine = project.and_then(|p| p.engine.as_ref());
@@ -441,14 +504,7 @@ fn look(app: &App, item: &Item, godot_found: bool) -> Look {
             };
             let state = if open { t("открыт в Unity") } else { t("не открыт") }.to_owned();
             Look {
-                chip: (t("без сборки").to_owned(), None),
-                running: None,
-                this: false,
-                state,
-                main,
-                icon: Icon::Pencil,
-                hint,
-                install_dir: None,
+                chip: (t("без сборки").to_owned(), None), state, main, icon: Icon::Pencil, hint, ..Look::quiet()
             }
         }
         ProjectKind::Rust | ProjectKind::Git => rust_look(app, item),
@@ -462,7 +518,6 @@ fn rust_look(app: &App, item: &Item) -> Look {
     let install_dir = installed.map(|_| root.clone());
     let target =
         app.projects.iter().find(|p| p.path == item.project).and_then(|p| p.meta()).map(|m| m.target_dir.clone());
-    let built = app.builds.get(bin).copied().flatten();
     let service = item.group == Group::Services;
 
     if item.is_self() {
@@ -482,48 +537,103 @@ fn rust_look(app: &App, item: &Item) -> Look {
             icon: Icon::Play,
             hint: t("Это окно").to_owned(),
             install_dir,
+            ..Look::quiet()
         };
     }
 
-    let instance = app.running(bin).first().cloned();
+    let profile = app.profile_of(item);
+    let custom = (!profile.name.is_empty()).then(|| profile.label());
+    // Сборка из кода: хеш коммита, если собирал Anvil, иначе дата файла.
+    let release_exe = target.as_deref().map(|t| crate::launch::exe_path(t, true, bin));
+    // Хеш — только если exe с тех пор не пересобирали без Anvil (время файла не позже записи).
+    let built = app.builds.get(bin).copied().flatten().map(|at| {
+        let hash = release_exe.as_ref().and_then(|e| app.build_info.get(&crate::builds::key(e)));
+        hash.filter(|b| b.at + 5 >= at).map_or_else(|| i18n::date(at), crate::builds::label)
+    });
+    // Из запущенных копий — сначала своя сборка из кода, потом любая, запущенная из Anvil.
+    let copies = app.running(bin);
+    let tracked = |r: &crate::procs::Running| app.runs.iter().rev().find(|x| x.pid == r.pid && x.running());
+    let instance = copies
+        .iter()
+        .find(|r| tracked(r).is_some_and(|x| x.from_code))
+        .or_else(|| copies.iter().find(|r| tracked(r).is_some()))
+        .or_else(|| copies.first())
+        .cloned();
+    let run = instance.as_ref().and_then(tracked);
     let running = instance.as_ref().map(|r| (r.pid, r.started));
     let remote = app.remotes.get(&item.project);
     let release = super::install::release_for(remote, bin, app.config.common.prerelease);
-    let offered = release.as_ref().map(|(_, v)| format!("v{v}")).filter(|_| installed.is_none());
+    let offered = release.as_ref().map(|(_, v)| format!("v{v}")).filter(|_| installed.is_none() && custom.is_none());
+    let from_install = profile.source == crate::config::Source::Installed && installed.is_some();
 
     // Чип говорит о том, что запущено сейчас, а в покое — о том, что запустит Enter.
-    let chip = match &instance {
-        Some(r) if r.path.as_deref().is_some_and(|p| installs::inside(p, &root)) => {
+    let chip = match (&instance, run) {
+        (Some(_), Some(run)) => match run.source.split_once(' ') {
+            Some((word, rest)) => (i18n::source_word(word), Some(rest.to_owned())),
+            None => (i18n::source_word(&run.source), None),
+        },
+        (Some(r), None) if r.path.as_deref().is_some_and(|p| installs::inside(p, &root)) => {
             (t("установлена").to_owned(), installed.and_then(|i| i.current.clone()))
         }
-        Some(r) if r.path.as_deref().zip(target.as_deref()).is_some_and(|(p, t)| installs::inside(p, t)) => {
-            (t("сборка").to_owned(), built.map(i18n::date))
+        (Some(r), None) if r.path.as_deref().zip(target.as_deref()).is_some_and(|(p, t)| installs::inside(p, t)) => {
+            (t("сборка").to_owned(), built.clone())
         }
-        Some(_) => (t("не из Anvil").to_owned(), None),
-        None => match (installed, built) {
-            (Some(i), _) => (t("установлена").to_owned(), i.current.clone()),
-            // Enter поставит выпуск с GitHub, а не запустит здешнюю сборку.
-            (None, _) if offered.is_some() => (t("не установлена").to_owned(), None),
-            (None, Some(at)) => (t("сборка").to_owned(), Some(i18n::date(at))),
-            (None, None) if service => (t("не собран").to_owned(), None),
-            (None, None) => (t("не установлена").to_owned(), None),
+        (Some(_), None) => (t("не из Anvil").to_owned(), None),
+        (None, _) if from_install => (t("установлена").to_owned(), installed.and_then(|i| i.current.clone())),
+        // Enter поставит выпуск с GitHub, а не запустит здешнюю сборку.
+        (None, _) if offered.is_some() => (t("не установлена").to_owned(), None),
+        (None, _) => match &built {
+            Some(label) => (t("сборка").to_owned(), Some(label.clone())),
+            None if service => (t("не собран").to_owned(), None),
+            None => (t("не установлена").to_owned(), None),
         },
+    };
+    let with = |text: &str| match &custom {
+        Some(label) => format!("{text} · {label}"),
+        None => text.to_owned(),
     };
     let (main, icon, hint) = match (&instance, service) {
         (Some(r), false) => (Main::Focus(r.pid), Icon::Window, t("К окну").to_owned()),
         (Some(_), true) => (Main::Journal, Icon::Terminal, t("Журнал").to_owned()),
-        (None, _) if installed.is_some() => (Main::Launch, Icon::Play, t("Запустить").to_owned()),
+        (None, _) if from_install => (Main::Launch, Icon::Play, with(t("Запустить"))),
         (None, _) if offered.is_some() => {
             let v = offered.clone().unwrap_or_default();
             (Main::Install, Icon::Download, format!("{} {v} {}", t("Поставить"), t("и запустить")))
         }
-        (None, _) => (Main::FromCode, Icon::Play, t("Собрать и запустить").to_owned()),
+        (None, _) => (Main::FromCode, Icon::Play, with(t("Собрать и запустить"))),
     };
     let idle = match &offered {
         Some(v) if instance.is_none() => i18n::on_github(v),
         _ => t("не запущен").to_owned(),
     };
-    Look { chip, state: state(running, &idle), running, this: false, main, icon, hint, install_dir }
+    // Упал и страницу ещё не открывали — бейдж «test упал».
+    let badge = app.unseen_crash(&item.key).map(|r| i18n::crashed(&r.profile));
+    // Порт — у профиля, который действительно запущен, а не у выбранного.
+    let port = match run {
+        Some(run) => {
+            let presets = app.config.project(&item.project).presets;
+            crate::deck::profiles(item, &presets, installed.is_some())
+                .into_iter()
+                .find(|p| p.name == run.profile)
+                .and_then(|p| p.port)
+        }
+        None if instance.is_none() => profile.port,
+        None => None,
+    };
+    Look {
+        chip,
+        state: state(running, &idle),
+        running,
+        this: false,
+        main,
+        icon,
+        hint,
+        install_dir,
+        port: port.filter(|_| service),
+        badge,
+        own: run.is_some_and(|r| r.from_code),
+        profile: custom,
+    }
 }
 
 /// «работает · 2 ч 14 мин» или то, что сказано для покоя.
@@ -538,18 +648,14 @@ fn state(running: Option<(u32, Option<i64>)>, idle: &str) -> String {
 /// Главное действие предмета — то же, что Enter на Пульте. Нужно и палитре.
 pub fn run_main(app: &mut App, item: &Item) {
     app.deck_view.selected = Some(item.key.clone());
+    app.seen(&item.key);
     let godot = item.kind == ProjectKind::Godot && app.godot_editor().is_some();
     let look = look(app, item, godot);
     match look.main {
         Main::Launch => app.launch_item(item, false),
         Main::FromCode => app.launch_item(item, true),
         Main::Focus(pid) => app.focus(&item.name, pid),
-        Main::Journal => {
-            app.set_mode(Mode::Forge);
-            app.select(item.project.clone());
-            app.view = crate::app::View::Project;
-            app.log_open = true;
-        }
+        Main::Journal => app.open_log(&item.key),
         Main::Install => app.install_and_launch(item),
         Main::Editor => app.open_editor(item),
         Main::Nothing => {}
@@ -568,12 +674,101 @@ fn remote_card_data(app: &mut App) -> Option<(Result<crate::amber::Summary, Stri
     Some((summary, dir))
 }
 
+/// Строка «Недавно»: время, знак, кто, что случилось, точка.
+struct Recent {
+    when: String,
+    mark: Mark,
+    who: String,
+    what: String,
+    tone: Option<Tone>,
+}
+
+/// Последние четыре запуска — новые сверху.
+fn recent(app: &App, items: &[Item]) -> Vec<Recent> {
+    // По времени события: долгий запуск, только что закончившийся, — наверху.
+    let mut runs: Vec<&crate::runs::Run> = app.runs.iter().collect();
+    runs.sort_by_key(|r| std::cmp::Reverse(r.ended.unwrap_or(r.started)));
+    runs.into_iter()
+        .take(4)
+        .map(|run| {
+            let mark =
+                items.iter().find(|i| i.key == run.key).map_or(anvil_ui::family::neutral(Icon::Window), |i| i.mark);
+            let who =
+                if run.profile.is_empty() { run.name.clone() } else { format!("{} · {}", run.name, run.profile) };
+            let took = run.ended.unwrap_or(run.started) - run.started;
+            let code = run.code.map(crate::runs::code_text).unwrap_or_default();
+            let (what, tone) = match run.end {
+                crate::runs::End::Running => (i18n::started(&run.source), Some(Tone::Success)),
+                crate::runs::End::Closed => {
+                    (format!("{} {} · {} {code}", t("закрыт через"), i18n::span(took), t("код")), None)
+                }
+                crate::runs::End::Crashed => {
+                    (format!("{} {} · {} {code}", t("упал через"), i18n::span(took), t("код")), Some(Tone::Danger))
+                }
+                crate::runs::End::Stopped => (format!("{} {}", t("остановлен через"), i18n::span(took)), None),
+                crate::runs::End::Lost => (t("закрылся").to_owned(), None),
+            };
+            Recent { when: i18n::when(run.ended.unwrap_or(run.started)), mark, who, what, tone }
+        })
+        .collect()
+}
+
 fn right_column(
     ui: &mut Ui,
     remote: Option<&(Result<crate::amber::Summary, String>, PathBuf)>,
+    recent: &[Recent],
     actions: &mut Vec<Action>,
 ) {
-    let Some((summary, dir)) = remote else { return };
+    if let Some(remote) = remote {
+        remote_card(ui, remote, actions);
+        ui.add_space(18.0);
+    }
+    if !recent.is_empty() {
+        recent_card(ui, recent);
+    }
+}
+
+fn recent_card(ui: &mut Ui, recent: &[Recent]) {
+    let p = Palette::of(ui);
+    w::section_label(ui, t("Недавно"));
+    ui.add_space(8.0);
+    w::card_frame(ui).inner_margin(egui::Margin::symmetric(12, 4)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.style_mut().interaction.selectable_labels = false;
+        for (n, row) in recent.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.set_min_height(36.0);
+                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.add_sized(
+                    Vec2::new(40.0, 20.0),
+                    egui::Label::new(RichText::new(&row.when).font(egui::FontId::monospace(12.5)).color(p.weak)),
+                );
+                w::item_mark(ui, row.mark.accent, row.mark.icon, 16.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    match row.tone {
+                        Some(tone) => w::dot(ui, tone),
+                        None => w::ring(ui),
+                    };
+                    // Кто — текстом, что случилось — приглушённо; длинное обрезается многоточием.
+                    let mut job = egui::text::LayoutJob::default();
+                    let font = egui::FontId::proportional(13.0);
+                    job.append(&row.who, 0.0, egui::TextFormat::simple(font.clone(), p.text));
+                    job.append(&format!(" — {}", row.what), 0.0, egui::TextFormat::simple(font, p.weak));
+                    let text = format!("{} — {}", row.who, row.what);
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(job).truncate()).on_hover_text(&text);
+                    });
+                });
+            });
+            if n + 1 < recent.len() {
+                w::divider(ui);
+            }
+        }
+    });
+}
+
+fn remote_card(ui: &mut Ui, remote: &(Result<crate::amber::Summary, String>, PathBuf), actions: &mut Vec<Action>) {
+    let (summary, dir) = remote;
     let p = Palette::of(ui);
     w::section_label(ui, t("Удалённые серверы"));
     ui.add_space(8.0);
@@ -650,7 +845,10 @@ fn apply(app: &mut App, ctx: &egui::Context, actions: Vec<Action>) {
     app.deck_view.scroll = false;
     for action in actions {
         match action {
-            Action::Select(key) => app.deck_view.selected = Some(key),
+            Action::Select(key) => {
+                app.seen(&key);
+                app.deck_view.selected = Some(key);
+            }
             Action::Main(item) => run_main(app, &item),
             Action::FromCode(item) => {
                 app.deck_view.selected = Some(item.key.clone());
@@ -682,6 +880,31 @@ fn apply(app: &mut App, ctx: &egui::Context, actions: Vec<Action>) {
                 app.toasts.push(t("Убрано с Пульта — вернуть можно в настройках"), Tone::Neutral);
             }
             Action::Stop(name, pid, dir) => app.stop_confirm = Some((name, pid, dir)),
+            Action::StopNow(name, pid) => app.stop_run(name, pid),
+            Action::Profile(item, name) => {
+                // Выбор запоминается (запись в anvil.toml сделает сам запуск), а запускается именно этот
+                // профиль — даже если работает копия с другим.
+                let changed = app.config.deck.profile.get(&item.key).map_or(String::new(), Clone::clone) != name;
+                if name.is_empty() {
+                    app.config.deck.profile.remove(&item.key);
+                } else {
+                    app.config.deck.profile.insert(item.key.clone(), name.clone());
+                }
+                app.seen(&item.key);
+                let same = app.runs.iter().rev().find(|r| r.key == item.key && r.running() && r.profile == name);
+                match same.map(|r| (r.pid, r.service)) {
+                    Some((pid, false)) => app.focus(&item.name, pid),
+                    Some((_, true)) => app.open_log(&item.key),
+                    None => {
+                        let code = app.profile_of(&item).source == crate::config::Source::Code;
+                        app.launch_item(&item, code);
+                    }
+                }
+                if changed && !app.launching(&item.key) {
+                    app.save();
+                }
+            }
+            Action::Profiles(project) => app.presets_for = Some(project),
             Action::Folder(dir) => app.report(crate::open::folder(&dir)),
             Action::GodotPath => {
                 if let Some(path) = rfd::FileDialog::new().add_filter("Godot", &["exe"]).pick_file() {
