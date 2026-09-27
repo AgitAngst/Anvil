@@ -72,6 +72,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             if w::icon_button(ui, Icon::Plus, t("Добавить папку с проектами")).clicked() {
                 super::settings::add_root(app);
             }
+            if w::icon_button(ui, Icon::Tiles, t("Обзор проектов · Ctrl+0")).clicked() {
+                app.toggle_view();
+            }
         });
     });
     ui.add_space(4.0);

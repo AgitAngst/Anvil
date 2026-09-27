@@ -98,10 +98,30 @@ pub struct Meta {
     pub releases_repo: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Bin {
     pub name: String,
     pub package: String,
+    /// Оконная программа: в её исходнике `windows_subsystem = "windows"`. Иначе консольная.
+    pub gui: bool,
+    /// Что пакет сам сказал о себе в `[package.metadata.anvil]`.
+    pub hint: BinHint,
+}
+
+/// `[package.metadata.anvil]` в `Cargo.toml` пакета: поправить догадку Anvil. Всё необязательно.
+///
+/// ```toml
+/// [package.metadata.anvil]
+/// role = "service"    # program | service | tool
+/// name = "Amber"      # имя на Пульте
+/// hidden = true       # не показывать на Пульте
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct BinHint {
+    pub role: Option<String>,
+    pub name: Option<String>,
+    pub hidden: bool,
 }
 
 #[derive(Deserialize)]
@@ -119,12 +139,22 @@ struct Package {
     repository: Option<String>,
     manifest_path: PathBuf,
     targets: Vec<Target>,
+    #[serde(default)]
+    metadata: Option<PackageMetadata>,
+}
+
+#[derive(Deserialize, Default)]
+struct PackageMetadata {
+    #[serde(default)]
+    anvil: Option<BinHint>,
 }
 
 #[derive(Deserialize)]
 struct Target {
     name: String,
     kind: Vec<String>,
+    #[serde(default)]
+    src_path: PathBuf,
 }
 
 /// Сведения о проекте. Без сети: `--no-deps --offline`, cargo не лезет в реестр.
@@ -183,10 +213,13 @@ fn summarize(dir: &Path, metadata: Metadata) -> Meta {
     let mut bins: Vec<Bin> = packages
         .iter()
         .flat_map(|p| {
-            p.targets
-                .iter()
-                .filter(|t| t.kind.iter().any(|k| k == "bin"))
-                .map(|t| Bin { name: t.name.clone(), package: p.name.clone() })
+            let hint = p.metadata.as_ref().and_then(|m| m.anvil.clone()).unwrap_or_default();
+            p.targets.iter().filter(|t| t.kind.iter().any(|k| k == "bin")).map(move |t| Bin {
+                name: t.name.clone(),
+                package: p.name.clone(),
+                gui: declares_gui(&t.src_path),
+                hint: hint.clone(),
+            })
         })
         .collect();
     bins.sort_by(|a, b| a.name.cmp(&b.name));
@@ -199,6 +232,14 @@ fn summarize(dir: &Path, metadata: Metadata) -> Meta {
         target_dir: if metadata_target.as_os_str().is_empty() { dir.join("target") } else { metadata_target },
         releases_repo: None,
     }
+}
+
+/// Оконная ли программа: в корне её исходника есть `windows_subsystem = "windows"` (обычно под
+/// `cfg_attr(not(debug_assertions), …)`). Смотрится только начало файла — атрибут стоит там.
+fn declares_gui(src: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(src) else { return false };
+    let head: String = text.lines().take(60).collect::<Vec<_>>().join("\n");
+    head.contains("windows_subsystem") && head.contains("\"windows\"")
 }
 
 /// Одна ли это папка: cargo и проводник могут по-разному писать регистр и разделители.
@@ -259,7 +300,11 @@ jobs:
             description: None,
             repository: None,
             manifest_path: PathBuf::from(dir).join("Cargo.toml"),
-            targets: kinds.iter().map(|(n, k)| Target { name: (*n).into(), kind: vec![(*k).into()] }).collect(),
+            targets: kinds
+                .iter()
+                .map(|(n, k)| Target { name: (*n).into(), kind: vec![(*k).into()], src_path: PathBuf::new() })
+                .collect(),
+            metadata: None,
         }
     }
 
@@ -293,6 +338,32 @@ jobs:
         let meta =
             summarize(Path::new("/x/Anvil"), Metadata { packages: vec![kit, app], target_directory: PathBuf::new() });
         assert_eq!(meta.description.as_deref(), Some("Командный центр"));
+    }
+
+    #[test]
+    fn gui_and_hints_are_read() {
+        let dir = std::env::temp_dir().join(format!("anvil-registry-gui-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let gui = dir.join("gui.rs");
+        std::fs::write(
+            &gui,
+            "//! doc\n#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\nfn main() {}\n",
+        )
+        .unwrap();
+        let console = dir.join("console.rs");
+        std::fs::write(&console, "fn main() {}\n").unwrap();
+        assert!(declares_gui(&gui));
+        assert!(!declares_gui(&console));
+        assert!(!declares_gui(&dir.join("missing.rs")));
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let json = r#"{"packages":[{"name":"amber-bot","version":"0.4.0","manifest_path":"/a/Cargo.toml",
+            "targets":[{"name":"amber-bot","kind":["bin"],"src_path":"/a/src/main.rs"}],
+            "metadata":{"anvil":{"role":"service","name":"Бот"}}}],"target_directory":"/a/target"}"#;
+        let metadata: Metadata = serde_json::from_str(json).unwrap();
+        let meta = summarize(Path::new("/a"), metadata);
+        assert_eq!(meta.bins[0].hint.role.as_deref(), Some("service"));
+        assert_eq!(meta.bins[0].hint.name.as_deref(), Some("Бот"));
     }
 
     #[test]

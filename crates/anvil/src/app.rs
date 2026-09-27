@@ -34,11 +34,33 @@ pub enum Tab {
     Notes,
 }
 
-/// Что в середине окна: карточка выбранного проекта или обзор всех.
+/// Что в середине окна Кузницы: карточка выбранного проекта или обзор всех.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
     Project,
     Overview,
+}
+
+/// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Deck,
+    Forge,
+}
+
+/// Что Пульт помнит, пока окно открыто. На диск не пишется: ходить стрелками — не повод трогать
+/// `anvil.toml`.
+#[derive(Default)]
+pub struct DeckView {
+    /// Выбранный предмет (ключ).
+    pub selected: Option<String>,
+    /// Порядок строк. Пока Пульт на экране, строки не прыгают: порядок пересобирается при входе на
+    /// Пульт, по F5 и когда предметы появились или пропали.
+    pub order: Vec<String>,
+    /// Выбор сдвинули клавишами — прокрутить к нему.
+    pub scroll: bool,
+    /// Что и когда запускали: повторный Enter не запускает вторую копию.
+    pub launching: HashMap<String, Instant>,
 }
 
 /// Что сделать, когда задача закончится.
@@ -47,6 +69,10 @@ enum After {
     Deps(PathBuf),
     /// Перечитать тулчейн: Rust обновился.
     Toolchain,
+    /// Запустить только что поставленную программу: «Поставить v0.1.0 и запустить».
+    Launch(String),
+    /// Запустить собранный exe: игру после экспорта Godot. Имя — для уведомления об ошибке.
+    LaunchExe(String, PathBuf),
 }
 
 pub struct App {
@@ -60,6 +86,12 @@ pub struct App {
     pub scanning: bool,
     pub refreshed_at: Option<i64>,
     pub view: View,
+    pub mode: Mode,
+    pub deck_view: DeckView,
+    /// Когда собран release-exe бинарника (`target\release`), секунды Unix; `None` — не собран.
+    pub builds: HashMap<String, Option<i64>>,
+    /// Редактор Godot: `None` — ещё не искали, `Some(None)` — не нашёлся.
+    godot_editor: Option<Option<PathBuf>>,
     /// Палитра `Ctrl+K`, если открыта.
     pub palette: Option<crate::ui::palette::State>,
     pub tab: Tab,
@@ -128,7 +160,7 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         let config_path = config::path();
-        let (config, config_error) = config::load(&config_path);
+        let (config, config_error, migrated) = config::load(&config_path);
         anvil_ui::install(&cc.egui_ctx, ACCENT, config.common.theme);
         config.common.apply(&cc.egui_ctx);
         i18n::set(&cc.egui_ctx, config.common.language);
@@ -153,6 +185,10 @@ impl App {
             scanning: true,
             refreshed_at: None,
             view: View::Project,
+            mode: Mode::Deck,
+            deck_view: DeckView::default(),
+            builds: HashMap::new(),
+            godot_editor: None,
             palette: None,
             tab: Tab::Commits,
             toasts: Toasts::default(),
@@ -200,6 +236,9 @@ impl App {
         if let Some(error) = config_error {
             app.toasts.push(format!("{}: {error}", t("Настройки не прочитаны")), Tone::Danger);
         }
+        if migrated {
+            app.save();
+        }
         app.rescan();
         app
     }
@@ -209,9 +248,19 @@ impl App {
         let _ = self.commands.send(Cmd::Rescan(self.config.roots.clone(), self.config.kinds.clone()));
     }
 
+    /// Перечитать всё (F5): проекты, GitHub, редактор Godot; строки Пульта встают по-новому.
     pub fn refresh(&mut self) {
         let _ = self.commands.send(Cmd::Refresh { full: true });
         let _ = self.gh_commands.send(github::Cmd::Refresh);
+        self.godot_editor = None;
+        self.deck_view.order.clear();
+    }
+
+    /// Задать путь к редактору Godot.
+    pub fn set_godot(&mut self, path: PathBuf) {
+        self.config.godot = Some(path);
+        self.godot_editor = None;
+        self.save();
     }
 
     /// Сохранить свой токен GitHub (`None` — забыть).
@@ -302,7 +351,14 @@ impl App {
                 self.projects.retain(|p| found.iter().any(|(path, _)| *path == p.path));
                 for (path, kind) in found {
                     if !self.projects.iter().any(|p| p.path == path) {
-                        self.projects.push(Project { path, kind, meta: None, git: Ok(None), notes: Vec::new() });
+                        self.projects.push(Project {
+                            path,
+                            kind,
+                            meta: None,
+                            git: Ok(None),
+                            notes: Vec::new(),
+                            engine: None,
+                        });
                     }
                 }
                 self.scanning = false;
@@ -355,12 +411,242 @@ impl App {
         }
     }
 
-    /// Обзор ↔ карточка проекта (`Ctrl+0`).
+    /// Обзор ↔ карточка проекта (`Ctrl+0`). Обзор живёт в Кузнице.
     pub fn toggle_view(&mut self) {
+        if self.mode == Mode::Deck {
+            self.mode = Mode::Forge;
+            self.view = View::Overview;
+            return;
+        }
         self.view = match self.view {
             View::Project => View::Overview,
             View::Overview => View::Project,
         };
+    }
+
+    /// Сменить режим. Выбор общий: в Кузнице открывается проект выбранной строки Пульта, на Пульте
+    /// выбирается строка проекта, открытого в Кузнице. На Пульт — с пересобранным порядком строк:
+    /// пока нас не было, запускали.
+    pub fn set_mode(&mut self, mode: Mode) {
+        if mode == self.mode {
+            return;
+        }
+        let items = self.deck_items();
+        match mode {
+            Mode::Forge => {
+                let key = self.deck_view.selected.clone();
+                let item = key.and_then(|k| items.iter().find(|i| i.key == k)).or_else(|| items.first());
+                if let Some(project) = item.map(|i| i.project.clone()) {
+                    if self.selected.as_ref() != Some(&project) {
+                        self.view = View::Project;
+                    }
+                    self.select(project);
+                }
+            }
+            Mode::Deck => {
+                self.deck_view.order.clear();
+                if let Some(project) = self.current().map(|p| p.path.clone()) {
+                    let ours = |k: &String| items.iter().any(|i| &i.key == k && i.project == project);
+                    if !self.deck_view.selected.as_ref().is_some_and(ours) {
+                        self.deck_view.selected = items.iter().find(|i| i.project == project).map(|i| i.key.clone());
+                    }
+                    self.deck_view.scroll = true;
+                }
+            }
+        }
+        self.mode = mode;
+    }
+
+    // ─── Пульт ────────────────────────────────────────────────────────────────
+
+    /// Предметы Пульта в порядке строк, без убранных.
+    pub fn deck_items(&mut self) -> Vec<crate::deck::Item> {
+        let items = crate::deck::items(self.visible(), |path| self.config.project(path).icon);
+        let fresh: Vec<&str> = {
+            let mut keys: Vec<&str> = items
+                .iter()
+                .map(|i| i.key.as_str())
+                .filter(|k| !self.config.deck.removed.iter().any(|r| r == k))
+                .collect();
+            keys.sort_unstable();
+            keys
+        };
+        let mut known: Vec<&str> = self.deck_view.order.iter().map(String::as_str).collect();
+        known.sort_unstable();
+        if fresh != known {
+            self.deck_view.order = crate::deck::order(&items, &self.config.deck);
+        }
+        let order = &self.deck_view.order;
+        let mut ordered: Vec<crate::deck::Item> = items.into_iter().filter(|i| order.contains(&i.key)).collect();
+        ordered.sort_by_key(|i| order.iter().position(|k| *k == i.key));
+        ordered
+    }
+
+    /// Редактор Godot: ищется один раз (в `PATH` это обход папок) и заново — по F5 и после
+    /// «Путь к Godot…».
+    pub fn godot_editor(&mut self) -> Option<PathBuf> {
+        if self.godot_editor.is_none() {
+            self.godot_editor = Some(crate::engines::godot_editor(self.config.godot.as_deref()));
+        }
+        self.godot_editor.clone().flatten()
+    }
+
+    /// Предмет только что запускали: второй Enter подряд (или повтор клавиши) не запускает копию,
+    /// пока снимок процессов не увидел первую.
+    pub fn launching(&self, key: &str) -> bool {
+        self.deck_view.launching.get(key).is_some_and(|at| at.elapsed() < Duration::from_secs(4))
+    }
+
+    /// Запомнить, что предмет запускали с Пульта: по этому сортируется группа.
+    fn mark_launched(&mut self, key: &str) {
+        self.deck_view.launching.insert(key.to_owned(), Instant::now());
+        self.config.deck.launched.insert(key.to_owned(), i18n::now());
+        self.save();
+    }
+
+    /// Запустить предмет. `from_code` — свежую сборку из кода (`Ctrl+Enter`; у Godot — экспорт и
+    /// игра), иначе — то, что установлено (или собрано, если ставить нечего).
+    pub fn launch_item(&mut self, item: &crate::deck::Item, from_code: bool) {
+        if item.is_self() || self.launching(&item.key) {
+            return;
+        }
+        let started = match item.kind {
+            registry::Kind::Rust => {
+                let Some(bin) = item.bin.clone() else { return };
+                let installed = self.installs.get(&bin).is_some_and(Option::is_some);
+                if installed && !from_code {
+                    self.launch_installed(&bin)
+                } else {
+                    // Занятый exe — окно выбора; задача ещё не встала, но выбор сделан.
+                    self.start_task_as(&item.project, Task::Run { bin, args: Vec::new() }, true);
+                    true
+                }
+            }
+            registry::Kind::Godot if from_code => self.export_and_play(item),
+            registry::Kind::Godot => {
+                let project = self.projects.iter().find(|p| p.path == item.project);
+                let export = project.and_then(|p| p.engine.as_ref()).and_then(|e| e.export.clone());
+                match export.filter(|e| e.is_file()) {
+                    Some(exe) => self.start_program(&item.name, &exe, &[], None),
+                    None => self.play_from_source(item),
+                }
+            }
+            registry::Kind::Unity => return self.open_editor(item),
+            registry::Kind::Git => return,
+        };
+        if started {
+            self.mark_launched(&item.key);
+        }
+    }
+
+    /// Godot из исходников: движок запускает главную сцену проекта, без экспорта.
+    pub fn play_from_source(&mut self, item: &crate::deck::Item) -> bool {
+        let Some(godot) = self.godot_editor() else {
+            self.toasts.push(t("Godot не найден: укажите путь к редактору в меню строки"), Tone::Warning);
+            return false;
+        };
+        let dir = item.project.to_string_lossy().into_owned();
+        self.start_program(&item.name, &godot, &["--path".into(), dir], Some(&item.project))
+    }
+
+    /// Godot: экспортировать игру под Windows (задача в консоли, ошибки видны там же) и запустить.
+    fn export_and_play(&mut self, item: &crate::deck::Item) -> bool {
+        let project = self.projects.iter().find(|p| p.path == item.project);
+        let Some(export) = project.and_then(|p| p.engine.as_ref()).and_then(|e| e.export.clone()) else {
+            self.toasts.push(t("В export_presets.cfg нет пресета «Windows Desktop»"), Tone::Warning);
+            return false;
+        };
+        let Some(godot) = self.godot_editor() else {
+            self.toasts.push(t("Godot не найден: укажите путь к редактору в меню строки"), Tone::Warning);
+            return false;
+        };
+        if let Some(dir) = export.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let args = vec![
+            "--headless".into(),
+            "--path".into(),
+            item.project.to_string_lossy().into_owned(),
+            "--export-release".into(),
+            "Windows Desktop".into(),
+            export.to_string_lossy().into_owned(),
+        ];
+        let title = format!("godot --export-release \"Windows Desktop\" {}", export.display());
+        let steps = vec![jobs::Step::Run(godot.to_string_lossy().into_owned(), args)];
+        let id = self.enqueue(tasks::script_spec(&item.project, title, steps));
+        self.after_job.insert(id, After::LaunchExe(item.name.clone(), export));
+        true
+    }
+
+    /// Открыть проект Godot или Unity в редакторе.
+    pub fn open_editor(&mut self, item: &crate::deck::Item) {
+        let dir = item.project.to_string_lossy().into_owned();
+        let started = match item.kind {
+            registry::Kind::Godot => match self.godot_editor() {
+                Some(godot) => {
+                    self.start_program(&item.name, &godot, &["-e".into(), "--path".into(), dir], Some(&item.project))
+                }
+                None => {
+                    self.toasts.push(t("Godot не найден: укажите путь к редактору в меню строки"), Tone::Warning);
+                    false
+                }
+            },
+            registry::Kind::Unity => {
+                let engine = self.projects.iter().find(|p| p.path == item.project).and_then(|p| p.engine.as_ref());
+                let version = engine.and_then(|e| e.version.clone()).unwrap_or_default();
+                match engine.and_then(|e| e.editor.clone()) {
+                    Some(unity) => {
+                        self.start_program(&item.name, &unity, &["-projectPath".into(), dir], Some(&item.project))
+                    }
+                    None => {
+                        self.toasts.push(format!("Unity {version} {}", t("не найден в Unity Hub")), Tone::Warning);
+                        false
+                    }
+                }
+            }
+            _ => false,
+        };
+        if started {
+            self.mark_launched(&item.key);
+        }
+    }
+
+    /// Запустить exe отдельно от Anvil; ошибку — в уведомление. `true` — запустилось.
+    fn start_program(&mut self, name: &str, exe: &Path, args: &[String], dir: Option<&Path>) -> bool {
+        let dir = dir.map(Path::to_path_buf).or_else(|| exe.parent().map(Path::to_path_buf)).unwrap_or_default();
+        let launch = crate::launch::Launch { exe: exe.to_path_buf(), args: args.to_vec(), dir };
+        match crate::launch::start(&launch) {
+            Ok(_) => true,
+            Err(e) => {
+                self.toasts.push(format!("{name}: {e}"), Tone::Danger);
+                false
+            }
+        }
+    }
+
+    /// Поставить выпуск с GitHub и сразу запустить.
+    pub fn install_and_launch(&mut self, item: &crate::deck::Item) {
+        let Some(bin) = item.bin.clone() else { return };
+        if self.launching(&item.key) {
+            return;
+        }
+        let remote = self.remotes.get(&item.project).cloned();
+        let Some((release, _)) = crate::ui::install::release_for(remote.as_ref(), &bin, self.config.common.prerelease)
+        else {
+            return;
+        };
+        let release = release.clone();
+        if let Some(id) = self.install_release(&item.project, &bin, &release) {
+            self.after_job.insert(id, After::Launch(bin));
+            self.mark_launched(&item.key);
+        }
+    }
+
+    /// Показать окно запущенной программы.
+    pub fn focus(&mut self, name: &str, pid: u32) {
+        if !procs::focus_window(pid) {
+            self.toasts.push(format!("{name}: {}", t("окна не видно — возможно, программа в трее")), Tone::Neutral);
+        }
     }
 
     pub fn hide(&mut self, path: &Path) {
@@ -502,6 +788,15 @@ impl App {
         match self.after_job.remove(&id) {
             Some(After::Deps(path)) => self.check_deps(vec![path], true),
             Some(After::Toolchain) => self.check_toolchain(true),
+            Some(After::Launch(bin)) if outcome.ok && matches!(outcome.installed, Some(Ok(_))) => {
+                self.installs.insert(bin.clone(), installs::scan(&bin));
+                self.launch_installed(&bin);
+            }
+            Some(After::Launch(_)) => {}
+            Some(After::LaunchExe(name, exe)) if outcome.ok => {
+                self.start_program(&name, &exe, &[], None);
+            }
+            Some(After::LaunchExe(..)) => {}
             None => {}
         }
         let Some(job) = self.job_mut(id) else { return };
@@ -539,17 +834,22 @@ impl App {
 
     // ─── Установка ─────────────────────────────────────────────────────────────
 
-    /// Перечитать, что установлено для бинарников проекта.
+    /// Перечитать, что установлено для бинарников проекта и когда собран их release-exe.
     pub fn refresh_installs(&mut self, path: &Path) {
-        let bins: Vec<String> = self
-            .projects
+        let Some(meta) = self.projects.iter().find(|p| p.path == path).and_then(|p| p.meta()) else { return };
+        let bins: Vec<(String, PathBuf)> = meta
+            .bins
             .iter()
-            .find(|p| p.path == path)
-            .and_then(|p| p.meta())
-            .map(|m| m.bins.iter().map(|b| b.name.clone()).collect())
-            .unwrap_or_default();
-        for bin in bins {
+            .map(|b| (b.name.clone(), crate::launch::exe_path(&meta.target_dir, true, &b.name)))
+            .collect();
+        for (bin, exe) in bins {
             self.installs.insert(bin.clone(), installs::scan(&bin));
+            let built = std::fs::metadata(&exe)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64);
+            self.builds.insert(bin, built);
         }
     }
 
@@ -566,14 +866,14 @@ impl App {
     }
 
     /// Скачать выпуск с GitHub и поставить.
-    pub fn install_release(&mut self, path: &Path, bin: &str, release: &Release) {
-        let Some(version) = anvil_update::Version::parse(&release.tag) else { return };
+    pub fn install_release(&mut self, path: &Path, bin: &str, release: &Release) -> Option<JobId> {
+        let version = anvil_update::Version::parse(&release.tag)?;
         let name = anvil_update::asset_name(bin, &version);
         let (Some(asset), Some(sums)) =
             (release.assets.iter().find(|a| a.name == name), release.assets.iter().find(|a| a.name == "SHA256SUMS"))
         else {
             self.toasts.push(t("В выпуске нет архива по соглашению или SHA256SUMS"), Tone::Danger);
-            return;
+            return None;
         };
         let download = crate::jobs::Download {
             bin: bin.to_owned(),
@@ -584,7 +884,7 @@ impl App {
             sums_url: sums.url.clone(),
             sums_api: sums.api_url.clone(),
         };
-        self.enqueue(tasks::download_spec(path, download, asset.size));
+        Some(self.enqueue(tasks::download_spec(path, download, asset.size)))
     }
 
     /// Сделать активной другую установленную версию — откат или возврат.
@@ -607,17 +907,11 @@ impl App {
         self.refresh_installs(path);
     }
 
-    /// Запустить установленную копию (через `current`).
-    pub fn launch_installed(&mut self, bin: &str) {
+    /// Запустить установленную копию (через `current`). `true` — запустилась.
+    pub fn launch_installed(&mut self, bin: &str) -> bool {
         let current = installs::root(bin).join("current");
-        let launch = crate::launch::Launch {
-            exe: current.join(format!("{bin}{}", std::env::consts::EXE_SUFFIX)),
-            args: Vec::new(),
-            dir: current,
-        };
-        if let Err(e) = crate::launch::start(&launch) {
-            self.toasts.push(format!("{bin}: {e}"), Tone::Danger);
-        }
+        let exe = current.join(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
+        self.start_program(bin, &exe, &[], Some(&current))
     }
 
     /// amber-admin: установленная копия — сразу, иначе сборка и запуск из проекта.

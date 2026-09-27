@@ -205,6 +205,47 @@ K2 (программы на наборе):
 `git tag -a --cleanup=verbatim` (записано в RELEASES.md). Тег `v0.2.0` (A3–A6) поставлен 24.09 по
 команде; версия workspace — 0.2.0 (набор с `kit-v0.2.0` не менялся, свой тег ему не нужен).
 
+## Anvil 0.3 — Пульт (с 27.09.2026)
+
+Пользователь: «хочу превратить Анвил в что-то типа продвинутого лаунчера для моих программ». План — таблица
+«Anvil 0.3 — Пульт» в [SPEC.md](SPEC.md) (этапы П1–П7), вид и поведение — [docs/DESIGN-0.3.md](docs/DESIGN-0.3.md)
+(макеты — на холсте, ссылка там в §10). Команда пользователя 27.09: «Делай пульт по спецификации».
+
+П1 (набор, 41486ae): значки `ArrowLeft`, `Bot`, `Broadcast`, `Cube`, `Gamepad`, `Pin`, `Target`, `Window`;
+`family::MARKS` / `mark_of` / `neutral`; `Palette::badge_fill` (непрозрачные бейджи и Danger-кнопка),
+`Palette::mark`, `theme::over`; виджеты `item_mark`, `paint_mark`, `mark_stack`, `split_button`, `source_chip`,
+`running_chip`, `chain` (`ChainNode`), `key_hints`, `hotkey_field`, `ring`, `list_row` (фон под курсором — по
+`rect_contains_pointer`, иначе мигает над кнопками строки); `field_row` — 110. Витрина: `--tab deck`.
+
+П2 (Пульт):
+- `deck.rs` — модель: `Item` (ключ `<папка в нижнем регистре>|<бинарник>` или `|engine`), `Role`
+  (`[package.metadata.anvil] role` → `windows_subsystem` в исходнике бинарника → `server`/`bot` в имени → инструмент;
+  инструменты на Пульт не попадают), `Group`, имена (главная оконная программа проекта берёт имя проекта:
+  `amber-desktop` → «Amber»), знаки (`family::mark_of`, у Godot/Unity нейтральные, значок проекта — `icon` в
+  `anvil.toml`), `order` (закреплённые → недавно запущенные → по имени, Anvil последний).
+- `registry.rs`: у `Bin` — `gui` и `hint` (`[package.metadata.anvil]`: `role`, `name`, `hidden`).
+- `engines.rs`: версия Godot (`config/features`), путь экспорта «Windows Desktop», время сборки; версия Unity,
+  открыт ли (`Temp/UnityLockfile`); редакторы: Unity Hub (`C:\Program Files\Unity\Hub\Editor\<версия>`,
+  `secondaryInstallPath.json`), Godot — `godot = "…"` в `anvil.toml` (пункт меню строки «Путь к Godot…»), иначе `PATH`.
+- `procs.rs`: время запуска процесса (`GetProcessTimes`) и `focus_window` («К окну», `EnumWindows`).
+- `i18n.rs`: местное время `clock`/`date` (`SystemTimeToTzSpecificLocalTime`), `uptime` «2 ч 14 мин», `uptime_short` «2:14».
+- `config.rs`: `deck` (`pinned`, `removed`, `launched`), `godot`, `version`; `migrate` 0 → 1 добавляет `godot` и
+  `unity` в `kinds` (решение пользователя: Godot и Unity — в библиотеке). `load` отдаёт третьим «сохранить».
+- `app.rs`: `Mode {Deck, Forge}` (старт — Пульт), `DeckView` (выбор и порядок строк — только в памяти: стрелки не
+  пишут `anvil.toml`), `builds` (время release-exe), `deck_items`, `launch_item`, `open_editor`,
+  `install_and_launch` (`After::Launch` после скачивания), `focus`.
+- `ui/deck.rs` — экран: группы, строки (знак, имя, подпись, «без git», чип источника, точка/кольцо и состояние,
+  главное действие, меню), удалённые серверы по сводке amber-admin (только метка из скобок — адрес не
+  показывается: `amber::label`), пустое состояние. Клавиши съедаются до строк: ↑↓, Enter, Ctrl+Enter,
+  Shift+Enter, Ctrl+P; печать открывает палитру с набранным. `running_chips` — чипы «Запущено».
+- Шапка: сегменты «Пульт · Кузница» (Ctrl+1/2), палитра с подсказкой по режиму, кнопка-значок «Перечитать всё · F5».
+  Строка состояния справа: «ЗАПУЩЕНО» + чипы + «Консоль» (Ctrl+L, нажата, когда открыта). Кузница: «На Пульте»,
+  в боковой панели — значок «Обзор · Ctrl+0». Палитра: предметы Пульта (запустить / из кода), режимы; выбранная
+  строка — `raised` + полоска. Настройки: «Убрано с Пульта» → «Вернуть». Окно 1440×900.
+- Проверено вживую (портативный `target/debug/anvil.toml`, копия до и возврат после): Пульт на настоящих проектах в
+  обеих темах и на обоих языках (только чтение); на пробных `projects/demo-*` в scratchpad — «Собрать и запустить»,
+  «работает · N с», чип, меню → «Остановить…» → подтверждение → процесс закрыт.
+
 ## Дальше
 
 Все этапы плана SPEC (K0–K2, A0–A6) пройдены, Anvil 0.2.0 выпущен.

@@ -1028,18 +1028,21 @@ pub fn hotkey_field(ui: &mut Ui, keys: &[&str], change: &str, status: Option<(bo
 /// Строка списка Пульта и быстрого запуска: во всю ширину, высотой `height`. Рисует только фон:
 /// под курсором — `hover`, выбранная — `raised` и полоска акцента слева. Колонки рисует вызывающий
 /// в `response.rect`; кнопки поверх строки заводить после неё, чтобы щелчок доставался им.
+///
+/// Строка не берёт фокус клавиатуры: по строкам ходит сам список (↑↓ и Enter — у вызывающего),
+/// а Tab ведёт к кнопкам строки. Иначе Enter на строке в фокусе был бы её щелчком.
 pub fn list_row(ui: &mut Ui, id: egui::Id, selected: bool, height: f32, label: &str) -> Response {
     let p = Palette::of(ui);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
-    let response = ui.interact(rect, id, Sense::click());
+    let response = ui.interact(rect, id, Sense::CLICK);
     if selected {
         ui.painter().rect_filled(rect, radius::CONTROL, p.raised);
         let bar = Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - 14.0), Vec2::new(3.0, 28.0));
         ui.painter().rect_filled(bar, 2, p.accent);
-    } else if response.hovered() {
+    } else if ui.rect_contains_pointer(rect) {
+        // Не `response.hovered()`: над кнопкой строки он гаснет, и фон мигал бы.
         ui.painter().rect_filled(rect, radius::CONTROL, p.hover);
     }
-    focus_ring(ui, rect, &response, radius::CONTROL);
     response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
     response
 }

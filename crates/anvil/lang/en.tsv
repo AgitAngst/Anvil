@@ -28,7 +28,6 @@ origin не ответил у	origin did not respond for
 История появится после первого коммита.	History appears after the first commit.
 Ищу проекты…	Looking for projects…
 Код	Code
-Командный центр Rust-программ	Command center for Rust apps
 Коммитов нет	No commits
 Коммиты	Commits
 Крейтов	Crates
@@ -48,11 +47,9 @@ origin не ответил у	origin did not respond for
 Папка не под git.	The folder is not under git.
 Папка с проектами	Folder with projects
 Папки с проектами	Project folders
-Перечитать всё и спросить origin (F5)	Re-read everything and ask origin (F5)
 Последний	Latest
 Проверено	Checked
 Проверять новые коммиты	Check for new commits
-Проект — это сама папка или её подпапка, где есть Cargo.toml.	A project is the folder itself or a subfolder that has a Cargo.toml.
 Проектов не видно	No projects in sight
 Проекты	Projects
 Репозиторий на GitHub	Repository on GitHub
@@ -61,7 +58,7 @@ origin не ответил у	origin did not respond for
 Смотрю папки из настроек.	Looking through the folders from settings.
 Состояние	Status
 Состояние не прочитано.	Status could not be read.
-Состояние прочитано	Status read
+Состояние прочитано	Everything read
 Спрашиваю origin…	Asking origin…
 Спросить origin	Ask origin
 Тег	Tag
@@ -131,7 +128,6 @@ cargo clean удалит папку сборки целиком. Следующ�
 Очистить сборку	Clean the build of
 Очистить сборку…	Clean build…
 Ошибки и предупреждения	Errors and warnings
-Показать лог	Show log
 Пресет	Preset
 Пресет — это бинарник и аргументы: например, клиент с тестовым профилем. Главная кнопка «Запустить» берёт выбранный пресет.	A preset is a binary plus arguments, for example a client with a test profile. The main Run button uses the chosen preset.
 Пресеты запуска	Run presets
@@ -144,7 +140,6 @@ cargo clean удалит папку сборки целиком. Следующ�
 Сборка	Build
 Сборка пойдёт в папку anvil внутри target: запущенная программа не мешает, но собираться придётся с нуля.	The build goes to an anvil folder inside target: the running program is not in the way, but everything is built from scratch.
 Сборок разом (cargo -j)	Parallel jobs (cargo -j)
-Скрыть лог	Hide log
 Собрать	Build
 Собрать в отдельную папку	Build into a separate folder
 Собрать и запустить	Build and run
@@ -363,7 +358,6 @@ Amber не стоит	Amber not installed
 Проверить зависимости всех проектов	Check dependencies of all projects
 Проверить обновления Anvil	Check for Anvil updates
 Проверить форматирование	Check formatting
-Проект	Project
 Проект или действие…	Project or action…
 Серверы Amber	Amber servers
 Собрать debug	Build debug
@@ -382,3 +376,71 @@ Amber не стоит	Amber not installed
 впереди origin	ahead of origin
 Выпуски — из	Releases from
 Выпуски с GitHub берутся из	GitHub releases come from
+ч	h
+Anvil к серверам не подключается.	Anvil never connects to the servers.
+Godot и Unity	Godot & Unity
+Godot не найден: укажите путь к редактору в меню строки	Godot not found: set the editor path in the row menu
+Добавьте папку с проектами: Anvil найдёт программы, службы и проекты Godot и Unity	Add a folder with projects: Anvil will find programs, services and Godot and Unity projects
+Ещё действия	More actions
+Журнал	Log
+Закрепить	Pin
+Запустить из кода	Launch from code
+Запущено	Running
+Играть	Play
+Играть из исходников	Play from source
+К окну	Show window
+Консоль	Console
+Кузница	Forge
+На Пульте	On the Deck
+Найти или запустить…	Find or launch…
+Нет сборки, и Godot не найден	No build, and Godot was not found
+Обзор проектов · Ctrl+0	Projects overview · Ctrl+0
+Остановить…	Stop…
+Открепить	Unpin
+Открыть в Godot	Open in Godot
+Открыть в Unity	Open in Unity
+Открыть в Кузнице	Open in the Forge
+Папка проекта	Project folder
+Перечитать всё · F5	Reread everything · F5
+Показать консоль	Show console
+Показать консоль · Ctrl+L	Show console · Ctrl+L
+Поставить	Install
+Программы	Programs
+Проект — это сама папка или её подпапка, где есть Cargo.toml, project.godot или проект Unity.	A project is the folder itself or a subfolder with Cargo.toml, project.godot or a Unity project.
+Пульт	Deck
+Пульт и кузница моих программ	Launcher and forge for my programs
+Пульт пуст	The Deck is empty
+Путь к Godot…	Godot path…
+Сводка amber-admin, проверено в	amber-admin's summary, checked at
+Серверы и боты	Servers & bots
+Скрыть консоль	Hide console
+Скрыть консоль · Ctrl+L	Hide console · Ctrl+L
+Убрано с Пульта	Removed from the Deck
+Убрано с Пульта — вернуть можно в настройках	Removed from the Deck — bring it back in Settings
+Убрать с Пульта	Remove from the Deck
+Удалённые серверы	Remote servers
+Это окно	This window
+без сборки	no build
+запустить	launch
+и запустить	and launch
+из	of
+из кода	from code
+не запущен	not running
+не запущена	not running
+не из Anvil	not from Anvil
+не найден в Unity Hub	not found in Unity Hub
+не открыт	not open
+не собран	not built
+окна не видно — возможно, программа в трее	no window visible — the program may be in the tray
+открыт в Unity	open in Unity
+портативная	portable
+сборка	build
+сводка amber-admin не читается	amber-admin's summary can't be read
+экспорт	export
+это окно	this window
+меньше минуты	under a minute
+В export_presets.cfg нет пресета «Windows Desktop»	export_presets.cfg has no “Windows Desktop” preset
+Остановить… (не запущено)	Stop… (not running)
+Папка установки	Install folder
+Проект уже открыт в Unity	The project is already open in Unity
+Экспортировать и играть	Export and play

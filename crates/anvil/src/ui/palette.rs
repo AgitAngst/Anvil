@@ -8,7 +8,7 @@ use anvil_ui::widgets as w;
 use anvil_ui::{Icon, Palette, semibold};
 use eframe::egui::{self, Align2, FontId, Key, Modifiers, Sense, Ui, Vec2};
 
-use crate::app::{App, View};
+use crate::app::{App, Mode, View};
 use crate::i18n::t;
 use crate::registry::Kind as ProjectKind;
 use crate::tasks::{self, Task};
@@ -25,6 +25,9 @@ pub struct State {
 /// Что делает строка палитры.
 #[derive(Clone)]
 enum Command {
+    /// Запустить предмет Пульта; `true` — из кода.
+    Launch(Box<crate::deck::Item>, bool),
+    Mode(Mode),
     Select(PathBuf),
     /// Задача с явным профилем (`Some(true)` — release) или с тем, что выбран у проекта.
     Task(PathBuf, Task, Option<bool>),
@@ -59,6 +62,11 @@ pub fn open(app: &mut App) {
     app.palette = Some(State::default());
 }
 
+/// Открыть с набранным: печать на Пульте продолжается в палитре.
+pub fn open_with(app: &mut App, text: &str) {
+    app.palette = Some(State { query: text.to_owned(), ..State::default() });
+}
+
 /// Поле-кнопка в шапке: выглядит как поиск, открывает палитру.
 pub fn launcher(app: &mut App, ui: &mut Ui, width: f32) {
     let p = Palette::of(ui);
@@ -67,7 +75,11 @@ pub fn launcher(app: &mut App, ui: &mut Ui, width: f32) {
     ui.painter().rect(rect, 6, p.field, egui::Stroke::new(1.0, border), egui::StrokeKind::Inside);
     let icon = egui::Rect::from_min_size(egui::pos2(rect.left() + 9.0, rect.center().y - 8.0), Vec2::splat(16.0));
     anvil_ui::icons::paint(ui.painter(), icon, Icon::Search, p.faint);
-    let hint = t("Найти проект или действие…");
+    let hint = if app.mode == Mode::Deck {
+        t("Найти или запустить…")
+    } else {
+        t("Найти проект или действие…")
+    };
     ui.painter().text(
         egui::pos2(rect.left() + 32.0, rect.center().y),
         Align2::LEFT_CENTER,
@@ -176,11 +188,14 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 fn draw_row(ui: &mut Ui, item: &Item, selected: bool) -> egui::Response {
     let p = Palette::of(ui);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
+    // Выбранная строка — как на Пульте: `raised` и полоска акцента, без цветного текста.
     if selected {
-        ui.painter().rect_filled(rect, 6, p.soft(p.accent));
+        ui.painter().rect_filled(rect, 6, p.raised);
+        let bar = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.center().y - 9.0), Vec2::new(3.0, 18.0));
+        ui.painter().rect_filled(bar, 2, p.accent);
     }
     let icon = egui::Rect::from_min_size(egui::pos2(rect.left() + 10.0, rect.center().y - 8.0), Vec2::splat(16.0));
-    anvil_ui::icons::paint(ui.painter(), icon, item.icon, if selected { p.accent_text } else { p.weak });
+    anvil_ui::icons::paint(ui.painter(), icon, item.icon, if selected { p.text } else { p.weak });
     let title = ui.painter().text(
         egui::pos2(rect.left() + 36.0, rect.center().y),
         Align2::LEFT_CENTER,
@@ -240,9 +255,38 @@ fn score(item: &Item, words: &[String]) -> Option<usize> {
     })
 }
 
-/// Все строки: сначала выбранный проект, потом «перейти» к остальным и их действия, потом общее.
-fn items(app: &App) -> Vec<Item> {
+/// Все строки: на Пульте сначала предметы Пульта; потом выбранный проект, «перейти» к остальным и
+/// их действия, потом общее.
+fn items(app: &mut App) -> Vec<Item> {
     let mut out = Vec::new();
+    let deck_items = app.deck_items();
+    let mut deck: Vec<Item> = deck_items
+        .into_iter()
+        .filter(|i| !i.is_self())
+        .flat_map(|i| {
+            let with =
+                |what: &str| if i.caption.is_empty() { what.to_owned() } else { format!("{} · {what}", i.caption) };
+            let launch = Item {
+                icon: Icon::Play,
+                title: i.name.clone(),
+                project: Some(with(t("запустить"))),
+                keys: None,
+                command: Command::Launch(Box::new(i.clone()), false),
+            };
+            let from_code = (i.kind == ProjectKind::Rust).then(|| Item {
+                icon: Icon::Hammer,
+                title: i.name.clone(),
+                project: Some(with(t("из кода"))),
+                keys: None,
+                command: Command::Launch(Box::new(i.clone()), true),
+            });
+            std::iter::once(launch).chain(from_code)
+        })
+        .collect();
+    // На Пульте предметы — первыми, в Кузнице — после проектов.
+    if app.mode == Mode::Deck {
+        out.append(&mut deck);
+    }
     let current = app.current().map(|p| p.path.clone());
     let mut projects = app.visible();
     projects.sort_by_key(|p| Some(&p.path) != current.as_ref());
@@ -307,19 +351,27 @@ fn items(app: &App) -> Vec<Item> {
         out.push(item(Icon::Terminal, t("Терминал в папке"), None, Command::Terminal(path.clone())));
         out.push(item(Icon::Code, t("Открыть в VS Code"), None, Command::Code(path.clone())));
     }
+    out.append(&mut deck);
     let global =
         |icon, title: &str, keys, command| Item { icon, title: title.to_owned(), project: None, keys, command };
-    let overview = if app.view == View::Overview {
+    let overview = if app.mode == Mode::Forge && app.view == View::Overview {
         t("Карточка проекта")
     } else {
         t("Обзор проектов")
     };
     out.extend([
+        global(Icon::Play, t("Пульт"), Some("Ctrl+1"), Command::Mode(Mode::Deck)),
+        global(Icon::Hammer, t("Кузница"), Some("Ctrl+2"), Command::Mode(Mode::Forge)),
         global(Icon::Tiles, overview, Some("Ctrl+0"), Command::Overview),
         global(Icon::Refresh, t("Обновить всё и спросить origin"), Some("F5"), Command::Refresh),
         global(Icon::Package, t("Проверить зависимости всех проектов"), None, Command::CheckAllDeps),
         global(Icon::Layers, t("Rust и зависимости"), None, Command::Toolchain),
-        global(Icon::Terminal, if app.log_open { t("Скрыть лог") } else { t("Показать лог") }, None, Command::Log),
+        global(
+            Icon::Terminal,
+            if app.log_open { t("Скрыть консоль") } else { t("Показать консоль") },
+            Some("Ctrl+L"),
+            Command::Log,
+        ),
         global(Icon::Plus, t("Добавить папку с проектами…"), None, Command::AddFolder),
         global(Icon::Gear, t("Настройки"), Some("Ctrl+,"), Command::Settings),
         global(Icon::Download, t("Проверить обновления Anvil"), None, Command::CheckUpdates),
@@ -330,9 +382,18 @@ fn items(app: &App) -> Vec<Item> {
 
 fn run(app: &mut App, ctx: &egui::Context, command: Command) {
     match command {
+        // «Запустить» — то же, что Enter на Пульте: у запущенного — к окну, у не установленного —
+        // поставить. «Из кода» — всегда сборка.
+        Command::Launch(item, false) => super::deck::run_main(app, &item),
+        Command::Launch(item, true) => {
+            app.deck_view.selected = Some(item.key.clone());
+            app.launch_item(&item, true);
+        }
+        Command::Mode(mode) => app.set_mode(mode),
         Command::Select(path) => {
             app.select(path);
             app.view = View::Project;
+            app.set_mode(Mode::Forge);
         }
         Command::Task(path, task, release) => {
             app.select(path.clone());
@@ -347,6 +408,7 @@ fn run(app: &mut App, ctx: &egui::Context, command: Command) {
         Command::CheckDeps(path) => {
             app.select(path.clone());
             app.view = View::Project;
+            app.set_mode(Mode::Forge);
             app.tab = crate::app::Tab::Deps;
             app.check_deps(vec![path], true);
         }
@@ -416,8 +478,8 @@ mod tests {
         let items = [item("Проверить форматирование", None), item("Открыть папку", Some("Amber"))];
         // «пап» — начало слова во второй строке, в первой не найдено вовсе.
         assert_eq!(filter(&items, "пап"), vec![1]);
-        let items = [item("Показать лог", None), item("Логи CI", None)];
-        assert_eq!(filter(&items, "лог"), vec![0, 1]);
+        let items = [item("Показать консоль", None), item("Консоль CI", None)];
+        assert_eq!(filter(&items, "кон"), vec![0, 1]);
         let items = [item("Каталог", None), item("Лог", None)];
         assert_eq!(filter(&items, "лог"), vec![1, 0]);
     }

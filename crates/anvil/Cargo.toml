@@ -1,6 +1,6 @@
 [package]
 name = "anvil"
-description = "Командный центр Rust-программ"
+description = "Пульт и кузница моих программ"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,6 +33,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Registry",
     "Win32_System_Threading",
+    "Win32_System_Time",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

@@ -74,9 +74,96 @@ pub fn ago(timestamp: i64) -> String {
     }
 }
 
+/// Местное время момента `timestamp` (секунды Unix): день, месяц, часы, минуты.
+#[cfg(windows)]
+fn local(timestamp: i64) -> (u16, u16, u16, u16) {
+    use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    let ticks = ((timestamp.max(0) as u64) + 11_644_473_600) * 10_000_000;
+    let ft = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    // SAFETY: обе функции пишут только в переданные структуры; часовой пояс — текущий (null).
+    unsafe {
+        let mut utc: SYSTEMTIME = std::mem::zeroed();
+        let mut here: SYSTEMTIME = std::mem::zeroed();
+        if FileTimeToSystemTime(&ft, &mut utc) == 0
+            || SystemTimeToTzSpecificLocalTime(std::ptr::null(), &utc, &mut here) == 0
+        {
+            return (0, 0, 0, 0);
+        }
+        (here.wDay, here.wMonth, here.wHour, here.wMinute)
+    }
+}
+
+/// Вне Windows — по UTC: Anvil там только собирается в CI.
+#[cfg(not(windows))]
+fn local(timestamp: i64) -> (u16, u16, u16, u16) {
+    let secs = timestamp.max(0);
+    let days = secs / 86_400;
+    let (h, m) = ((secs % 86_400) / 3600, (secs % 3600) / 60);
+    // Гражданская дата из числа дней (алгоритм Говарда Хиннанта).
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (d as u16, month as u16, h as u16, m as u16)
+}
+
+/// «00:28» — местное время, 24 часа.
+pub fn clock(timestamp: i64) -> String {
+    let (_, _, h, m) = local(timestamp);
+    format!("{h:02}:{m:02}")
+}
+
+/// «27.09» — местная дата, одинаково на обоих языках.
+pub fn date(timestamp: i64) -> String {
+    let (d, mo, _, _) = local(timestamp);
+    format!("{d:02}.{mo:02}")
+}
+
+/// Сколько работает, до минуты: «меньше минуты», «8 мин», «2 ч 14 мин».
+pub fn uptime(secs: i64) -> String {
+    let secs = secs.max(0);
+    if secs < 60 {
+        t("меньше минуты").to_owned()
+    } else if secs < 3600 {
+        format!("{} {}", secs / 60, t("мин"))
+    } else {
+        format!("{} {} {} {}", secs / 3600, t("ч"), secs % 3600 / 60, t("мин"))
+    }
+}
+
+/// «есть v0.1.0 на GitHub» / «v0.1.0 on GitHub»: у языков разный порядок слов.
+pub fn on_github(version: &str) -> String {
+    if english() { format!("{version} on GitHub") } else { format!("есть {version} на GitHub") }
+}
+
+/// Время работы в чипе строки состояния: «2:14», «0:08».
+pub fn uptime_short(secs: i64) -> String {
+    let secs = secs.max(0);
+    format!("{}:{:02}", secs / 3600, secs % 3600 / 60)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uptime_to_the_minute() {
+        ENGLISH.store(false, Ordering::Relaxed);
+        assert_eq!(uptime(12), "меньше минуты");
+        assert_eq!(on_github("v0.1.0"), "есть v0.1.0 на GitHub");
+        assert_eq!(uptime(8 * 60 + 30), "8 мин");
+        assert_eq!(uptime(2 * 3600 + 14 * 60 + 59), "2 ч 14 мин");
+        assert_eq!(uptime_short(2 * 3600 + 14 * 60), "2:14");
+        assert_eq!(uptime_short(8 * 60), "0:08");
+        // Местное время — двузначные часы и минуты.
+        assert_eq!(clock(now()).len(), 5);
+        assert_eq!(date(now()).len(), 5);
+    }
 
     /// Все строки из `t("…")` в исходниках есть в словаре, и в словаре нет лишних.
     #[test]

@@ -34,6 +34,8 @@ enum Action {
     Release,
     /// Открыть amber-admin: установленный — сразу, иначе собрать и запустить.
     AmberAdmin,
+    /// Вернуться на Пульт — к предмету этого проекта.
+    ToDeck,
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -163,13 +165,19 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         }
         Action::Release => app.open_release(dir),
         Action::AmberAdmin => app.open_amber_admin(dir),
+        // Выбор общий: на Пульте встаёт строка этого проекта (та же, с которой пришли, если она его).
+        Action::ToDeck => app.set_mode(crate::app::Mode::Deck),
         Action::Install(action) => {
             use super::install::Action as I;
             match action {
                 I::Local(bin) => app.install_local(dir, &bin),
-                I::Release(bin, release) => app.install_release(dir, &bin, &release),
+                I::Release(bin, release) => {
+                    app.install_release(dir, &bin, &release);
+                }
                 I::Activate(bin, version) => app.activate(dir, &bin, &version),
-                I::Launch(bin) => app.launch_installed(&bin),
+                I::Launch(bin) => {
+                    app.launch_installed(&bin);
+                }
                 I::Folder(root) => app.report(open::folder(&root)),
                 I::Uninstall(bin) => app.uninstall_confirm = Some(bin),
             }
@@ -249,6 +257,9 @@ fn header(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>
             }
             if w::icon_button(ui, Icon::Folder, t("Открыть папку")).clicked() {
                 actions.push(Action::Folder);
+            }
+            if w::button(ui, Kind::Ghost, Some(Icon::Play), t("На Пульте")).on_hover_text("Ctrl+1").clicked() {
+                actions.push(Action::ToDeck);
             }
         });
     });

@@ -86,7 +86,7 @@ pub fn dots(ui: &mut Ui, servers: &[Server]) {
         w::note(ui, t("Серверы Amber"));
         for server in servers {
             let (tone, state) = health(&server.health);
-            w::dot(ui, tone).on_hover_text(format!("{}: {state}", server.name));
+            w::dot(ui, tone).on_hover_text(format!("{}: {state}", amber::label(&server.name)));
         }
     });
 }
@@ -95,11 +95,12 @@ pub fn dots(ui: &mut Ui, servers: &[Server]) {
 fn server_chip(ui: &mut Ui, server: &Server) {
     let p = Palette::of(ui);
     let (tone, state) = health(&server.health);
-    let mut hint = format!("{}: {state}", server.name);
+    let name = amber::label(&server.name);
+    let mut hint = format!("{name}: {state}");
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 5.0;
         w::dot(ui, tone);
-        ui.label(RichText::new(&server.name).size(13.5).color(p.text));
+        ui.label(RichText::new(name).size(13.5).color(p.text));
         if let Some(version) = &server.version {
             w::mono(ui, version, None);
         }
@@ -112,7 +113,7 @@ fn server_chip(ui: &mut Ui, server: &Server) {
     .on_hover_text(hint);
 }
 
-fn health(code: &str) -> (Tone, &'static str) {
+pub fn health(code: &str) -> (Tone, &'static str) {
     match code {
         "up" => (Tone::Success, t("работает")),
         "down" => (Tone::Danger, t("служба остановлена")),

@@ -6,7 +6,9 @@
 mod amber;
 mod app;
 mod config;
+mod deck;
 mod deps;
+mod engines;
 mod git;
 mod github;
 mod i18n;
@@ -49,7 +51,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Anvil")
-            .with_inner_size([1360.0, 860.0])
+            .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([1040.0, 640.0])
             .with_icon(std::sync::Arc::new(anvil_ui::appicon::icon_data(app::ACCENT, Icon::Hammer))),
         centered: true,

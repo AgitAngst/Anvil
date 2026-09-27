@@ -22,6 +22,8 @@ pub struct Project {
     pub git: Result<Option<GitState>, String>,
     /// Заметки проекта и время их правки.
     pub notes: Vec<(String, i64)>,
+    /// Проект Godot или Unity: версия движка, собранная игра.
+    pub engine: Option<crate::engines::Info>,
 }
 
 impl Project {
@@ -44,6 +46,7 @@ impl Project {
         }
         self.git = update.git;
         self.notes = update.notes;
+        self.engine = update.engine;
     }
 }
 
@@ -158,6 +161,7 @@ impl Worker {
                         meta: (full && *kind == Kind::Rust).then(|| registry::meta(path)),
                         git: git::read(path),
                         notes: registry::notes(path),
+                        engine: crate::engines::read(path, *kind),
                     };
                     self.send(Event::Project(Box::new(project)));
                 });

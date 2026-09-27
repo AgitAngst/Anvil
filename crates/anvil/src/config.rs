@@ -28,7 +28,28 @@ pub struct Config {
     pub kinds: Vec<String>,
     /// Настройки проектов; ключ — путь к проекту.
     pub projects: BTreeMap<String, ProjectSettings>,
+    /// Пульт: закреплённое, убранное, когда что запускали.
+    pub deck: DeckSettings,
+    /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
+    pub godot: Option<PathBuf>,
+    /// Версия файла настроек: по ней старые файлы один раз дополняются новым (см. [`migrate`]).
+    /// В файлах 0.2 поля нет — это версия 0.
+    #[serde(default)]
+    pub version: u32,
     pub common: CommonSettings,
+}
+
+/// Что Пульт помнит о предметах. Ключ предмета — `<папка проекта в нижнем регистре>|<бинарник>`
+/// или `…|engine` у проекта Godot и Unity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DeckSettings {
+    /// Закреплённые — сверху своей группы, в этом порядке.
+    pub pinned: Vec<String>,
+    /// Убранные с Пульта (вернуть — в настройках).
+    pub removed: Vec<String>,
+    /// Когда предмет запускали с Пульта, секунды Unix: по этому сортируется группа.
+    pub launched: BTreeMap<String, i64>,
 }
 
 /// Что Anvil помнит о проекте.
@@ -43,6 +64,8 @@ pub struct ProjectSettings {
     /// Откуда брать выпуски (`owner/name`), если не из репозитория проекта. Не задано — как в
     /// workflow выпуска проекта (`repository:`), иначе — сам репозиторий.
     pub releases: Option<String>,
+    /// Значок проекта Godot или Unity на Пульте: `cube`, `gamepad`, `target`, `layers`.
+    pub icon: Option<String>,
 }
 
 /// Сохранённый запуск: какой бинарник и с какими аргументами.
@@ -78,8 +101,11 @@ impl Default for Config {
             selected: None,
             build_jobs: 0,
             notify: true,
-            kinds: vec!["rust".to_owned()],
+            kinds: vec!["rust".to_owned(), "godot".to_owned(), "unity".to_owned()],
             projects: BTreeMap::new(),
+            deck: DeckSettings::default(),
+            godot: None,
+            version: VERSION,
             common: CommonSettings::default(),
         }
     }
@@ -96,16 +122,40 @@ pub fn path() -> PathBuf {
     base.join("Anvil").join(FILE_NAME)
 }
 
+/// Текущая версия файла настроек.
+pub const VERSION: u32 = 1;
+
 /// Прочитать настройки. Файла нет — первый запуск: корень угадывается по месту exe.
 /// Файл испорчен — настройки по умолчанию и текст ошибки, файл не трогается до первого сохранения.
-pub fn load(path: &Path) -> (Config, Option<String>) {
+/// Второе в ответе — старый файл дополнен и его стоит сохранить.
+pub fn load(path: &Path) -> (Config, Option<String>, bool) {
     match std::fs::read_to_string(path) {
-        Ok(text) => match toml::from_str(text.trim_start_matches('\u{feff}')) {
-            Ok(config) => (config, None),
-            Err(e) => (Config::default(), Some(e.to_string())),
+        Ok(text) => match toml::from_str::<Config>(text.trim_start_matches('\u{feff}')) {
+            Ok(mut config) => {
+                let migrated = migrate(&mut config);
+                (config, None, migrated)
+            }
+            Err(e) => (Config::default(), Some(e.to_string()), false),
         },
-        Err(_) => (Config { roots: guess_root().into_iter().collect(), ..Config::default() }, None),
+        Err(_) => (Config { roots: guess_root().into_iter().collect(), ..Config::default() }, None, false),
     }
+}
+
+/// Дополнить файл старой версии. `true` — что-то поменялось.
+///
+/// 0 → 1 (Anvil 0.3, Пульт): проекты Godot и Unity входят в библиотеку — их виды включаются, если
+/// выключены (в 0.2 по умолчанию был только `rust`).
+fn migrate(config: &mut Config) -> bool {
+    if config.version >= VERSION {
+        return false;
+    }
+    for kind in ["godot", "unity"] {
+        if !config.kinds.iter().any(|k| k.eq_ignore_ascii_case(kind)) {
+            config.kinds.push(kind.to_owned());
+        }
+    }
+    config.version = VERSION;
+    true
 }
 
 pub fn save(path: &Path, config: &Config) -> Result<(), String> {
@@ -148,6 +198,25 @@ mod tests {
         assert_eq!(config.project(Path::new(r"D:\DEV_PERSONAL\Amber")).presets.len(), 1);
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
+    }
+
+    #[test]
+    fn old_files_get_godot_and_unity_once() {
+        let mut old: Config = toml::from_str(
+            "roots = ['C:/src']
+kinds = ['rust']",
+        )
+        .unwrap();
+        assert_eq!(old.version, 0);
+        assert!(migrate(&mut old));
+        assert_eq!(old.kinds, ["rust", "godot", "unity"]);
+        assert_eq!(old.version, VERSION);
+        // Второй раз ничего не меняется, и пользователь может снова выключить виды.
+        old.kinds.truncate(1);
+        assert!(!migrate(&mut old));
+        assert_eq!(old.kinds, ["rust"]);
+        let fresh: Config = toml::from_str(&toml::to_string_pretty(&Config::default()).unwrap()).unwrap();
+        assert_eq!(fresh.version, VERSION);
     }
 
     #[test]

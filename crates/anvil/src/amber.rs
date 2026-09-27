@@ -28,6 +28,15 @@ pub struct Server {
     pub online: Option<usize>,
 }
 
+/// Имя сервера для людей. amber-admin пишет «адрес (метка)»: адрес на экран не выводится,
+/// показывается только метка. Меток нет — имя как есть.
+pub fn label(name: &str) -> &str {
+    match (name.find('('), name.rfind(')')) {
+        (Some(open), Some(close)) if close > open + 1 => name[open + 1..close].trim(),
+        _ => name,
+    }
+}
+
 pub fn path() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
         .map(|dir| PathBuf::from(dir).join("amber").join("Amber").join("config").join("admin-servers.json"))
@@ -85,5 +94,12 @@ mod tests {
         assert_eq!(summary.servers[0].online, Some(2));
         assert_eq!(summary.servers[1].health, "unreachable");
         assert!(parse("{").is_err());
+    }
+
+    #[test]
+    fn address_is_never_shown() {
+        assert_eq!(label("203.0.113.7 (Moscow)"), "Moscow");
+        assert_eq!(label("home"), "home");
+        assert_eq!(label("odd ()"), "odd ()");
     }
 }

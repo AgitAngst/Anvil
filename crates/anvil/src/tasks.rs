@@ -336,8 +336,8 @@ mod tests {
             releases_repo: None,
             packages: 3,
             bins: vec![
-                Bin { name: "amber-desktop".into(), package: "amber-desktop".into() },
-                Bin { name: "amber-server".into(), package: "amber-server".into() },
+                Bin { name: "amber-desktop".into(), package: "amber-desktop".into(), ..Bin::default() },
+                Bin { name: "amber-server".into(), package: "amber-server".into(), ..Bin::default() },
             ],
             target_dir: PathBuf::from(r"D:\p\target"),
             ..Meta::default()

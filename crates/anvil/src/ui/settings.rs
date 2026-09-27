@@ -32,6 +32,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         roots(app, ui);
         ui.add_space(12.0);
         hidden(app, ui);
+        removed(app, ui);
         ui.add_space(12.0);
         fetch(app, ui);
         ui.add_space(12.0);
@@ -45,7 +46,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 fn roots(app: &mut App, ui: &mut Ui) {
     w::section_label(ui, t("Папки с проектами"));
     ui.add_space(2.0);
-    w::note(ui, t("Проект — это сама папка или её подпапка, где есть Cargo.toml."));
+    w::note(ui, t("Проект — это сама папка или её подпапка, где есть Cargo.toml, project.godot или проект Unity."));
     ui.add_space(4.0);
     let mut remove = None;
     for (i, root) in app.config.roots.iter().enumerate() {
@@ -82,6 +83,33 @@ fn hidden(app: &mut App, ui: &mut Ui) {
     }
     if let Some(i) = restore {
         app.config.hidden.remove(i);
+        app.save();
+    }
+}
+
+/// Убранное с Пульта — вернуть.
+fn removed(app: &mut App, ui: &mut Ui) {
+    if app.config.deck.removed.is_empty() {
+        return;
+    }
+    ui.add_space(12.0);
+    w::section_label(ui, t("Убрано с Пульта"));
+    ui.add_space(4.0);
+    let mut restore = None;
+    for (i, key) in app.config.deck.removed.iter().enumerate() {
+        let (project, what) = key.rsplit_once('|').unwrap_or((key.as_str(), ""));
+        // Ключ — путь в нижнем регистре; имя берётся у самого проекта, если он найден.
+        let path = app.projects.iter().map(|p| &p.path).find(|p| p.to_string_lossy().to_lowercase() == project);
+        let name = worker::display_name(path.map_or(std::path::Path::new(project), |p| p.as_path()));
+        let label = if what == "engine" || what.is_empty() { name } else { format!("{name} · {what}") };
+        path_row(ui, &label, |ui| {
+            if w::button(ui, Kind::Ghost, None, t("Вернуть")).clicked() {
+                restore = Some(i);
+            }
+        });
+    }
+    if let Some(i) = restore {
+        app.config.deck.removed.remove(i);
         app.save();
     }
 }

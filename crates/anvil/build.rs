@@ -28,7 +28,7 @@ fn main() {
     let mut res = winresource::WindowsResource::new();
     res.set_icon(ico.to_str().expect("utf-8 path"));
     res.set("ProductName", "Anvil");
-    res.set("FileDescription", "Anvil — command center for Rust apps");
+    res.set("FileDescription", "Anvil — launcher and forge for my programs");
     if let Err(e) = res.compile() {
         // Без rc.exe программа соберётся, просто без значка у exe.
         println!("cargo:warning=exe icon skipped: {e}");
