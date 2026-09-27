@@ -236,6 +236,27 @@ pub fn crashed_at(timestamp: i64, took: i64) -> String {
     }
 }
 
+/// «упал в 00:28» / «crashed at 00:28»; не сегодня — «упал 20.09 в 00:28».
+pub fn crashed_short(timestamp: i64) -> String {
+    let today = when(timestamp) == clock(timestamp);
+    match (english(), today) {
+        (true, true) => format!("crashed at {}", clock(timestamp)),
+        (true, false) => format!("crashed on {}", date_at(timestamp)),
+        (false, true) => format!("упал в {}", clock(timestamp)),
+        (false, false) => format!("упал {}", date_at(timestamp)),
+    }
+}
+
+/// «amber-desktop из кода уже запущен (test)» / «amber-desktop from code is already running (test)».
+pub fn already_running(bin: &str, profile: &str) -> String {
+    let tail = if profile.is_empty() { String::new() } else { format!(" ({profile})") };
+    if english() {
+        format!("{bin} from code is already running{tail}")
+    } else {
+        format!("{bin} из кода уже запущен{tail}")
+    }
+}
+
 /// «ещё 22 — в Кузнице» / «22 more in the Forge».
 pub fn more_in_forge(n: usize) -> String {
     if english() { format!("{n} more in the Forge") } else { format!("ещё {n} — в Кузнице") }

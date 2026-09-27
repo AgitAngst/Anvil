@@ -34,11 +34,49 @@ pub struct Config {
     pub deck: DeckSettings,
     /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
     pub godot: Option<PathBuf>,
+    /// Быстрый запуск: сочетание, закрывать ли после запуска, искать ли в другой раскладке.
+    pub quick: QuickSettings,
+    /// Окно и трей.
+    pub window: WindowSettings,
     /// Версия файла настроек: по ней старые файлы один раз дополняются новым (см. [`migrate`]).
     /// В файлах 0.2 поля нет — это версия 0.
     #[serde(default)]
     pub version: u32,
     pub common: CommonSettings,
+}
+
+/// Быстрый запуск (§7.5): глобальное сочетание и как он себя ведёт.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuickSettings {
+    /// «Ctrl+Alt+Space»; пусто — выключено.
+    pub hotkey: String,
+    /// Закрывать быстрый запуск после запуска.
+    pub close_after: bool,
+    /// Искать и в другой раскладке: «фь еу» = «am te».
+    pub layout: bool,
+}
+
+impl Default for QuickSettings {
+    fn default() -> Self {
+        Self { hotkey: "Ctrl+Alt+Space".to_owned(), close_after: true, layout: true }
+    }
+}
+
+/// Окно и трей.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowSettings {
+    /// Крестик прячет Anvil в трей (выход — из меню трея).
+    pub close_to_tray: bool,
+    /// Подсказку «Anvil в трее» уже показывали.
+    pub tray_hint_shown: bool,
+}
+
+impl Default for WindowSettings {
+    fn default() -> Self {
+        Self { close_to_tray: true, tray_hint_shown: false }
+    }
 }
 
 /// Что Пульт помнит о предметах. Ключ предмета — `<папка проекта в нижнем регистре>|<бинарник>`
@@ -136,6 +174,8 @@ impl Default for Config {
             projects: BTreeMap::new(),
             deck: DeckSettings::default(),
             godot: None,
+            quick: QuickSettings::default(),
+            window: WindowSettings::default(),
             version: VERSION,
             common: CommonSettings::default(),
         }

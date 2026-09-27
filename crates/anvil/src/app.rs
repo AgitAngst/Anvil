@@ -70,6 +70,14 @@ pub struct DeckView {
     pub log_errors: bool,
 }
 
+/// Каким было окно до быстрого запуска: куда его вернуть.
+#[derive(Debug, Clone, Copy)]
+pub struct Restore {
+    hidden: bool,
+    minimized: bool,
+    maximized: bool,
+}
+
 /// Проверки портов, общие с фоновыми потоками, которые подключаются.
 type PortChecks = std::sync::Arc<std::sync::Mutex<HashMap<u16, PortCheck>>>;
 
@@ -214,6 +222,41 @@ pub struct App {
     events: Receiver<Event>,
     last_fetch: Instant,
     was_focused: bool,
+    /// Значок в трее; `None` — трея нет (не Windows или не создался): крестик закрывает Anvil.
+    pub tray: Option<crate::tray::Tray>,
+    pub tray_rx: Receiver<crate::tray::Request>,
+    /// Глобальное сочетание быстрого запуска.
+    pub hotkey: crate::hotkey::Hotkey,
+    /// Каким состояние сочетания видели в прошлый раз: «занято» сообщается один раз.
+    pub hotkey_seen: crate::hotkey::State,
+    /// Щелчки по уведомлениям Windows: `open:<ключ>`, `log:<ключ>`, `again:<ключ>`, `show`.
+    pub clicks: Receiver<String>,
+    /// Окно спрятано в трей.
+    pub hidden: bool,
+    /// Выход по-настоящему (меню трея): крестик больше не прячет.
+    quitting: bool,
+    /// Быстрый запуск на месте главного окна: каким окно было до него.
+    pub quick: Option<Restore>,
+    /// Быстрый запуск уже получал фокус: потерял — закрыть.
+    quick_focused: bool,
+    /// Последние обычные место и размер окна: к ним окно возвращается после быстрого запуска.
+    normal: Option<(egui::Pos2, egui::Vec2)>,
+    /// Окно было развёрнуто на весь экран (до того, как его свернули или спрятали).
+    was_maximized: bool,
+    /// Спрятанное окно развернуть при показе (развернуть спрятанное — значит показать).
+    maximize_on_show: bool,
+    /// Когда быстрый запуск закрылся от щелчка мимо.
+    quick_closed_at: Option<Instant>,
+    /// Щелчок по значку трея ждёт, не двойной ли он (двойной — окно, а не быстрый запуск).
+    pub quick_pending: Option<Instant>,
+    /// Когда окно открывали двойным щелчком по значку: его хвостовой щелчок — не быстрый запуск.
+    pub tray_shown_at: Option<Instant>,
+    /// Ошибка, пока окна не видно: красная точка на значке, пока окно не откроют.
+    pub alert: bool,
+    /// С какого момента уведомления в окне ещё не пересланы в Windows (окно спрятано).
+    pub toasts_seen: Instant,
+    /// Когда меню трея собиралось последний раз.
+    pub tray_built: Instant,
 }
 
 impl App {
@@ -240,6 +283,19 @@ impl App {
         let notifier = Arc::new(crate::notify::Notifier::new(config.notify, config_path.with_file_name("cache")));
         notifier.set_crash(config.notify_crash);
         let (job_commands, job_events, _) = jobs::spawn(cc.egui_ctx.clone(), notifier.clone());
+        // Трей, сочетание и щелчки по уведомлениям будят окно, даже спрятанное.
+        let wake = |ctx: &egui::Context| {
+            let ctx = ctx.clone();
+            move || ctx.request_repaint_of(egui::ViewportId::ROOT)
+        };
+        let (clicks_tx, clicks) = std::sync::mpsc::channel();
+        notifier.set_clicks(clicks_tx, wake(&cc.egui_ctx));
+        let (tray_tx, tray_rx) = std::sync::mpsc::channel();
+        #[cfg(windows)]
+        crate::instance::listen(&config_path, tray_tx.clone(), wake(&cc.egui_ctx));
+        let tray = crate::tray::Tray::new(tray_tx, cc.egui_ctx.clone(), Vec::new()).ok();
+        let hotkey =
+            crate::hotkey::Hotkey::spawn(crate::hotkey::Combo::parse(&config.quick.hotkey), wake(&cc.egui_ctx));
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -318,6 +374,24 @@ impl App {
             events,
             last_fetch: Instant::now(),
             was_focused: true,
+            tray,
+            tray_rx,
+            hotkey,
+            hotkey_seen: crate::hotkey::State::Pending,
+            clicks,
+            hidden: false,
+            quitting: false,
+            quick: None,
+            quick_focused: false,
+            normal: None,
+            was_maximized: false,
+            maximize_on_show: false,
+            quick_closed_at: None,
+            quick_pending: None,
+            tray_shown_at: None,
+            alert: false,
+            toasts_seen: Instant::now(),
+            tray_built: Instant::now() - Duration::from_secs(10),
         };
         if let Some(error) = config_error {
             app.toasts.push(format!("{}: {error}", t("Настройки не прочитаны")), Tone::Danger);
@@ -368,6 +442,7 @@ impl App {
 
     /// Разобрать события фонового потока и поставить плановые дела.
     pub fn tick(&mut self, ctx: &egui::Context) {
+        self.window_tick(ctx);
         while let Ok(event) = self.events.try_recv() {
             self.apply(event);
         }
@@ -558,6 +633,202 @@ impl App {
             }
         }
         self.mode = mode;
+    }
+
+    // ─── Окно и трей ───────────────────────────────────────────────────────────
+
+    /// Крестик, фокус быстрого запуска, запоминание места окна. Зовётся и у спрятанного окна.
+    fn window_tick(&mut self, ctx: &egui::Context) {
+        let (close, focused, minimized, maximized, outer, inner) = ctx.input(|i| {
+            let v = i.viewport();
+            (
+                v.close_requested(),
+                v.focused,
+                v.minimized.unwrap_or(false),
+                v.maximized.unwrap_or(false),
+                v.outer_rect,
+                v.inner_rect,
+            )
+        });
+        // Выход из меню трея или перезапуск после обновления — закрытие настоящее.
+        if close && !self.quitting && !self.updater.restarting() {
+            if self.quick.is_some() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.end_quick(false);
+            } else if self.tray.is_some() && self.config.window.close_to_tray {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.hide_window();
+                if !self.config.window.tray_hint_shown {
+                    self.config.window.tray_hint_shown = true;
+                    self.save();
+                    self.notifier.hint(
+                        t("Anvil работает в трее").to_owned(),
+                        t("Крестик прячет окно. Выход — в меню значка; запущенное продолжит работать.").to_owned(),
+                    );
+                }
+            }
+        }
+        match (self.quick.is_some(), focused) {
+            (true, Some(true)) => self.quick_focused = true,
+            // Щёлкнули мимо — быстрый запуск закрывается, как у любого лаунчера.
+            (true, Some(false)) if self.quick_focused => {
+                self.quick_closed_at = Some(Instant::now());
+                self.end_quick(false);
+            }
+            _ => {}
+        }
+        if self.quick.is_none() && !self.hidden && !minimized {
+            // Окно снова перед глазами (как угодно: из панели задач тоже) — точка на значке гаснет.
+            if focused == Some(true) {
+                self.alert = false;
+            }
+            self.was_maximized = maximized;
+            if !maximized && let (Some(outer), Some(inner)) = (outer, inner) {
+                self.normal = Some((outer.min, inner.size()));
+            }
+        }
+    }
+
+    /// Показать окно: из трея, по уведомлению, «Открыть Anvil».
+    pub fn show_window(&mut self) {
+        if self.quitting {
+            return;
+        }
+        if self.quick.is_some() {
+            self.end_quick(true);
+            return;
+        }
+        self.hidden = false;
+        self.alert = false;
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        // Развернуть спрятанное окно нельзя (оно бы показалось) — только теперь, когда оно видно.
+        if std::mem::take(&mut self.maximize_on_show) {
+            self.ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    /// Спрятать окно в трей.
+    pub fn hide_window(&mut self) {
+        self.hidden = true;
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+    }
+
+    /// Выйти по-настоящему: запущенное продолжит работать.
+    pub fn quit(&mut self) {
+        self.quitting = true;
+        self.end_quick(false);
+        self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// Быстрый запуск (сочетание, щелчок по значку). Окно на экране — в нём палитра; спрятано или
+    /// свёрнуто — оно само на время становится окном быстрого запуска: без рамки, поверх всех, 640
+    /// в ширину (§7.5), над монитором под курсором. Повтор сочетания закрывает.
+    pub fn quick_launch(&mut self) {
+        if self.quitting {
+            return;
+        }
+        if self.quick.is_some() {
+            self.end_quick(false);
+            return;
+        }
+        let (minimized, monitor, ppp) = self.ctx.input(|i| {
+            let v = i.viewport();
+            (v.minimized.unwrap_or(false), v.monitor_size, v.native_pixels_per_point.unwrap_or(1.0))
+        });
+        if !self.hidden && !minimized {
+            self.show_window();
+            crate::ui::palette::open(self);
+            return;
+        }
+        let maximized = self.was_maximized || self.maximize_on_show;
+        self.quick = Some(Restore { hidden: self.hidden, minimized, maximized });
+        self.maximize_on_show = false;
+        self.quick_focused = false;
+        let size = crate::ui::palette::QUICK_SIZE;
+        let pos = quick_position(size, ppp).unwrap_or_else(|| {
+            let monitor = monitor.unwrap_or(egui::vec2(1920.0, 1080.0));
+            egui::pos2(((monitor.x - size.x) / 2.0).max(0.0), (monitor.y * 0.2).max(0.0))
+        });
+        let ctx = self.ctx.clone();
+        use egui::ViewportCommand as V;
+        // Свёрнутое окно сначала разворачивается: размер свёрнутому не задать — Windows вернёт
+        // прежний. Развёрнутое на весь экран — сначала в обычное.
+        if minimized {
+            ctx.send_viewport_cmd(V::Minimized(false));
+        }
+        if maximized {
+            ctx.send_viewport_cmd(V::Maximized(false));
+        }
+        for command in [
+            V::MinInnerSize(egui::Vec2::ZERO),
+            V::Decorations(false),
+            V::Resizable(false),
+            V::InnerSize(size),
+            V::OuterPosition(pos),
+            V::WindowLevel(egui::WindowLevel::AlwaysOnTop),
+            V::Visible(true),
+            V::Focus,
+        ] {
+            ctx.send_viewport_cmd(command);
+        }
+        self.hidden = false;
+        crate::ui::palette::open_quick(self);
+    }
+
+    /// Закрыть быстрый запуск: окно возвращается, каким было (спрятанным, свёрнутым). `show` —
+    /// открыть обычное окно (страница, Кузница, «Открыть Anvil»).
+    pub fn end_quick(&mut self, show: bool) {
+        let Some(restore) = self.quick.take() else { return };
+        // Вопрос «exe занят» остался без ответа — сборку не ставим: окно уходит, спросить негде.
+        let asking = self.palette.as_ref().is_some_and(crate::ui::palette::State::asking);
+        self.palette = None;
+        if asking && !show {
+            self.resolve_locked(None);
+        }
+        let ctx = self.ctx.clone();
+        use egui::ViewportCommand as V;
+        let back_hidden = !show && restore.hidden;
+        // Прячется сразу; вид и место возвращаются уже невидимому окну — без мелькания.
+        if back_hidden {
+            ctx.send_viewport_cmd(V::Visible(false));
+        }
+        for command in [
+            V::WindowLevel(egui::WindowLevel::Normal),
+            V::Decorations(true),
+            V::Resizable(true),
+            V::MinInnerSize(egui::vec2(1040.0, 640.0)),
+        ] {
+            ctx.send_viewport_cmd(command);
+        }
+        let (pos, size) = self.normal.unwrap_or((egui::pos2(80.0, 60.0), egui::vec2(1440.0, 900.0)));
+        ctx.send_viewport_cmd(V::InnerSize(size));
+        ctx.send_viewport_cmd(V::OuterPosition(pos));
+        if show {
+            self.hidden = false;
+            self.alert = false;
+            ctx.send_viewport_cmd(V::Visible(true));
+            if restore.maximized {
+                ctx.send_viewport_cmd(V::Maximized(true));
+            }
+            ctx.send_viewport_cmd(V::Focus);
+        } else if back_hidden {
+            // Развернуть спрятанное — значит показать: развернётся, когда его откроют.
+            self.maximize_on_show = restore.maximized;
+        } else if restore.minimized {
+            if restore.maximized {
+                ctx.send_viewport_cmd(V::Maximized(true));
+            }
+            ctx.send_viewport_cmd(V::Minimized(true));
+        }
+        self.hidden = back_hidden;
+    }
+
+    /// Щелчок по значку трея мог закрыть быстрый запуск (окно потеряло фокус) — тогда тот же
+    /// щелчок не открывает его снова.
+    pub fn quick_just_closed(&self, within: Duration) -> bool {
+        self.quick_closed_at.is_some_and(|at| at.elapsed() < within)
     }
 
     // ─── Пульт ────────────────────────────────────────────────────────────────
@@ -1250,8 +1521,12 @@ impl App {
         let took = run.ended.unwrap_or(run.started) - run.started;
         let code = run.code.map(crate::runs::code_text).unwrap_or_default();
         let body = format!("{} · {} {code}", i18n::after_launch(took), t("код"));
-        if !self.notifier.crash(title.clone(), capital(&body)) {
+        if !self.notifier.crash(title.clone(), capital(&body), &run.key) {
             self.toasts.push(format!("{title} — {body}"), Tone::Danger);
+            // Уведомлять о падениях выключено — и из трея в Windows не пересылать.
+            if !self.config.notify_crash {
+                self.toasts_seen = Instant::now();
+            }
         }
     }
 
@@ -1366,6 +1641,10 @@ impl App {
         }
         let (text, tone) = tasks::summary(&outcome, took);
         self.toasts.push(format!("{name}: {text}"), tone);
+        // О долгой задаче Windows уже уведомил поток задач — второй раз из трея не пересылать.
+        if took >= crate::notify::LONG && self.config.notify {
+            self.toasts_seen = Instant::now();
+        }
         match &outcome.installed {
             Some(Ok(version)) => self.toasts.push(format!("{name}: {} {version}", t("установлена")), Tone::Success),
             Some(Err(e)) => self.toasts.push(format!("{name}: {e}"), Tone::Danger),
@@ -1554,6 +1833,38 @@ pub const PROJECTS_RU: [&str; 3] = ["проекта", "проектов", "пр�
 pub const PROJECTS_EN: [&str; 2] = ["project", "projects"];
 
 /// Длительность коротко: «41 с», «2 мин 05 с».
+/// Где встать окну быстрого запуска: по центру монитора под курсором, в верхней пятой части его
+/// рабочей области (в точках egui).
+#[cfg(windows)]
+fn quick_position(size: egui::Vec2, ppp: f32) -> Option<egui::Pos2> {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    // SAFETY: структуры на стеке, размер MONITORINFO задан перед вызовом.
+    unsafe {
+        let mut cursor = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut cursor) == 0 {
+            return None;
+        }
+        let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(monitor, &mut info) == 0 {
+            return None;
+        }
+        let work = info.rcWork;
+        let ppp = ppp.max(0.5);
+        let (w, h) = ((work.right - work.left) as f32 / ppp, (work.bottom - work.top) as f32 / ppp);
+        let (x, y) = (work.left as f32 / ppp, work.top as f32 / ppp);
+        Some(egui::pos2(x + ((w - size.x) / 2.0).max(0.0), y + h * 0.2))
+    }
+}
+
+#[cfg(not(windows))]
+fn quick_position(_size: egui::Vec2, _ppp: f32) -> Option<egui::Pos2> {
+    None
+}
+
 pub fn duration(d: Duration) -> String {
     let secs = d.as_secs();
     if secs < 60 {

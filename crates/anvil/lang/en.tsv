@@ -351,7 +351,6 @@ Amber не стоит	Amber not installed
 Проверить зависимости всех проектов	Check dependencies of all projects
 Проверить обновления Anvil	Check for Anvil updates
 Проверить форматирование	Check formatting
-Проект или действие…	Project or action…
 Серверы Amber	Amber servers
 Собрать debug	Build debug
 Собрать release	Build release
@@ -597,3 +596,28 @@ Unity уже открыт	Unity is already open
 игра запущена — закройте её, чтобы экспортировать	the game is running — close it to export
 не закрылась за 10 с	didn't close in 10 s
 прежней копии уже нет — новую не запускаю	the old copy is gone — not starting a new one
+Anvil работает в трее	Anvil is in the tray
+Enter — отодвинуть exe и собрать · Esc — отмена	Enter — move the exe aside and build · Esc — cancel
+Быстрый запуск	Quick launch
+Выход — запущенное продолжит работать	Quit — running programs keep running
+Действия	Actions
+Закреплено	Pinned
+Запуск	Launch
+Запустить снова	Launch again
+Запущенная программа доработает как есть, новая сборка ляжет рядом.	The running program keeps going as is; the new build goes next to it.
+Крестик прячет окно. Выход — в меню значка; запущенное продолжит работать.	The close button hides the window. Quit from the icon's menu; running programs keep running.
+Недавнее	Recent
+Открыть Anvil	Open Anvil
+Поставить из кода	Install from code
+Собрать из кода и запустить	Build from code and launch
+в Кузнице	in the Forge
+к окну	show window
+сочетание занято другой программой — быстрый запуск по щелчку на значке в трее	the shortcut is taken by another program — use quick launch by clicking the tray icon
+страница	page
+установить	install
+занято	taken
+журнал	log
+открыть в редакторе	open in the editor
+поставить	install
+поставить и запустить	install and launch
+собрать и запустить	build and launch

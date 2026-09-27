@@ -213,6 +213,31 @@ fn keyboard(app: &mut App, ctx: &egui::Context, items: &[Item], selected: Option
             i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::P)),
         )
     });
+    // Alt+1…9 — закреплённые по порядку (§5.11).
+    const DIGITS: [Key; 9] =
+        [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+    // Только само нажатие: автоповтор зажатой клавиши не запускает ещё раз.
+    let pinned = ctx.input_mut(|i| {
+        let fresh = i.events.iter().find_map(|e| match e {
+            egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. }
+                if modifiers.alt && !modifiers.ctrl =>
+            {
+                DIGITS.iter().position(|d| d == key)
+            }
+            _ => None,
+        });
+        for key in DIGITS {
+            while i.consume_key(Modifiers::ALT, key) {}
+        }
+        fresh
+    });
+    if let Some(n) = pinned {
+        let pins: Vec<&Item> =
+            items.iter().filter(|i| !i.is_self() && app.config.deck.pinned.contains(&i.key)).collect();
+        if let Some(item) = pins.get(n) {
+            actions.push(Action::Main(Box::new((*item).clone())));
+        }
+    }
     // → и Пробел — тоже страница (§5.11). Пробел не открывает палитру, как другая печать.
     let (right, space) = ctx
         .input_mut(|i| (i.consume_key(Modifiers::NONE, Key::ArrowRight), i.consume_key(Modifiers::NONE, Key::Space)));
@@ -693,6 +718,18 @@ pub(super) fn remove(app: &mut App, key: String) {
     app.config.deck.removed.push(key);
     app.save();
     app.toasts.push(t("Убрано с Пульта — вернуть можно в настройках"), Tone::Neutral);
+}
+
+/// Запуск откроет страницу, а не окно программы: работает служба (её журнал). `profile` — запуск
+/// этим профилем, `None` — главное действие.
+pub(super) fn opens_page(app: &mut App, item: &Item, profile: Option<&str>) -> bool {
+    match profile {
+        Some(name) => app.runs.iter().any(|r| r.key == item.key && r.running() && r.profile == name && r.service),
+        None => {
+            let godot = item.kind == ProjectKind::Godot && app.godot_editor().is_some();
+            look(app, item, godot).main == Main::Journal
+        }
+    }
 }
 
 /// Сделать профиль выбранным (без записи на диск). `true` — выбор изменился.

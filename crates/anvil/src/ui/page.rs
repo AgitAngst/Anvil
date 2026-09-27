@@ -451,7 +451,7 @@ fn log_file(run: &Run) -> Option<PathBuf> {
 }
 
 /// Сборка из кода: хеш коммита, если собирал Anvil (и exe с тех пор не пересобирали), иначе дата.
-fn build_label(app: &App, item: &Item) -> Option<(String, Option<crate::builds::Build>, i64)> {
+pub(super) fn build_label(app: &App, item: &Item) -> Option<(String, Option<crate::builds::Build>, i64)> {
     let bin = item.bin.as_deref()?;
     let at = app.builds.get(bin).copied().flatten()?;
     let target = app.projects.iter().find(|p| p.path == item.project).and_then(|p| p.meta())?.target_dir.clone();

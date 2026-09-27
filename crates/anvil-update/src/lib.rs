@@ -85,6 +85,8 @@ struct Inner {
     /// Пользователь сказал «Позже» — баннер спрятан до следующей проверки.
     dismissed: bool,
     last_check: Option<Instant>,
+    /// Новая версия запущена, эта закрывается: закрытие настоящее, не в трей.
+    restarting: bool,
 }
 
 /// Проверяльщик обновлений. Дёшево клонируется; вся сеть — в фоновых потоках.
@@ -100,7 +102,12 @@ impl Updater {
     pub fn with_repaint(config: Config, repaint: impl Fn() + Send + Sync + 'static) -> Self {
         Self {
             config: Arc::new(config),
-            inner: Arc::new(Mutex::new(Inner { state: State::Idle, dismissed: false, last_check: None })),
+            inner: Arc::new(Mutex::new(Inner {
+                state: State::Idle,
+                dismissed: false,
+                last_check: None,
+                restarting: false,
+            })),
             repaint: Arc::new(repaint),
         }
     }
@@ -120,6 +127,11 @@ impl Updater {
 
     pub fn dismissed(&self) -> bool {
         self.lock().dismissed
+    }
+
+    /// Новая версия уже запущена: программа закрывается по-настоящему (не прячется в трей).
+    pub fn restarting(&self) -> bool {
+        self.lock().restarting
     }
 
     /// «Позже»: спрятать баннер до следующей проверки.
@@ -244,10 +256,14 @@ impl Updater {
 
     /// Запустить новую версию. Окно текущей программа закрывает сама, сразу после этого вызова.
     pub fn restart(&self) -> Result<(), String> {
-        match self.state() {
+        let result = match self.state() {
             State::Ready { exe, .. } => install::restart(&exe),
             _ => Err("nothing to restart into".into()),
+        };
+        if result.is_ok() {
+            self.lock().restarting = true;
         }
+        result
     }
 }
 

@@ -672,6 +672,11 @@ impl Toasts {
         self.items.push((text.into(), tone, Instant::now()));
     }
 
+    /// Уведомления, появившиеся после `at`: окно спрятано — их надо показать иначе.
+    pub fn since(&self, at: Instant) -> Vec<(String, Tone)> {
+        self.items.iter().filter(|(_, _, t)| *t > at).map(|(text, tone, _)| (text.clone(), *tone)).collect()
+    }
+
     pub fn show(&mut self, ctx: &egui::Context) {
         self.items.retain(|(_, _, at)| at.elapsed() < Self::LIFE);
         if self.items.is_empty() {

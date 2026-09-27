@@ -12,10 +12,13 @@ mod deps;
 mod engines;
 mod git;
 mod github;
+mod hotkey;
 mod i18n;
 mod installs;
+mod instance;
 mod jobs;
 mod launch;
+mod layout;
 mod notify;
 mod open;
 mod procs;
@@ -25,6 +28,7 @@ mod run;
 mod runs;
 mod rustsec;
 mod tasks;
+mod tray;
 mod ui;
 mod worker;
 
@@ -35,7 +39,9 @@ struct Anvil(app::App);
 
 impl eframe::App for Anvil {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Зовётся и когда окно спрятано в трей: трей, сочетание и уведомления — здесь, не в `ui`.
         self.0.tick(ctx);
+        ui::background(&mut self.0, ctx);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -56,6 +62,10 @@ fn main() -> eframe::Result<()> {
             let ok = args.get(2).and_then(|p| p.parse().ok()).is_some_and(runs::ctrl_break);
             std::process::exit(if ok { 0 } else { 1 });
         }
+    }
+    // Anvil с этими настройками уже работает (спрятан в трей) — показать его и выйти.
+    if !instance::claim(&config::path()) {
+        return Ok(());
     }
     // Следы прошлого обновления (*.old-…, папка загрузки) — прочь.
     anvil_update::cleanup();
