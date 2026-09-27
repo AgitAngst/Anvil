@@ -781,7 +781,7 @@ pub fn fill_rect(ui: &Ui, rect: Rect, color: Color32, corner: impl Into<CornerRa
 // ─── Пульт: знаки, чипы, строки ─────────────────────────────────────────────
 
 /// Нарисовать знак предмета в `rect`: квадрат со скруглением в четверть стороны и значок
-/// посередине. `accent` — цвет программы семьи; `None` — нейтральный знак (Godot, Unity, набор).
+/// посередине. `accent` — цвет программы семьи; `None` — нейтральный знак (Godot, Unity).
 pub fn paint_mark(ui: &Ui, rect: Rect, accent: Option<Accent>, icon: Icon) {
     let p = Palette::of(ui);
     let (fill, fg, edge) = p.mark(accent);
@@ -799,7 +799,7 @@ pub fn item_mark(ui: &mut Ui, accent: Option<Accent>, icon: Icon, size: f32) -> 
     response
 }
 
-/// Стопка знаков набора: знаки 28, каждый следующий на 18 правее, с кольцом 2 px цвета `under`.
+/// Стопка знаков (задел под наборы Пульта — в Anvil 0.3 их нет): знаки 28, каждый следующий на 18 правее, с кольцом 2 px цвета `under`.
 pub fn mark_stack(ui: &mut Ui, marks: &[(Option<Accent>, Icon)], under: Color32) -> Response {
     let size = 28.0;
     let width = if marks.is_empty() { 0.0 } else { size + 18.0 * (marks.len() - 1) as f32 };
@@ -924,7 +924,7 @@ pub fn running_chip(ui: &mut Ui, accent: Option<Accent>, icon: Icon, label: &str
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-/// Узел цепочки набора.
+/// Узел цепочки — см. [`chain`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChainNode {
     Running,
@@ -933,7 +933,7 @@ pub enum ChainNode {
     Starting,
 }
 
-/// Цепочка набора: узлы по порядку шагов и справа текст («2 из 3 работают»).
+/// Цепочка состояний (задел под наборы Пульта — в Anvil 0.3 их нет): узлы по порядку шагов и справа текст («2 из 3 работают»).
 pub fn chain(ui: &mut Ui, nodes: &[ChainNode], text: &str) -> Response {
     let p = Palette::of(ui);
     let galley = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(13.0), p.text);

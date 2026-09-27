@@ -30,7 +30,7 @@ pub fn mark_of(binary: &str) -> Option<Mark> {
     MARKS.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, m)| *m)
 }
 
-/// Нейтральный знак — для всего, что не программа на `anvil-ui`: проекты Godot и Unity, наборы.
+/// Нейтральный знак — для всего, что не программа на `anvil-ui`: проекты Godot и Unity.
 pub const fn neutral(icon: Icon) -> Mark {
     Mark { accent: None, icon }
 }

@@ -6,7 +6,10 @@
   виджеты, каркас окна, окна «О программе» и «Настройки». Готов.
 - **`anvil-update`** — проверка и установка обновлений изнутри программы: GitHub Releases,
   сверка SHA-256, установка с сохранением старой версии, перезапуск, готовый баннер. Готов.
-- **`anvil`** — окно командного центра. Сейчас: все проекты и их git-состояние, версии, запущенные
+- **`anvil`** — «Пульт и Кузница». Пульт открывается первым — лаунчер моих программ, серверов и ботов,
+  проектов Godot и Unity: профили запуска, журналы служб, падения с кодом выхода словами и уведомлением,
+  трей, быстрый запуск по сочетанию из любой программы, закреплённое `Alt+1…9`, настройки по вкладкам.
+  Кузница (`Ctrl+2`) — командный центр: все проекты и их git-состояние, версии, запущенные
   бинарники, быстрые переходы; сборка, тесты, clippy, fmt и запуск с живым логом и разбором ошибок;
   CI и выпуски с GitHub; установка программ в `%LOCALAPPDATA%\Programs` из сборки или с GitHub,
   откат на прежнюю версию, ярлык в «Пуске»; мастер выпуска (проверки → версия → заметки → тег →
@@ -42,13 +45,13 @@ cargo run -p anvil-ui --example gallery
 ```
 
 Флаги: `--dark` / `--light`, `--en` / `--ru`, `--accent ember|amber|teal|rose|blue`,
-`--tab elements`, `--dialog` / `--settings` / `--about`.
+`--tab elements|deck`, `--dialog` / `--settings` / `--about`.
 
 ## Подключение `anvil-ui`
 
 ```toml
 [dependencies]
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.2.0", features = ["serde"] }
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.3.0", features = ["serde"] }
 ```
 
 ```rust
@@ -81,7 +84,7 @@ chrome::content(ui, |ui| {
 
 ```toml
 [dependencies]
-anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.2.0" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.3.0" }
 ```
 
 ```rust
