@@ -43,6 +43,5 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [build-dependencies]
-anvil-ui = { path = "../anvil-ui" }
 image = { version = "0.25.10", default-features = false, features = ["png", "ico"] }
 winresource = "0.1.31"

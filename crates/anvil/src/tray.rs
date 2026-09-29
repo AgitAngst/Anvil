@@ -109,7 +109,7 @@ impl Tray {
         use tray_icon::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
         const SIZE: u32 = 32;
-        let base = anvil_ui::appicon::rgba(crate::app::ACCENT, anvil_ui::Icon::Hammer, SIZE);
+        let base = include_bytes!(concat!(env!("OUT_DIR"), "/tray.rgba")).to_vec();
         let plain = tray_icon::Icon::from_rgba(base.clone(), SIZE, SIZE).map_err(|e| e.to_string())?;
         let dot = tray_icon::Icon::from_rgba(with_dot(base, SIZE), SIZE, SIZE).map_err(|e| e.to_string())?;
         let icon = TrayIconBuilder::new()

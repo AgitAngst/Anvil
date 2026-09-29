@@ -33,7 +33,6 @@ mod tray;
 mod ui;
 mod worker;
 
-use anvil_ui::Icon;
 use eframe::egui;
 
 struct Anvil(app::App);
@@ -85,7 +84,11 @@ fn main() -> eframe::Result<()> {
             .with_visible(!tray_start)
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([1040.0, 640.0])
-            .with_icon(std::sync::Arc::new(anvil_ui::appicon::icon_data(app::ACCENT, Icon::Hammer))),
+            .with_icon(std::sync::Arc::new(egui::IconData {
+                rgba: include_bytes!(concat!(env!("OUT_DIR"), "/window.rgba")).to_vec(),
+                width: 64,
+                height: 64,
+            })),
         centered: true,
         ..Default::default()
     };
