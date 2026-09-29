@@ -16,4 +16,4 @@ eframe = { workspace = true }
 serde = { version = "1", features = ["derive"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Globalization"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Globalization", "Win32_UI_WindowsAndMessaging"] }

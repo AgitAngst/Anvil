@@ -1,11 +1,14 @@
 //! Витрина `anvil-ui`: макет командного центра Anvil и все элементы набора.
 //!
-//! `cargo run -p anvil-ui --example gallery [-- --dark|--light] [--en|--ru] [--accent amber] [--tab elements|deck]
-//!  [--dialog|--settings|--about]`
+//! `cargo run -p anvil-ui --example gallery [-- --dark|--light] [--en|--ru] [--accent amber] [--tab elements|deck|motion]
+//!  [--reduced] [--size WxH] [--scroll px] [--dialog|--settings|--about]`
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::time::Instant;
+
+#[path = "gallery/motion_page.rs"]
+mod motion_page;
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
 use anvil_ui::widgets::{self as w, ChainNode, Toasts};
@@ -38,6 +41,7 @@ fn main() -> eframe::Result<()> {
     let page = match value("--tab").as_deref() {
         Some("elements") => Page::Elements,
         Some("deck") => Page::Deck,
+        Some("motion") => Page::Motion,
         _ => Page::Center,
     };
     let open = if has("--dialog") {
@@ -49,6 +53,8 @@ fn main() -> eframe::Result<()> {
     } else {
         None
     };
+    let reduced = has("--reduced");
+    let scroll = value("--scroll").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
     let mut settings = CommonSettings { theme, ..CommonSettings::default() };
     if has("--en") {
         settings.language = Lang::En;
@@ -56,10 +62,14 @@ fn main() -> eframe::Result<()> {
         settings.language = Lang::Ru;
     }
 
+    // `--size 1440x1800` — окно другого размера: длинную вкладку целиком видно на одном снимке.
+    let size = value("--size")
+        .and_then(|v| v.split_once('x').and_then(|(w, h)| Some([w.parse::<f32>().ok()?, h.parse::<f32>().ok()?])))
+        .unwrap_or([1440.0, 900.0]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Anvil — демо оформления")
-            .with_inner_size([1440.0, 900.0])
+            .with_inner_size(size)
             .with_min_inner_size([1100.0, 680.0]),
         centered: true,
         ..Default::default()
@@ -69,8 +79,9 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             anvil_ui::install(&cc.egui_ctx, Accent::ALL[accent], theme);
+            anvil_ui::motion::set_reduced(&cc.egui_ctx, reduced);
             settings.apply(&cc.egui_ctx);
-            Ok(Box::new(Gallery::new(settings, accent, page, open)))
+            Ok(Box::new(Gallery::new(settings, accent, page, open, reduced, scroll)))
         }),
     )
 }
@@ -87,6 +98,7 @@ enum Page {
     Center,
     Elements,
     Deck,
+    Motion,
 }
 
 struct Project {
@@ -171,10 +183,18 @@ struct Gallery {
     srgb: bool,
     started: Instant,
     deck_row: usize,
+    motion: motion_page::MotionDemo,
 }
 
 impl Gallery {
-    fn new(settings: CommonSettings, accent: usize, page: Page, open: Option<Open>) -> Self {
+    fn new(
+        settings: CommonSettings,
+        accent: usize,
+        page: Page,
+        open: Option<Open>,
+        reduced: bool,
+        scroll: f32,
+    ) -> Self {
         Self {
             settings,
             accent,
@@ -193,12 +213,14 @@ impl Gallery {
             srgb: true,
             started: Instant::now(),
             deck_row: 0,
+            motion: motion_page::MotionDemo::new(reduced, scroll),
         }
     }
 }
 
 impl eframe::App for Gallery {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        anvil_ui::motion::tick(ui.ctx());
         let p = Palette::of(ui);
         self.top_bar(ui);
         self.task_bar(ui);
@@ -209,6 +231,7 @@ impl eframe::App for Gallery {
             }
             Page::Elements => chrome::content(ui, |ui| self.elements(ui)),
             Page::Deck => chrome::content(ui, |ui| self.deck(ui)),
+            Page::Motion => chrome::content(ui, |ui| self.motion.show(ui)),
         }
 
         let ctx = ui.ctx().clone();
@@ -278,6 +301,7 @@ impl Gallery {
                     (Page::Center, None, "Командный центр"),
                     (Page::Elements, None, "Элементы"),
                     (Page::Deck, None, "Пульт"),
+                    (Page::Motion, None, "Движение"),
                 ],
             );
             self.page = page;

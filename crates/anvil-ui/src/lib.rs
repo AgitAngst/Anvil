@@ -9,6 +9,7 @@ pub mod chrome;
 pub mod family;
 pub mod icons;
 pub mod lang;
+pub mod motion;
 pub mod theme;
 pub mod widgets;
 

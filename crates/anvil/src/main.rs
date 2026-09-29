@@ -40,6 +40,7 @@ struct Anvil(app::App);
 impl eframe::App for Anvil {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Зовётся и когда окно спрятано в трей: трей, сочетание и уведомления — здесь, не в `ui`.
+        anvil_ui::motion::tick(ctx);
         self.0.tick(ctx);
         ui::background(&mut self.0, ctx);
     }

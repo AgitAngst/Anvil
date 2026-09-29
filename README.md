@@ -22,7 +22,8 @@
 тёмная темы, английский и русский, проверка обновлений изнутри и выпуски по одному workflow.
 
 Замысел, этапы и решения — в [SPEC.md](SPEC.md); где остановились — в [HANDOFF.md](HANDOFF.md);
-правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); как выпускаются программы — в
+правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); анимации набора (шкала, кривые, эффекты,
+«меньше движения») — в [docs/MOTION.md](docs/MOTION.md); как выпускаются программы — в
 [docs/RELEASES.md](docs/RELEASES.md).
 
 ![Anvil](docs/anvil-dark.png)

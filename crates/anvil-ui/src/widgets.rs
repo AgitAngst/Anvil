@@ -9,6 +9,7 @@ use eframe::egui::{
 
 use crate::icons::{self, Icon};
 use crate::lang::tr;
+use crate::motion::{self, Motion};
 use crate::theme::{Accent, Palette, radius, semibold};
 
 /// Смысловой цвет: бейджи, точки состояния, баннеры, уведомления.
@@ -394,8 +395,28 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
     ui.painter().rect(rect, radius::CONTROL + 1, p.raised, Stroke::new(1.0, p.border), StrokeKind::Inside);
 
     let mut x = rect.left() + 2.0;
-    for (i, ((option, icon, text), w)) in options.iter().zip(widths).enumerate() {
-        let seg = Rect::from_min_size(egui::pos2(x, rect.top() + 2.0), Vec2::new(w, rect.height() - 4.0));
+    let segs: Vec<Rect> = widths
+        .iter()
+        .map(|w| {
+            let seg = Rect::from_min_size(egui::pos2(x, rect.top() + 2.0), Vec2::new(*w, rect.height() - 4.0));
+            x += w;
+            seg
+        })
+        .collect();
+    // Ползунок выбранного: скользит к новому месту за LAYOUT (позиции — от левого края, чтобы сдвиг
+    // окна или прокрутка не запускали переход).
+    if let Some(sel) = options.iter().position(|(option, ..)| *value == *option) {
+        let (ctx, motion) = (ui.ctx().clone(), Motion::of(ui.ctx()));
+        let left = motion.value(&ctx, response.id.with("thumb-left"), segs[sel].left() - rect.left(), motion::LAYOUT);
+        let right =
+            motion.value(&ctx, response.id.with("thumb-right"), segs[sel].right() - rect.left(), motion::LAYOUT);
+        let thumb = Rect::from_min_max(
+            egui::pos2(rect.left() + left, segs[sel].top()),
+            egui::pos2(rect.left() + right, segs[sel].bottom()),
+        );
+        ui.painter().rect(thumb, radius::CONTROL - 1, p.card, Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
+    }
+    for (i, ((option, icon, text), seg)) in options.iter().zip(segs).enumerate() {
         let id = response.id.with(i);
         let r = ui.interact(seg, id, Sense::click());
         let selected = *value == *option;
@@ -403,9 +424,7 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
             *value = *option;
             response.mark_changed();
         }
-        if selected {
-            ui.painter().rect(seg, radius::CONTROL - 1, p.card, Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
-        } else if r.hovered() {
+        if !selected && r.hovered() {
             ui.painter().rect_filled(seg, radius::CONTROL - 1, p.hover);
         }
         let color = if selected { p.text } else { p.weak };
@@ -421,7 +440,6 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
         focus_ring(ui, seg, &r, radius::CONTROL);
         r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, selected, *text));
         r.on_hover_cursor(CursorIcon::PointingHand);
-        x += w;
     }
     response
 }
@@ -430,6 +448,8 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
 pub fn tabs(ui: &mut Ui, selected: &mut usize, labels: &[&str]) -> bool {
     let p = Palette::of(ui);
     let mut changed = false;
+    let bar_id = ui.make_persistent_id(("anvil-tabs-bar", labels.first().copied().unwrap_or(""), labels.len()));
+    let mut bar = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         for (i, label) in labels.iter().enumerate() {
@@ -441,8 +461,7 @@ pub fn tabs(ui: &mut Ui, selected: &mut usize, labels: &[&str]) -> bool {
             let color = if r.hovered() && !is { p.text } else { color };
             ui.painter().galley(egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0 - 2.0), galley, color);
             if is {
-                let bar = Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - 2.0), rect.right_bottom());
-                ui.painter().rect_filled(bar, 1, p.accent);
+                bar = Some((rect.left(), rect.right(), rect.bottom()));
             }
             if r.clicked() && !is {
                 *selected = i;
@@ -455,6 +474,15 @@ pub fn tabs(ui: &mut Ui, selected: &mut usize, labels: &[&str]) -> bool {
     });
     let rect = ui.min_rect();
     ui.painter().hline(rect.x_range(), rect.bottom() + 0.5, Stroke::new(1.0, p.border));
+    // Полоска акцента скользит от прежней вкладки к новой; позиции — от левого края ряда.
+    if let Some((left, right, bottom)) = bar {
+        let (ctx, motion) = (ui.ctx().clone(), Motion::of(ui.ctx()));
+        let from = motion.value(&ctx, bar_id.with("left"), left - rect.left(), motion::LAYOUT);
+        let to = motion.value(&ctx, bar_id.with("right"), right - rect.left(), motion::LAYOUT);
+        let bar =
+            Rect::from_min_max(egui::pos2(rect.left() + from, bottom - 2.0), egui::pos2(rect.left() + to, bottom));
+        ui.painter().rect_filled(bar, 1, p.accent);
+    }
     changed
 }
 
@@ -543,9 +571,19 @@ pub fn search_field_with_id(
 pub fn progress(ui: &mut Ui, fraction: Option<f32>, width: f32) -> Response {
     let p = Palette::of(ui);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 6.0), Sense::hover());
+    let motion = Motion::of(ui.ctx());
     ui.painter().rect_filled(rect, 3, p.raised);
     let fill = match fraction {
-        Some(f) => Rect::from_min_size(rect.min, Vec2::new(rect.width() * f.clamp(0.0, 1.0), rect.height())),
+        Some(f) => {
+            // Новая доля наступает за GRAPH, а не скачком.
+            let f = motion.value(ui.ctx(), response.id.with("fill"), f.clamp(0.0, 1.0), motion::GRAPH);
+            Rect::from_min_size(rect.min, Vec2::new(rect.width() * f, rect.height()))
+        }
+        None if !motion.enabled => {
+            // Движение выключено: неподвижный отрезок посередине — «идёт, но сколько — неизвестно».
+            let w = rect.width() * 0.3;
+            Rect::from_min_size(egui::pos2(rect.center().x - w / 2.0, rect.top()), Vec2::new(w, rect.height()))
+        }
         None => {
             let t = (ui.input(|i| i.time) * 0.8).fract() as f32;
             let w = rect.width() * 0.3;
@@ -567,7 +605,9 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, width: f32) -> Response {
 pub fn spinner(ui: &mut Ui, size: f32) -> Response {
     let p = Palette::of(ui);
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    let t = ui.input(|i| i.time) as f32;
+    // Движение выключено — дуга стоит и кадров не просит.
+    let moving = Motion::of(ui.ctx()).enabled;
+    let t = if moving { ui.input(|i| i.time) as f32 } else { 0.0 };
     let r = size / 2.0 - 1.5;
     let start = t * 5.0;
     let points: Vec<egui::Pos2> = (0..=24)
@@ -578,7 +618,9 @@ pub fn spinner(ui: &mut Ui, size: f32) -> Response {
         .collect();
     ui.painter().circle_stroke(rect.center(), r, Stroke::new(2.0, p.raised));
     ui.painter().add(egui::Shape::line(points, Stroke::new(2.0, p.accent_text)));
-    ui.ctx().request_repaint();
+    if moving {
+        ui.ctx().request_repaint();
+    }
     response
 }
 
@@ -683,6 +725,7 @@ impl Toasts {
             return;
         }
         let p = Palette::of_ctx(ctx);
+        let moving = Motion::of(ctx).enabled;
         egui::Area::new(egui::Id::new("anvil-toasts"))
             .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -48.0))
             .order(egui::Order::Foreground)
@@ -690,7 +733,12 @@ impl Toasts {
             .show(ctx, |ui| {
                 for (text, tone, at) in &self.items {
                     let age = at.elapsed().as_secs_f32();
-                    let fade = ((Self::LIFE.as_secs_f32() - age) / 0.3).clamp(0.0, 1.0) * (age / 0.15).clamp(0.0, 1.0);
+                    // Появляются и гаснут плавно; движение выключено — просто есть и потом нет.
+                    let fade = if moving {
+                        ((Self::LIFE.as_secs_f32() - age) / 0.3).clamp(0.0, 1.0) * (age / 0.15).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
                     let color = tone.color(&p);
                     egui::Frame::new()
                         .fill(p.card)

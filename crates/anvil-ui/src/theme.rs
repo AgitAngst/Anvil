@@ -235,6 +235,7 @@ pub fn install(ctx: &egui::Context, accent: Accent, choice: ThemeChoice) {
     ctx.set_fonts(fonts());
     set_accent(ctx, accent);
     choose(ctx, choice);
+    crate::motion::install(ctx);
 }
 
 /// Сменить акцент на ходу — стиль обеих тем пересобирается.
