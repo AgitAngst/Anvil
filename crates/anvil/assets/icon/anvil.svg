@@ -7,10 +7,10 @@
     <linearGradient id="c3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7180A1"/><stop offset="1" stop-color="#4C5A7B"/></linearGradient>
     <linearGradient id="c4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8190B4"/><stop offset="1" stop-color="#5B6A8D"/></linearGradient>
     <linearGradient id="c5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6C7B9A"/><stop offset="1" stop-color="#475573"/></linearGradient>
-    <linearGradient id="cc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9DF5FF"/><stop offset="1" stop-color="#12B6E8"/></linearGradient>
-    <linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#489FBE"/><stop offset="1" stop-color="#0B7FA8"/></linearGradient>
+    <linearGradient id="cc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E2D2FF"/><stop offset="1" stop-color="#9B63F3"/></linearGradient>
+    <linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#835FD1"/><stop offset="1" stop-color="#5A2AC2"/></linearGradient>
     <linearGradient id="ci" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.18"/></linearGradient>
-    <radialGradient id="gl" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#3DD4FF" stop-opacity="0.5"/><stop offset="1" stop-color="#3DD4FF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gl" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#B58CFF" stop-opacity="0.5"/><stop offset="1" stop-color="#B58CFF" stop-opacity="0"/></radialGradient>
     <linearGradient id="bgv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A202B"/><stop offset="1" stop-color="#0D1016"/></linearGradient>
   </defs>
   <path id="bg" d="M 601.62 0 c 147.85 0 221.77 0 278.24 28.77 a 263.99 263.99 0 0 1 115.37 115.37 c 28.77 56.47 28.77 130.39 28.77 278.24 L 1024 601.62 c 0 147.85 0 221.77 -28.77 278.24 a 263.99 263.99 0 0 1 -115.37 115.37 c -56.47 28.77 -130.39 28.77 -278.24 28.77 L 422.38 1024 c -147.85 0 -221.77 0 -278.24 -28.77 a 263.99 263.99 0 0 1 -115.37 -115.37 c -28.77 -56.47 -28.77 -130.39 -28.77 -278.24 L 0 422.38 c 0 -147.85 0 -221.77 28.77 -278.24 a 263.99 263.99 0 0 1 115.37 -115.37 c 56.47 -28.77 130.39 -28.77 278.24 -28.77 Z" fill="url(#bgv)"/>

@@ -15,7 +15,7 @@ pub struct Mark {
 
 /// Бинарники семьи и их знаки.
 pub const MARKS: &[(&str, Mark)] = &[
-    ("anvil", Mark { accent: Some(Accent::EMBER), icon: Icon::Hammer }),
+    ("anvil", Mark { accent: Some(Accent::VIOLET), icon: Icon::Hive }),
     ("amber-desktop", Mark { accent: Some(Accent::AMBER), icon: Icon::Chat }),
     ("amber-admin", Mark { accent: Some(Accent::AMBER), icon: Icon::Server }),
     ("amber-server", Mark { accent: Some(Accent::AMBER), icon: Icon::Broadcast }),
@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn family_binaries_have_their_marks() {
         assert_eq!(mark_of("amber-desktop.exe").map(|m| m.icon), Some(Icon::Chat));
-        assert_eq!(mark_of("Anvil").map(|m| m.accent), Some(Some(Accent::EMBER)));
+        assert_eq!(mark_of("Anvil").map(|m| m.accent), Some(Some(Accent::VIOLET)));
         assert!(mark_of("uniffi-bindgen").is_none());
     }
 }

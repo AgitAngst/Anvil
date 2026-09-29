@@ -7,8 +7,8 @@
     <linearGradient id="c3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#646F89"/><stop offset="1" stop-color="#3B4660"/></linearGradient>
     <linearGradient id="c4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#717D9D"/><stop offset="1" stop-color="#485474"/></linearGradient>
     <linearGradient id="c5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5F6A84"/><stop offset="1" stop-color="#37425B"/></linearGradient>
-    <linearGradient id="cc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9DF5FF"/><stop offset="1" stop-color="#12B6E8"/></linearGradient>
-    <linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#489FBE"/><stop offset="1" stop-color="#0B7FA8"/></linearGradient>
+    <linearGradient id="cc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E2D2FF"/><stop offset="1" stop-color="#9B63F3"/></linearGradient>
+    <linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#835FD1"/><stop offset="1" stop-color="#5A2AC2"/></linearGradient>
     <linearGradient id="ci" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.18"/></linearGradient>
     <linearGradient id="bgv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8F4ED"/><stop offset="1" stop-color="#EDE7DC"/></linearGradient>
   </defs>

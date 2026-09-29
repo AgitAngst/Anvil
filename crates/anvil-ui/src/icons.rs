@@ -45,6 +45,8 @@ pub enum Icon {
     Gear,
     /// Молоток: собрать.
     Hammer,
+    /// Соты: ядро и шесть ячеек вокруг. Знак Anvil — центра, на котором держится остальное.
+    Hive,
     Image,
     Info,
     /// Три слоя: стопка, библиотека.
@@ -89,7 +91,7 @@ pub enum Icon {
 
 impl Icon {
     /// Все значки набора — для витрины и выбора в программах.
-    pub const ALL: [Icon; 52] = [
+    pub const ALL: [Icon; 53] = [
         Icon::ArrowDown,
         Icon::ArrowLeft,
         Icon::ArrowRight,
@@ -113,6 +115,7 @@ impl Icon {
         Icon::Gamepad,
         Icon::Gear,
         Icon::Hammer,
+        Icon::Hive,
         Icon::Image,
         Icon::Info,
         Icon::Layers,
@@ -317,6 +320,23 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             let head =
                 vec![corner(-6.5, -2.8), corner(4.5, -2.8), corner(6.5, 0.0), corner(4.5, 2.8), corner(-6.5, 2.8)];
             push(Shape::convex_polygon(head, color, Stroke::NONE));
+        }
+        Icon::Hive => {
+            // Ядро и шесть ячеек вокруг с зазором: залитые шестиугольники остриём вверх.
+            let hexagon = |cx: f32, cy: f32, r: f32| {
+                let points: Vec<Pos2> = (0..6)
+                    .map(|k| {
+                        let a = (-90.0 + 60.0 * k as f32).to_radians();
+                        at(cx + r * a.cos(), cy + r * a.sin())
+                    })
+                    .collect();
+                push(Shape::convex_polygon(points, color, Stroke::NONE));
+            };
+            hexagon(12.0, 12.0, 3.6);
+            for k in 0..6 {
+                let a = (60.0 * k as f32).to_radians();
+                hexagon(12.0 + 6.4 * a.cos(), 12.0 + 6.4 * a.sin(), 2.6);
+            }
         }
         Icon::Image => {
             boxed(at(3.5, 5.0), at(20.5, 19.0), 2.0);

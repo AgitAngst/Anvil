@@ -1,7 +1,7 @@
 //! Единый вид всех программ: темы, акценты, значки и виджеты на egui.
 //!
 //! ```ignore
-//! anvil_ui::install(&cc.egui_ctx, anvil_ui::Accent::EMBER, anvil_ui::ThemeChoice::System);
+//! anvil_ui::install(&cc.egui_ctx, anvil_ui::Accent::VIOLET, anvil_ui::ThemeChoice::System);
 //! ```
 
 pub mod appicon;

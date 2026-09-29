@@ -21,7 +21,7 @@ use crate::registry;
 use crate::tasks::{self, Job, Locked, Resolve, Task, UnitsCache};
 use crate::worker::{self, Busy, Cmd, Event, Project};
 
-pub const ACCENT: Accent = Accent::EMBER;
+pub const ACCENT: Accent = Accent::VIOLET;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {

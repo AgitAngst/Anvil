@@ -159,7 +159,7 @@ Anvil живёт в трее, быстрый запуск Ctrl+Alt+Space раб�
 | Amber Admin | AMBER + `Server` (как в его `AppInfo`) | `amber-admin`, установлена 0.4.0 | не запущен |
 | Tetrachrome | TEAL + `Tiles` | не установлена, на GitHub v0.1.0 | — |
 | FFMincer | ROSE + `Film` | не установлена, на GitHub v0.1.0 | — |
-| Anvil | EMBER + `Hammer` | портативный 0.2.0; в коде v0.2.0 + 2 коммита (`aad5923`) | это окно |
+| Anvil | VIOLET + `Hive` | портативный 0.2.0; в коде v0.2.0 + 2 коммита (`aad5923`) | это окно |
 | amber-server | AMBER + `Broadcast` (новый) | профиль `test-18731`: `amber-server --db %LOCALAPPDATA%\Anvil\run\amber-server-test\amber.db serve --addr 127.0.0.1:18731`, из кода 2353af9 | работает с 00:26, PID 22410, порт 18731 слушает |
 | amber-bot | AMBER + `Bot` (новый) | не собран | не запущен |
 | IQube | нейтральный + `Cube` (новый) | `build\IQube.exe`, 105 МБ, экспорт 26.09 в 21:01; Godot 4.7 (Forward Plus); движок `D:\GameDev\GODOT\Godot_v4.7.1-stable_win64.exe` | не запущена; после экспорта менялись только `*.md` → «сборка свежая» |
@@ -216,23 +216,27 @@ IQube, коммиты (все 26.09):
 | `warning` | `#E5B54A` | `#8F5F00` | правки, отстаёт, код новее сборки |
 | `danger` | `#F2676B` | `#C4303A` | упал, ошибка, удаление |
 
-### 2.2. Акцент интерфейса — всегда EMBER
+### 2.2. Акцент интерфейса — всегда VIOLET
 
 | Токен | Тёмная | Светлая | Где |
 |---|---|---|---|
-| `accent` | `#F0833A` | `#C2531A` | заливка главной кнопки, полоска выбранной строки и вкладки, прогресс, включённый переключатель, рамка поля в фокусе |
-| `accent_hover` | `#F18D4A` | `#B24C18` | главная кнопка под курсором (8 % к белому / к чёрному) |
-| `on_accent` | `#1B0E05` | `#FFFFFF` | текст и значок на заливке |
-| `accent_text` | `#F59A5C` | `#AD4712` | хеши, ссылки, места ошибок, кольцо фокуса, бейдж `Accent` |
+| `accent` | `#AB7CF6` | `#7439D9` | заливка главной кнопки, полоска выбранной строки и вкладки, прогресс, включённый переключатель, рамка поля в фокусе |
+| `accent_hover` | `#B286F7` | `#6B34C8` | главная кнопка под курсором (8 % к белому / к чёрному) |
+| `on_accent` | `#150A31` | `#FFFFFF` | текст и значок на заливке |
+| `accent_text` | `#BF9FFB` | `#6229C4` | хеши, ссылки, места ошибок, кольцо фокуса, бейдж `Accent` |
 
-Правило: всё, что нажимается, выбирается и находится в фокусе, красится EMBER на **любом** экране,
+Правило: всё, что нажимается, выбирается и находится в фокусе, красится VIOLET на **любом** экране,
 в том числе на странице Amber.
+
+С 29.09.2026 акцент Anvil — VIOLET (был EMBER). Причина: EMBER стоял в 14° от янтаря Amber и почти совпадал
+с цветом «внимание». Красный занят: `danger` (356–358°) и ROSE (349–351°). Свободный участок круга
+оттенков — 230–340°; VIOLET взят около 263°, контраст всех пар в тесте набора — не ниже 5.7:1.
 
 ### 2.3. Акценты программ — только внутри знаков
 
 | Акцент | Кто | Тёмная: заливка / на ней / текст | Светлая: заливка / на ней / текст |
 |---|---|---|---|
-| `EMBER` | Anvil | `#F0833A` / `#1B0E05` / `#F59A5C` | `#C2531A` / `#FFFFFF` / `#AD4712` |
+| `VIOLET` | Anvil | `#AB7CF6` / `#150A31` / `#BF9FFB` | `#7439D9` / `#FFFFFF` / `#6229C4` |
 | `AMBER` | Amber, Amber Admin, amber-server, amber-bot | `#F2B54A` / `#1C1403` / `#F2B54A` | `#F2B54A` / `#1C1403` / `#8A5A00` |
 | `TEAL` | Tetrachrome | `#3CC8B4` / `#04201C` / `#4FD6C3` | `#0E7C70` / `#FFFFFF` / `#0B6E63` |
 | `ROSE` | FFMincer | `#F0647A` / `#22060B` / `#F4808F` | `#C22D48` / `#FFFFFF` / `#B3263F` |
@@ -258,20 +262,20 @@ IQube, коммиты (все 26.09):
 | Токен | Тёмная | Светлая | Что это |
 |---|---|---|---|
 | `badge_neutral` | `#313135` | `#EAEAEB` | подложка бейджа `Neutral` (текст `weak`) |
-| `badge_accent` | `#3E3029` | `#F5E9E2` | бейдж `Accent` (текст `accent_text`) |
+| `badge_accent` | `#363142` | `#ECE5F8` | бейдж `Accent` (текст `accent_text`) |
 | `badge_success` | `#233630` | `#E3EDE8` | бейдж `Success` (текст `success`) |
 | `badge_warning` | `#3C3426` | `#F1EBE0` | бейдж `Warning` (текст `warning`) |
 | `badge_danger` | `#3E272B` | `#F8E6E7` | бейдж `Danger` и заливка Danger-кнопки (текст `danger`) |
-| `banner_accent` | `#34261D` | `#EADED8` | баннер `Accent` на `bg` |
+| `banner_accent` | `#2B2636` | `#E2DBEE` | баннер `Accent` на `bg` |
 | `banner_success` | `#192C24` | `#D8E2DE` | баннер `Success` на `bg` |
 | `banner_warning` | `#322A1A` | `#E6E0D6` | баннер `Warning` на `bg` |
 | `banner_danger` | `#341D1F` | `#EDDBDD` | баннер `Danger` на `bg` |
-| `banner_accent_line` | `rgba(245,154,92,0.35)` | `rgba(173,71,18,0.35)` | рамка баннера (тон 35 %) |
+| `banner_accent_line` | `rgba(191,159,251,0.35)` | `rgba(98,41,196,0.35)` | рамка баннера (тон 35 %) |
 | `banner_success_line` | `rgba(76,195,138,0.35)` | `rgba(22,112,63,0.35)` | |
 | `banner_warning_line` | `rgba(229,181,74,0.35)` | `rgba(143,95,0,0.35)` | |
 | `banner_danger_line` | `rgba(242,103,107,0.35)` | `rgba(196,48,58,0.35)` | |
 | `danger_line` | `rgba(242,103,107,0.5)` | `rgba(196,48,58,0.5)` | рамка Danger-кнопки; под курсором рамка — `danger` целиком, заливка не темнеет |
-| `nav_selected` | `#38271D` | `#F3E6DF` | выбранный пункт боковой панели Кузницы (soft EMBER на `surface`, как в 0.2) |
+| `nav_selected` | `#2E263C` | `#EAE3F6` | выбранный пункт боковой панели Кузницы (soft VIOLET на `surface`, как в 0.2) |
 | `scrim` | `rgba(0,0,0,0.59)` | `rgba(0,0,0,0.35)` | затемнение под диалогом |
 | `shadow_window` | `0 12px 36px rgba(0,0,0,0.55)` | `0 12px 36px rgba(0,0,0,0.18)` | тень диалога |
 | `shadow_popup` | `0 6px 18px rgba(0,0,0,0.47)` | `0 6px 18px rgba(0,0,0,0.14)` | тень меню и уведомления в окне |
@@ -320,7 +324,7 @@ IQube, коммиты (все 26.09):
 | баннер: `weak` на `banner_*` | ≥ 5.46 | ≥ 5.55 |
 | выбранный пункт Кузницы: `text` / `accent_text` на `nav_selected` | 12.06 / 6.54 | 14.65 / 4.66 |
 | клавиша: `weak` на `raised` | 5.88 | 6.49 |
-| знак: `on_fill` на заливке EMBER / AMBER / TEAL / ROSE | 7.21 / 9.98 / 8.23 / 6.20 | 4.62 / 9.98 / 5.08 / 5.58 |
+| знак: `on_fill` на заливке VIOLET / AMBER / TEAL / ROSE | 6.20 / 9.98 / 8.23 / 6.20 | 6.31 / 9.98 / 5.08 / 5.58 |
 | нейтральный знак: `text` на `raised` | 12.94 | 15.72 |
 | меню трея: `sys_text` / `sys_weak` на `sys_menu` | 14.16 / 5.82 | 15.55 / 5.79 |
 | меню трея: `sys_text` на `sys_hover` | 10.21 | 12.45 |
@@ -330,7 +334,7 @@ IQube, коммиты (все 26.09):
 
 Графика (≥ 3:1):
 - точки `success` / `warning` / `danger` на `hover` — не ниже 4.48;
-- полоска выбора EMBER на `raised` — 5.83 / 4.06;
+- полоска выбора VIOLET на `raised` — 5.05 / 5.54;
 - прогресс на дорожке `raised` — 5.83 / 4.06;
 - кромка AMBER в светлой теме — ≥ 3.39.
 
@@ -356,14 +360,14 @@ const C = {
     border:'#2C2C31', border_strong:'#3D3D44', field:'#121214',
     text:'#ECECEE', weak:'#A0A0A8', faint:'#6E6E76',
     success:'#4CC38A', warning:'#E5B54A', danger:'#F2676B',
-    accent:'#F0833A', accent_hover:'#F18D4A', on_accent:'#1B0E05', accent_text:'#F59A5C',
-    badge_neutral:'#313135', badge_accent:'#3E3029', badge_success:'#233630', badge_warning:'#3C3426', badge_danger:'#3E272B',
-    banner_accent:'#34261D', banner_success:'#192C24', banner_warning:'#322A1A', banner_danger:'#341D1F',
-    banner_accent_line:'rgba(245,154,92,0.35)', banner_success_line:'rgba(76,195,138,0.35)',
+    accent:'#AB7CF6', accent_hover:'#B286F7', on_accent:'#150A31', accent_text:'#BF9FFB',
+    badge_neutral:'#313135', badge_accent:'#363142', badge_success:'#233630', badge_warning:'#3C3426', badge_danger:'#3E272B',
+    banner_accent:'#2B2636', banner_success:'#192C24', banner_warning:'#322A1A', banner_danger:'#341D1F',
+    banner_accent_line:'rgba(191,159,251,0.35)', banner_success_line:'rgba(76,195,138,0.35)',
     banner_warning_line:'rgba(229,181,74,0.35)', banner_danger_line:'rgba(242,103,107,0.35)',
-    danger_line:'rgba(242,103,107,0.5)', nav_selected:'#38271D',
+    danger_line:'rgba(242,103,107,0.5)', nav_selected:'#2E263C',
     scrim:'rgba(0,0,0,0.59)', shadow_window:'0 12px 36px rgba(0,0,0,0.55)', shadow_popup:'0 6px 18px rgba(0,0,0,0.47)',
-    m_ember:'#F0833A', m_ember_on:'#1B0E05', m_amber:'#F2B54A', m_amber_on:'#1C1403',
+    m_violet:'#AB7CF6', m_violet_on:'#150A31', m_amber:'#F2B54A', m_amber_on:'#1C1403',
     m_teal:'#3CC8B4', m_teal_on:'#04201C', m_rose:'#F0647A', m_rose_on:'#22060B',
     m_blue:'#6C9EF8', m_blue_on:'#06142E', m_amber_edge:'none',
     desk:'#23262B', desk_text:'#E6E8EB', taskbar:'#101010', taskbar_text:'#FFFFFF',
@@ -375,14 +379,14 @@ const C = {
     border:'#E2E2E5', border_strong:'#CBCBD0', field:'#FFFFFF',
     text:'#17171A', weak:'#55555D', faint:'#8A8A92',
     success:'#16703F', warning:'#8F5F00', danger:'#C4303A',
-    accent:'#C2531A', accent_hover:'#B24C18', on_accent:'#FFFFFF', accent_text:'#AD4712',
-    badge_neutral:'#EAEAEB', badge_accent:'#F5E9E2', badge_success:'#E3EDE8', badge_warning:'#F1EBE0', badge_danger:'#F8E6E7',
-    banner_accent:'#EADED8', banner_success:'#D8E2DE', banner_warning:'#E6E0D6', banner_danger:'#EDDBDD',
-    banner_accent_line:'rgba(173,71,18,0.35)', banner_success_line:'rgba(22,112,63,0.35)',
+    accent:'#7439D9', accent_hover:'#6B34C8', on_accent:'#FFFFFF', accent_text:'#6229C4',
+    badge_neutral:'#EAEAEB', badge_accent:'#ECE5F8', badge_success:'#E3EDE8', badge_warning:'#F1EBE0', badge_danger:'#F8E6E7',
+    banner_accent:'#E2DBEE', banner_success:'#D8E2DE', banner_warning:'#E6E0D6', banner_danger:'#EDDBDD',
+    banner_accent_line:'rgba(98,41,196,0.35)', banner_success_line:'rgba(22,112,63,0.35)',
     banner_warning_line:'rgba(143,95,0,0.35)', banner_danger_line:'rgba(196,48,58,0.35)',
-    danger_line:'rgba(196,48,58,0.5)', nav_selected:'#F3E6DF',
+    danger_line:'rgba(196,48,58,0.5)', nav_selected:'#EAE3F6',
     scrim:'rgba(0,0,0,0.35)', shadow_window:'0 12px 36px rgba(0,0,0,0.18)', shadow_popup:'0 6px 18px rgba(0,0,0,0.14)',
-    m_ember:'#C2531A', m_ember_on:'#FFFFFF', m_amber:'#F2B54A', m_amber_on:'#1C1403',
+    m_violet:'#7439D9', m_violet_on:'#FFFFFF', m_amber:'#F2B54A', m_amber_on:'#1C1403',
     m_teal:'#0E7C70', m_teal_on:'#FFFFFF', m_rose:'#C22D48', m_rose_on:'#FFFFFF',
     m_blue:'#2A5FD0', m_blue_on:'#FFFFFF', m_amber_edge:'inset 0 0 0 1px rgba(0,0,0,0.35)',
     desk:'#C4C9CF', desk_text:'#1A1A1A', taskbar:'#E6E6E6', taskbar_text:'#1A1A1A',
@@ -398,17 +402,17 @@ const markOf = (c, acc) => acc === 'neutral'
 
 ### 2.7. Где какой цвет (правила 0.3)
 
-- EMBER — только интерфейс Anvil: главная кнопка, полоска выбора, вкладки, прогресс, фокус, хеши и
+- VIOLET — только интерфейс Anvil: главная кнопка, полоска выбора, вкладки, прогресс, фокус, хеши и
   ссылки, выбранный сегмент поиска в фокусе.
 - Акцент программы — только внутри её знака. Правило «Цвет — чьё, значок — что»: все бинарники Amber
   жёлтые, а различает их значок.
 - Состояние в строках: точка 10 или бейдж, рядом всегда слово. Текст состояния — `text` (работает,
   упал) или `weak` (не запущен, закрыт).
 - Выбранная строка любого списка (Пульт, быстрый запуск, задачи в консоли, шаги набора) — `raised` и
-  полоска EMBER 3 px слева. Под курсором — `hover`. Мягкий акцент как выделение строки больше не
+  полоска VIOLET 3 px слева. Под курсором — `hover`. Мягкий акцент как выделение строки больше не
   используется. Исключение — пункт боковой панели Кузницы: он остаётся `nav_selected`, как в 0.2.
 - Бейджи и Danger-кнопка — непрозрачные заливки из §2.4.
-- Главная кнопка: одна на экран, EMBER. На экране-списке (Пульт, быстрый запуск, настройки) главной
+- Главная кнопка: одна на экран, VIOLET. На экране-списке (Пульт, быстрый запуск, настройки) главной
   кнопки нет, главное действие — Enter по выбранной строке. Это правило дописывается в STYLE.md.
 
 ---
@@ -709,7 +713,7 @@ const ICONS = {
 - **Строка ключ — значение** (`field_row`): высота 22, ключ 13 `weak` шириной 110 (в 0.2 — 96, для
   русского «Готов, когда» нужно 110), значение справа от ключа. Между строками 6.
 - **Строка Пульта** (`deck_row`, новое): высота 44, скругление 6.
-  - Фон: покой — прозрачный; под курсором — `hover`; выбрана — `raised` и полоска EMBER 3 × 28 у
+  - Фон: покой — прозрачный; под курсором — `hover`; выбрана — `raised` и полоска VIOLET 3 × 28 у
     левого края (y + 8, скругление 2).
   - Колонки по x от левого края строки при ширине строки 980:
 
@@ -1010,14 +1014,14 @@ const ICONS = {
 Все экраны — 1440 × 900, у каждого пропсы `theme` ('dark' | 'light') и `lang` ('ru' | 'en').
 Тексты берутся из словаря `t` (§8); ниже для каждого экрана — его словарь целиком. Строки, одинаковые
 на обоих языках (имена, хеши, пути, команды, версии, строки журнала), лежат в `N` своего экрана.
-«Главная кнопка» — единственная залитая EMBER кнопка экрана.
+«Главная кнопка» — единственная залитая VIOLET кнопка экрана.
 
 ### 7.1. `Main.dc.html` — Пульт (входной артборд)
 
 - Время сцены — 00:34.
 - Режим — Пульт.
 - **Главной кнопки нет:** это экран-список, главное действие — Enter по выбранной строке.
-- Выбрана строка Amber: фон `raised` и полоска EMBER.
+- Выбрана строка Amber: фон `raised` и полоска VIOLET.
 
 **Заголовок** (y 78…130):
 - `t.main_title` — 24 / 600;
@@ -1626,7 +1630,7 @@ const D = {
 - **Слева** (x 0…290, отступы 10 12):
   - подпись `t.g_tasks`;
   - задачи 44 со значком 16 и двумя строками (13 `text` с обрезкой и 12 `weak`). Выбранная —
-    `raised` и полоска EMBER:
+    `raised` и полоска VIOLET:
 
     | Значок | Первая строка | Вторая строка |
     |---|---|---|
@@ -2067,7 +2071,7 @@ const COMMON = {
 1. Все четыре сочетания (dark · ru, dark · en, light · ru, light · en) рисуются без переполнения:
    русские строки длиннее на 20–30 %. Если не влезает — обрезка многоточием (`text-overflow:ellipsis`),
    а не перенос, кроме мест, где в §7 сказано «две строки».
-2. На экране не больше одной залитой кнопки EMBER (или ни одной, где так сказано).
+2. На экране не больше одной залитой кнопки VIOLET (или ни одной, где так сказано).
 3. Нет чужого акцента вне знаков, нет цветного текста на `raised` и `hover`, нет полупрозрачных
    бейджей.
 4. Нет эмодзи, шрифтовых стрелок и символов вместо значков.
@@ -2109,7 +2113,7 @@ Amber, Tetrachrome и FFMincer остаются на `kit-v0.2.0` и ничег�
   чипы 20 / 22.
 - Знаки 16 / 28 / 40 / 56. Нейтральный знак — для всего, что не программа на `anvil-ui`.
 - Правило «Цвет — чьё, значок — что». Правило «чужой акцент — только в знаке; главная кнопка всегда
-  EMBER».
+  VIOLET».
 - Выделение строки — `raised` и полоска, цветного текста на `raised` и `hover` нет.
 - «Ноль главных кнопок на экране-списке допустим; главное действие — Enter».
 - Отдельное окно быстрого запуска — квадратное, рамка `border_strong`, без тени: исключение из

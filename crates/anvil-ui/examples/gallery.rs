@@ -965,7 +965,7 @@ impl Gallery {
                 w::section_label(ui, "Знаки программ");
                 ui.horizontal(|ui| {
                     for (icon, name) in [
-                        (Icon::Hammer, "Anvil"),
+                        (Icon::Hive, "Anvil"),
                         (Icon::Chat, "Amber"),
                         (Icon::Tiles, "Tetrachrome"),
                         (Icon::Film, "FFMincer"),

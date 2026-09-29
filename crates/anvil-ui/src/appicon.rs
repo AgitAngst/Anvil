@@ -115,11 +115,11 @@ mod tests {
     #[test]
     fn mark_is_opaque_inside_and_transparent_at_corner() {
         let size = 32;
-        let px = rgba(Accent::EMBER, Icon::Hammer, size);
+        let px = rgba(Accent::VIOLET, Icon::Hammer, size);
         let at = |x: usize, y: usize| &px[(y * size as usize + x) * 4..][..4];
         assert_eq!(at(0, 0)[3], 0, "угол скруглён");
         assert_eq!(at(3, size as usize / 2)[3], 255, "край квадрата залит");
-        let fill = Accent::EMBER.dark.fill;
+        let fill = Accent::VIOLET.dark.fill;
         assert_eq!(&at(3, size as usize / 2)[..3], &[fill.r(), fill.g(), fill.b()]);
     }
 }

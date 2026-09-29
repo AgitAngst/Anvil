@@ -28,7 +28,7 @@ use crate::worker::Busy;
 pub fn info() -> AppInfo {
     AppInfo {
         name: "Anvil",
-        icon: Icon::Hammer,
+        icon: Icon::Hive,
         version: env!("CARGO_PKG_VERSION"),
         tagline: t("Пульт и кузница моих программ"),
         repository: env!("CARGO_PKG_REPOSITORY"),

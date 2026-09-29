@@ -48,11 +48,12 @@ pub struct Accent {
 }
 
 impl Accent {
-    /// Anvil: раскалённый металл.
-    pub const EMBER: Accent = Accent {
-        name: "Ember",
-        dark: Swatch { fill: rgb(0xF0833A), on_fill: rgb(0x1B0E05), text: rgb(0xF59A5C) },
-        light: Swatch { fill: rgb(0xC2531A), on_fill: rgb(0xFFFFFF), text: rgb(0xAD4712) },
+    /// Anvil: центр, на котором держится всё остальное. Свободный участок круга оттенков (около 262°):
+    /// не янтарь, не розовый и не цвета статусов (ошибка — красный, успех — зелёный).
+    pub const VIOLET: Accent = Accent {
+        name: "Violet",
+        dark: Swatch { fill: rgb(0xAB7CF6), on_fill: rgb(0x150A31), text: rgb(0xBF9FFB) },
+        light: Swatch { fill: rgb(0x7439D9), on_fill: rgb(0xFFFFFF), text: rgb(0x6229C4) },
     };
     /// Amber: янтарь.
     pub const AMBER: Accent = Accent {
@@ -79,7 +80,7 @@ impl Accent {
         light: Swatch { fill: rgb(0x2A5FD0), on_fill: rgb(0xFFFFFF), text: rgb(0x2556C0) },
     };
 
-    pub const ALL: [Accent; 5] = [Self::EMBER, Self::AMBER, Self::TEAL, Self::ROSE, Self::BLUE];
+    pub const ALL: [Accent; 5] = [Self::VIOLET, Self::AMBER, Self::TEAL, Self::ROSE, Self::BLUE];
 
     pub fn swatch(&self, dark: bool) -> Swatch {
         if dark { self.dark } else { self.light }
@@ -444,7 +445,7 @@ mod tests {
         }
         failures.dedup();
         // Кромка знака Amber в светлой теме — графика: не меньше 3:1 ко всем светлым фонам.
-        let p = Palette::new(false, Accent::EMBER);
+        let p = Palette::new(false, Accent::VIOLET);
         let (fill, _, edge) = p.mark(Some(Accent::AMBER));
         let edge = over(edge.expect("у янтаря в светлой теме есть кромка"), fill);
         for (what, under) in
