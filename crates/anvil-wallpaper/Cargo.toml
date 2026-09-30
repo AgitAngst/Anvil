@@ -1,0 +1,11 @@
+[package]
+name = "anvil-wallpaper"
+description = "Узоры обоев для фона бесед: плитка без швов, одна на все программы и клиенты"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Зависимостей нет и не будет: крейт берут и ядра без окон (телефон через UniFFI), и egui-программы.
+[dependencies]

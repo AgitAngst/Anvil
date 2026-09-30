@@ -11,6 +11,7 @@ pub mod icons;
 pub mod lang;
 pub mod motion;
 pub mod theme;
+pub mod wallpaper;
 pub mod widgets;
 
 pub use chrome::{AppInfo, CommonSettings};

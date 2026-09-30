@@ -23,7 +23,8 @@
 
 Замысел, этапы и решения — в [SPEC.md](SPEC.md); где остановились — в [HANDOFF.md](HANDOFF.md);
 правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); анимации набора (шкала, кривые, эффекты,
-«меньше движения») — в [docs/MOTION.md](docs/MOTION.md); как выпускаются программы — в
+«меньше движения») — в [docs/MOTION.md](docs/MOTION.md); узоры обоев для фона бесед (для любого клиента,
+и не на Rust) — в [docs/WALLPAPERS.md](docs/WALLPAPERS.md); как выпускаются программы — в
 [docs/RELEASES.md](docs/RELEASES.md).
 
 ![Anvil](docs/anvil-dark.png)

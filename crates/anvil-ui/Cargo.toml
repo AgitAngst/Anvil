@@ -12,6 +12,7 @@ publish.workspace = true
 serde = ["dep:serde"]
 
 [dependencies]
+anvil-wallpaper = { path = "../anvil-wallpaper" }
 eframe = { workspace = true }
 serde = { version = "1", features = ["derive"], optional = true }
 
