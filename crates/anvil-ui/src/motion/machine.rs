@@ -197,9 +197,11 @@ impl Follow {
         Self { value, target: value, tau, at: None }
     }
 
+    /// Встать на `value` сразу; время шагов начинается заново (первый шаг после — без прыжка).
     pub fn reset(&mut self, value: f32) {
         self.value = value;
         self.target = value;
+        self.at = None;
     }
 
     pub fn set(&mut self, target: f32) {
@@ -470,6 +472,10 @@ mod tests {
         assert_eq!(fill.step(2.01, true), 0.3, "reduced motion: at once");
         fill.reset(0.0);
         assert_eq!(fill.value(), 0.0);
+        // Новая задача после долгого покоя: первый шаг не прыгает к цели.
+        fill.set(1.0);
+        assert_eq!(fill.step(100.0, false), 0.0);
+        assert!(fill.step(100.06, false) < 0.5);
     }
 
     #[test]
