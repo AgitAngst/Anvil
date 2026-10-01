@@ -227,9 +227,50 @@ API перенесён под теми же именами, переезд ме�
 
 Общий порядок, который сработал: выбрать вариант из показа → описание как изменение OpenSpec (`proposal`, `design`,
 `tasks`, `spec`) → **эталон `reference/mark-motion.html`** с теми же числами, что пойдут в Rust (параметры
-`?scenario=…&at=…&still=1&px=1` для снимков headless-Edge) → чистая машина состояний с тестами → растеризатор кадра
+`?scenario=…&at=…&still=1&px=1` для снимков headless-Edge) → сцена значка на общей машине состояний (`motion::machine`,
+раздел ниже) с тестами → растеризатор кадра
 в RGBA → подключение. Правила те же, что выше: кадров в покое нет, «меньше движения» уважается, красное — ошибка и
 движение стоит, пока её не исправят.
+
+## Машина состояний значка (`motion::machine`)
+
+С 0.6.0 (01.10.2026, по просьбе владельца: «машину состояний сделай универсальной для разных типов анимаций, и пусть
+она лежит в Anvil»). Ход значка — общий, программе остаются своё состояние, свои числа и свой растеризатор. Код
+чистый, без egui; время — секунды `f64` от часов программы (`Instant` при запуске).
+
+| Кирпичик | Что это | У кого |
+|---|---|---|
+| `Phase<S>` | состояние с переходами: `set`, `state`, `prev`, `age`, `is(from, to)` | связь Amber, режим центра, маршрут Morok |
+| `Pulse` | одноразовое событие: `fire`, `playing(now, secs)`, `window(now, delay, secs)`; подряд — заново | сообщение |
+| `Hold` | пока включено — цикл: `set(on, now)`, `cycle(now, period)` | звонок |
+| `Badge` | счётчик: 0 → n — всплеск (`pop()`), n → m — без повтора, → 0 — сразу гаснет | непрочитанное |
+| `Follow` | число догоняет цель (`tau`), `reset` — встать сразу, `still` — сразу к цели | доля хода центра |
+| `Script<S>` | состояния по очереди с длительностями; `drive(&mut phase, now)` ставит смены в их моменты | «О программе» |
+| `window(t, delay, secs)` | доля 0..1 внутри отрезка эпизода | блик, кольцо |
+| `Scene` | значок программы: `frame`, `wants_frames`, `at_rest`, `key` | у каждой программы своя |
+| `Presenter<K>` | показ: `step` → `Show::{Keep, File, Frame}`, `next_in` — когда просить кадр, `invalidate` | окно, трей |
+
+Как подключить значок:
+
+```rust
+use anvil_ui::motion::machine::{Phase, Pulse, Presenter, Scene, Show};
+
+struct MyMark { link: Phase<Link>, message: Pulse }          // свои кирпичики
+impl Scene for MyMark { /* frame: числа для своего растеризатора; at_rest: выглядит как файл */ }
+
+// в logic (идёт и при спрятанном окне), часы — секунды от запуска:
+match window_show.step(&mark, now, !Motion::of(ctx).enabled) {
+    Show::Frame(f) => ctx.send_viewport_cmd(ViewportCommand::Icon(Some(Arc::new(render(&f, 64))))),
+    Show::File => ctx.send_viewport_cmd(ViewportCommand::Icon(Some(Arc::new(window_icon())))),
+    Show::Keep => {}
+}
+if let Some(secs) = window_show.next_in(&mark, now, still) { ctx.request_repaint_after(Duration::from_secs_f64(secs)) }
+```
+
+Правила `Presenter`: в покое (`at_rest`) — файл программы и **ни одного кадра**; пока движется (`wants_frames`) — кадры
+не чаще потолка (значок окна и трея — 10 в секунду); неподвижный не-покой (остывший значок, ошибка, «меньше движения»)
+— один кадр на каждую смену `key`. Растеризатор у каждой программы свой (формы знака разные). Первая программа на
+машине — Amber (`amber-desktop/src/mark_motion.rs`), за ней — центр и Morok по своим изменениям OpenSpec.
 
 ## Чего ещё нет (идеи, по желанию владельца)
 
