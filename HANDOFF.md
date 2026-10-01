@@ -437,8 +437,11 @@ K2 (программы на наборе):
   `widgets.rs` (`skeleton`, `live_dot`, `typing_dots`, `result_mark`, `shake`, `enter`, `changed_highlight`, `reveal`).
 - Из Morok перенесено под теми же именами: шкала и кривые (`motion.rs`), `MotionPref` (`sys/motion.rs`), рисование
   дуги, дымки, «Подключено» и мигания звена (из `ui/orb.rs` и `ui/chain.rs`) — теперь `effects::spin_arc`,
-  `gather_rings`, `settle`, `ring`, `blink`. Сам Morok **не переведён** (он на `kit-v0.3.0`, на паузе): переезд —
-  механический, шаги в MOTION.md («Переезд Morok»).
+  `gather_rings`, `settle`, `ring`, `blink`. Morok **переведён на `kit-v0.4.0`** другой сессией (30.09, Morok 0.2.3, коммит
+  `61ff1bf`); шаги переезда в MOTION.md («Переезд Morok») остались образцом.
+- Описания анимации значков программ (30.09, интеграцию делают другие сессии): Morok `morok-mark-motion`, Amber
+  `amber-mark-motion` (клиент) и `admin-mark-motion` (центр) — по изменению OpenSpec в репозитории программы;
+  краткая сводка и порядок работы — MOTION.md, «Анимированные значки программ».
 - Новое: `ease_pop`, встряска (`SHAKE`), галочка/крестик (`CHECK`), вспышка изменившегося (`FLASH`), скелетон
   (`SHIMMER`), живая точка (`PING`), «печатает» (`DOTS`), появление списком (`ENTER`, `STAGGER`), раскрытие по
   высоте, плавный цвет (`Motion::color`), `Motion::first_seen`/`enter`/`shake`/`flash`.
