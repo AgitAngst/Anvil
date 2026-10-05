@@ -18,3 +18,5 @@ serde = { version = "1", features = ["derive"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Globalization", "Win32_UI_WindowsAndMessaging"] }
+# HWND окна для `taskbar` (большой значок на панели задач); та же версия, что у eframe.
+raw-window-handle = "0.6.2"

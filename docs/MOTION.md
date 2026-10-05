@@ -272,6 +272,26 @@ if let Some(secs) = window_show.next_in(&mark, now, still) { ctx.request_repaint
 — один кадр на каждую смену `key`. Растеризатор у каждой программы свой (формы знака разные). Первая программа на
 машине — Amber (`amber-desktop/src/mark_motion.rs`), за ней — центр и Morok по своим изменениям OpenSpec.
 
+### Значок на панели задач и в Alt+Tab (`anvil_ui::taskbar`, с 0.6.1)
+
+`ViewportCommand::Icon` egui доходит до winit `set_window_icon`, а он на Windows меняет только малый значок
+(заголовок окна). Большой — тот, что на панели задач и в Alt+Tab, — остаётся из exe, и анимация там стоит.
+`TaskbarIcon` ставит большой сам (`WM_SETICON`, `ICON_BIG`); кадра нет — значок exe возвращается. Вне Windows —
+пустые вызовы.
+
+```rust
+let mut taskbar = anvil_ui::taskbar::TaskbarIcon::new(anvil_ui::taskbar::window_handle(cc)); // при создании
+match window_show.step(&mark, now, still) {
+    Show::Frame(f) => { let icon = render(&f); taskbar.set(Some(&icon)); /* и ViewportCommand::Icon */ }
+    Show::File => { taskbar.set(None); /* и ViewportCommand::Icon(файл) */ }
+    Show::Keep => {}
+}
+```
+
+Грабли Windows 10: кнопка **закреплённой** программы или сгруппированная с чужим окном (консоль, из которой
+запустили) показывает значок ярлыка или того окна — Alt+Tab при этом двигается. Проверять, открепив программу и
+запустив из папки двойным щелчком. Проверено на Amber 06.10.2026 (клиент и центр).
+
 ## Чего ещё нет (идеи, по желанию владельца)
 
 Нажатие кнопок (масштаб 0.97 есть у круга Morok, но не у `widgets::button`), плавное открытие меню и

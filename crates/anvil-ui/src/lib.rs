@@ -10,6 +10,7 @@ pub mod family;
 pub mod icons;
 pub mod lang;
 pub mod motion;
+pub mod taskbar;
 pub mod theme;
 pub mod wallpaper;
 pub mod widgets;
