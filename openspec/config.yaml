@@ -1,0 +1,51 @@
+schema: spec-driven
+
+context: |
+  Language: Russian
+  All artifacts must be written in Russian.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: Anvil, a Rust workspace: the command center and launcher for the owner's programs
+  (crates/anvil, Windows, egui) and the shared kit the other programs take by git tag `kit-v*`:
+  anvil-ui (theme, icons, widgets, motion), anvil-update (update check and install),
+  anvil-wallpaper (chat background patterns, no dependencies). Kit consumers: Amber,
+  Tetrachrome, FFMincer, Morok. Where the project stands and how to work: HANDOFF.md; plan and
+  stages: SPEC.md; look rules: docs/STYLE.md; motion: docs/MOTION.md; icons: docs/ICONS.md;
+  wallpapers: docs/WALLPAPERS.md; releases: docs/RELEASES.md.
+  Owner rules every artifact must respect:
+  - every UI in the light AND the dark theme and in Russian AND English; app strings go
+    through t("…") with the English in crates/anvil/lang/en.tsv, kit strings through
+    tr(ctx, "…") with a Russian key and the translation in lang.rs (dictionary tests fail
+    otherwise);
+  - new colours only as palette tokens, text-on-background pairs go into the contrast test;
+    a changed value or a new widget also changes docs/STYLE.md;
+  - a kit change reaches the other programs only through a new `kit-v*` tag; tags and releases
+    (Anvil `v*`, kit `kit-v*`) only on the owner's command;
+  - CI requires cargo fmt (width 120), clippy -D warnings and tests on Windows and Linux;
+  - live checks run on demo projects in the scratchpad with the portable config, not on the
+    owner's projects, and leave nothing behind;
+  - tasks include their tests and the doc updates (HANDOFF.md, SPEC.md, docs/) the change
+    needs; the workspace version grows with the plan (a stage - the second digit, a fix
+    inside a stage - the third).
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
