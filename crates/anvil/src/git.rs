@@ -70,7 +70,11 @@ pub fn read(dir: &Path) -> Result<Option<GitState>, String> {
 
     state.commits =
         git(dir, &["log", "-40", "--format=%h%x1f%H%x1f%s%x1f%an%x1f%ct"]).map(|s| parse_log(&s)).unwrap_or_default();
-    state.last_tag = git(dir, &["describe", "--tags", "--abbrev=0"]).ok().map(|s| s.trim().to_owned());
+    // Тег выпуска программы — `vX.Y.Z`. Другие (у Anvil рядом живут теги набора `kit-v…`) — когда таких нет.
+    state.last_tag = git(dir, &["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"])
+        .or_else(|_| git(dir, &["describe", "--tags", "--abbrev=0"]))
+        .ok()
+        .map(|s| s.trim().to_owned());
     if let Some(tag) = &state.last_tag {
         let range = format!("{tag}..HEAD");
         state.since_tag =
@@ -232,5 +236,31 @@ mod tests {
         assert_eq!(github_url("git@github.com:AgitAngst/Anvil.git"), want);
         assert_eq!(github_url("https://token@github.com/AgitAngst/Anvil"), want);
         assert_eq!(github_url("https://gitlab.com/a/b"), None);
+    }
+
+    #[test]
+    fn program_tag_wins_over_other_tags() {
+        let dir = std::env::temp_dir().join(format!("anvil-git-tags-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            let mut all =
+                vec!["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false"];
+            all.extend_from_slice(args);
+            git(&dir, &all).unwrap()
+        };
+        run(&["init", "--quiet"]);
+        run(&["commit", "--quiet", "--allow-empty", "-m", "one"]);
+        run(&["tag", "kit-v0.1.0"]);
+        // Тегов программы ещё нет — годится любой.
+        assert_eq!(read(&dir).unwrap().unwrap().last_tag.as_deref(), Some("kit-v0.1.0"));
+
+        run(&["tag", "v0.1.0"]);
+        run(&["commit", "--quiet", "--allow-empty", "-m", "two"]);
+        run(&["tag", "kit-v0.2.0"]);
+        let state = read(&dir).unwrap().unwrap();
+        assert_eq!(state.last_tag.as_deref(), Some("v0.1.0"));
+        assert_eq!(state.since_tag, 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -3,6 +3,8 @@ resolver = "3"
 members = ["crates/anvil-ui", "crates/anvil-update", "crates/anvil", "crates/anvil-wallpaper"]
 
 [workspace.package]
+# Версия набора (anvil-ui, anvil-update, anvil-wallpaper) — она же тег `kit-vX.Y.Z`.
+# У приложения версия своя: `crates/anvil/Cargo.toml`, тег `vX.Y.Z`.
 version = "0.6.1"
 edition = "2024"
 license = "MIT"

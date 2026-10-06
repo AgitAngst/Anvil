@@ -25,8 +25,10 @@ context: |
   - live checks run on demo projects in the scratchpad with the portable config, not on the
     owner's projects, and leave nothing behind;
   - tasks include their tests and the doc updates (HANDOFF.md, SPEC.md, docs/) the change
-    needs; the workspace version grows with the plan (a stage - the second digit, a fix
-    inside a stage - the third).
+    needs; the version grows with the plan (a stage - the second digit, a fix inside a
+    stage - the third). There are two numbers: the kit's in the root Cargo.toml
+    ([workspace.package], equals the `kit-v*` tag) and the app's in crates/anvil/Cargo.toml
+    (equals the `v*` tag); a change moves only the number of what it touches.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
