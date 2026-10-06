@@ -731,7 +731,7 @@ impl Gallery {
                     ui.label("↑0 ↓0");
                 });
                 w::field_row(ui, "Коммит", |ui| {
-                    w::mono(ui, "451da94", Some(p.accent_text));
+                    w::mono(ui, "3f9a1c2", Some(p.accent_text));
                     w::note(ui, "2 ч назад");
                 });
             });
@@ -932,7 +932,7 @@ impl Gallery {
                 ui.label("Основной текст — 14 pt, Segoe UI.");
                 w::note(ui, "Пояснение — 13 pt, приглушённый.");
                 w::section_label(ui, "Подпись раздела");
-                w::mono(ui, "cargo build --release   451da94", Some(p.text));
+                w::mono(ui, "cargo build --release   3f9a1c2", Some(p.text));
                 ui.label(RichText::new("Акцентная ссылка").color(p.accent_text));
             });
             right.add_space(12.0);
@@ -1016,11 +1016,11 @@ impl Gallery {
 fn commits(ui: &mut Ui) {
     let p = Palette::of(ui);
     let rows = [
-        ("451da94", "TODO: раздел «Задумки»", "2 ч назад"),
-        ("9b34ec5", "Пересылка сообщений", "5 ч назад"),
-        ("d9fd3f2", "Голосовые, обложки видео, файлы до 2 ГБ", "вчера"),
-        ("ff60830", "M11: до 32 участников, группы", "вчера"),
-        ("e050b87", "Смена сертификата без новых приглашений", "2 дня назад"),
+        ("3f9a1c2", "Заметки к выпуску 0.3.1", "2 ч назад"),
+        ("b71e04d", "Поиск по списку с подсказками", "5 ч назад"),
+        ("8c2d5a7", "Настройки: тема и язык применяются сразу", "вчера"),
+        ("e4a90f3", "Тесты разбора конфигурации", "вчера"),
+        ("17d6b8e", "Обновление зависимостей", "2 дня назад"),
     ];
     w::card(ui, |ui| {
         for (i, (hash, message, when)) in rows.iter().enumerate() {
