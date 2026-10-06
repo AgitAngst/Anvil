@@ -53,7 +53,9 @@ impl TaskbarIcon {
     /// `Some(кадр)` — поставить его большим значком окна; `None` — вернуть значок exe. Повторный `None` ничего
     /// не делает. Звать из потока окна (`update`/`logic`).
     pub fn set(&mut self, icon: Option<&eframe::egui::IconData>) {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIcon, DestroyIcon, ICON_BIG, SendMessageW, WM_SETICON};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreateIcon, DestroyIcon, ICON_BIG, SendMessageW, WM_SETICON,
+        };
         if self.hwnd == 0 || (icon.is_none() && self.handle == 0) {
             return;
         }
@@ -63,7 +65,15 @@ impl TaskbarIcon {
             let mask = vec![0u8; (icon.width * icon.height) as usize];
             // SAFETY: буферы живут до конца вызова, `CreateIcon` их копирует.
             unsafe {
-                CreateIcon(std::ptr::null_mut(), icon.width as i32, icon.height as i32, 1, 32, mask.as_ptr(), bgra.as_ptr()) as isize
+                CreateIcon(
+                    std::ptr::null_mut(),
+                    icon.width as i32,
+                    icon.height as i32,
+                    1,
+                    32,
+                    mask.as_ptr(),
+                    bgra.as_ptr(),
+                ) as isize
             }
         });
         if icon.is_some() && new == 0 {
