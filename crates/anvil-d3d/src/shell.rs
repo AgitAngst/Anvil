@@ -24,6 +24,12 @@ pub trait Content {
     fn clear(&self, ctx: &egui::Context) -> Color32 {
         ctx.global_style().visuals.panel_fill
     }
+    /// Кадр показан (`Present`): можно проявить окно — оно уже нарисовано и на месте.
+    fn after_present(&mut self) {}
+    /// Окно просят закрыть (крестик, Alt+F4, `WM_CLOSE`); `false` — не закрывать.
+    fn close_requested(&mut self) -> bool {
+        true
+    }
 }
 
 /// Окно: заголовок, размер и вид.
@@ -161,6 +167,7 @@ impl Shell {
             self.shown = true;
             window.set_visible(true);
         }
+        content.after_present();
     }
 }
 
@@ -219,7 +226,12 @@ impl ApplicationHandler<Wake> for Shell {
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::RedrawRequested => self.redraw(el),
-            WindowEvent::CloseRequested | WindowEvent::Destroyed => el.exit(),
+            WindowEvent::CloseRequested => {
+                if self.content.as_mut().is_none_or(|c| c.close_requested()) {
+                    el.exit();
+                }
+            }
+            WindowEvent::Destroyed => el.exit(),
             other => {
                 if let (Some(window), Some(state)) = (&self.window, &mut self.state)
                     && state.on_window_event(window, &other).repaint
