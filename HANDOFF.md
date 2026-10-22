@@ -2,6 +2,16 @@
 
 Замысел и этапы — [SPEC.md](SPEC.md). Здесь — где остановились и как тут работать.
 
+## 22.10.2026 — набор 0.7.0: крейт `anvil-d3d` (в main, без тега)
+
+- Окно egui на Direct3D 11 без eframe: `crates/anvil-d3d` (цикл winit + egui-winit, рисовальщик D3D11),
+  пример `cargo run -p anvil-d3d --example hello`, описание и замеры — [docs/D3D.md](docs/D3D.md).
+  Перенесён из Kamerton по просьбе владельца.
+- Версия набора поднята до 0.7.0 (корневой `Cargo.toml`); тега `kit-v0.7.0` нет — по команде владельца.
+  Пока тега нет, Kamerton держит свою копию (`src/d3d.rs`, `src/shell.rs`).
+- Проверено на ПК: fmt, тесты, clippy (Windows) и clippy под Linux (`checks.py … -- -p anvil-d3d`),
+  снимки примера в светлой и тёмной теме. CI не запускался.
+
 ## Состояние (27.09.2026)
 
 **K0, K1, K2 и A0–A6 пройдены**: репозиторий `AgitAngst/Anvil` (публичный), крейт `crates/anvil-ui`, витрина,

@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/anvil-ui", "crates/anvil-update", "crates/anvil", "crates/anvil-wallpaper"]
+members = ["crates/anvil-ui", "crates/anvil-update", "crates/anvil", "crates/anvil-wallpaper", "crates/anvil-d3d"]
 
 [workspace.package]
-# Версия набора (anvil-ui, anvil-update, anvil-wallpaper) — она же тег `kit-vX.Y.Z`.
+# Версия набора (anvil-ui, anvil-update, anvil-wallpaper, anvil-d3d) — она же тег `kit-vX.Y.Z`.
 # У приложения версия своя: `crates/anvil/Cargo.toml`, тег `vX.Y.Z`.
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/AgitAngst/Anvil"
@@ -13,3 +13,7 @@ publish = false
 
 [workspace.dependencies]
 eframe = "0.36.2"
+# Те же версии, что тянет eframe: для окна без eframe (anvil-d3d).
+egui = "0.36.2"
+egui-winit = "0.36.2"
+winit = "0.30.13"

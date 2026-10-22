@@ -234,8 +234,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "anvil-d3d"
+version = "0.7.0"
+dependencies = [
+ "anvil-ui",
+ "egui",
+ "egui-winit",
+ "windows",
+ "winit",
+]
+
+[[package]]
 name = "anvil-ui"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anvil-wallpaper",
  "eframe",
@@ -246,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-update"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anvil-ui",
  "eframe",
@@ -258,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-wallpaper"
-version = "0.6.1"
+version = "0.7.0"
 
 [[package]]
 name = "apple-native-keyring-store"
