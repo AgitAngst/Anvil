@@ -33,9 +33,13 @@ pub enum Icon {
     Copy,
     /// Куб в перспективе: проект Godot (IQube).
     Cube,
+    /// Игральный кубик: случайное значение (seed).
+    Dice,
     Download,
     /// Четыре угла: вписать, во весь размер.
     Expand,
+    /// Рамка со стрелкой из угла: ссылка открывает другое окно, программу или сайт.
+    External,
     File,
     /// Кадр плёнки: видео, медиа. Знак FFMincer.
     Film,
@@ -49,6 +53,8 @@ pub enum Icon {
     Hive,
     Image,
     Info,
+    /// Клавиатура: сочетания клавиш.
+    Keyboard,
     /// Три слоя: стопка, библиотека.
     Layers,
     Lock,
@@ -74,6 +80,10 @@ pub enum Icon {
     Save,
     Search,
     Server,
+    /// Динамик с волнами: звук, громкость. Волны по уровню — [`speaker`].
+    Speaker,
+    /// Динамик с крестом вместо волн: без звука.
+    SpeakerMuted,
     Stop,
     Sun,
     /// Мишень: полигон, стенд.
@@ -91,7 +101,7 @@ pub enum Icon {
 
 impl Icon {
     /// Все значки набора — для витрины и выбора в программах.
-    pub const ALL: [Icon; 53] = [
+    pub const ALL: [Icon; 58] = [
         Icon::ArrowDown,
         Icon::ArrowLeft,
         Icon::ArrowRight,
@@ -107,8 +117,10 @@ impl Icon {
         Icon::Code,
         Icon::Copy,
         Icon::Cube,
+        Icon::Dice,
         Icon::Download,
         Icon::Expand,
+        Icon::External,
         Icon::File,
         Icon::Film,
         Icon::Folder,
@@ -118,6 +130,7 @@ impl Icon {
         Icon::Hive,
         Icon::Image,
         Icon::Info,
+        Icon::Keyboard,
         Icon::Layers,
         Icon::Lock,
         Icon::Minus,
@@ -136,6 +149,8 @@ impl Icon {
         Icon::Save,
         Icon::Search,
         Icon::Server,
+        Icon::Speaker,
+        Icon::SpeakerMuted,
         Icon::Stop,
         Icon::Sun,
         Icon::Target,
@@ -252,6 +267,13 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             line(vec![at(4.0, 8.0), at(8.0, 4.0), at(20.0, 4.0), at(20.0, 16.0), at(16.0, 20.0)]);
             line(vec![at(16.0, 8.0), at(20.0, 4.0)]);
         }
+        Icon::Dice => {
+            // Грань «пять»: точки крупнее обычных, чтобы и в 16 px оставались точками.
+            boxed(at(4.0, 4.0), at(20.0, 20.0), 3.5);
+            for (x, y) in [(8.6, 8.6), (15.4, 8.6), (12.0, 12.0), (8.6, 15.4), (15.4, 15.4)] {
+                push(Shape::circle_filled(at(x, y), 1.5 * scale, color));
+            }
+        }
         Icon::Download => {
             line(vec![at(12.0, 4.5), at(12.0, 15.5)]);
             line(vec![at(7.5, 11.0), at(12.0, 15.5), at(16.5, 11.0)]);
@@ -262,6 +284,12 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             line(vec![at(15.0, 4.0), at(20.0, 4.0), at(20.0, 9.0)]);
             line(vec![at(20.0, 15.0), at(20.0, 20.0), at(15.0, 20.0)]);
             line(vec![at(9.0, 20.0), at(4.0, 20.0), at(4.0, 15.0)]);
+        }
+        Icon::External => {
+            // Рамка открыта в правом верхнем углу, оттуда выходит стрелка.
+            line(vec![at(18.0, 14.0), at(18.0, 20.0), at(4.0, 20.0), at(4.0, 6.0), at(10.0, 6.0)]);
+            line(vec![at(14.0, 4.0), at(20.0, 4.0), at(20.0, 10.0)]);
+            line(vec![at(20.0, 4.0), at(11.0, 13.0)]);
         }
         Icon::File => {
             line(vec![at(7.0, 4.0), at(14.0, 4.0), at(18.0, 8.0), at(18.0, 20.0), at(7.0, 20.0), at(7.0, 4.0)]);
@@ -347,6 +375,14 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
             push(Shape::circle_stroke(at(12.0, 12.0), 8.5 * scale, stroke));
             line(vec![at(12.0, 11.0), at(12.0, 16.5)]);
             push(Shape::circle_filled(at(12.0, 7.8), 1.2 * scale, color));
+        }
+        Icon::Keyboard => {
+            // Корпус, ряд клавиш точками и пробел.
+            boxed(at(2.5, 6.0), at(21.5, 18.0), 2.0);
+            for x in [6.5, 10.2, 13.8, 17.5] {
+                push(Shape::circle_filled(at(x, 10.0), 1.1 * scale, color));
+            }
+            line(vec![at(7.5, 14.0), at(16.5, 14.0)]);
         }
         Icon::Layers => {
             push(Shape::closed_line(vec![at(12.0, 4.0), at(20.5, 8.5), at(12.0, 13.0), at(3.5, 8.5)], stroke));
@@ -462,6 +498,9 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
                 push(Shape::circle_filled(at(8.0, top + 3.25), 1.1 * scale, color));
             }
         }
+        Icon::Speaker | Icon::SpeakerMuted => {
+            out.borrow_mut().extend(speaker_shapes(rect, color, 1.0, icon == Icon::SpeakerMuted));
+        }
         Icon::Stop => {
             push(Shape::rect_filled(Rect::from_min_max(at(6.5, 6.5), at(17.5, 17.5)), 2.0 * scale, color));
         }
@@ -514,6 +553,38 @@ pub fn shapes(rect: Rect, icon: Icon, color: Color32) -> Vec<Shape> {
         }
     }
     out.into_inner()
+}
+
+/// Динамик с волнами по уровню `level` (0..1): нет звука — ни одной, до трети — одна, до двух третей — две,
+/// громче — три. `muted` — крест вместо волн. [`Icon::Speaker`] — три волны, [`Icon::SpeakerMuted`] — крест.
+pub fn speaker(painter: &Painter, rect: Rect, color: Color32, level: f32, muted: bool) {
+    painter.extend(speaker_shapes(rect, color, level, muted));
+}
+
+fn speaker_shapes(rect: Rect, color: Color32, level: f32, muted: bool) -> Vec<Shape> {
+    let scale = rect.width().min(rect.height()) / 24.0;
+    let origin = rect.center() - egui::vec2(12.0, 12.0) * scale;
+    let at = |x: f32, y: f32| origin + egui::vec2(x, y) * scale;
+    let stroke = Stroke::new((1.7 * scale).max(1.2), color);
+    let body = vec![at(3.0, 9.0), at(7.0, 9.0), at(12.0, 5.0), at(12.0, 19.0), at(7.0, 15.0), at(3.0, 15.0)];
+    let mut out = vec![Shape::closed_line(body, stroke)];
+    if muted {
+        out.push(Shape::line_segment([at(15.5, 9.5), at(20.5, 14.5)], stroke));
+        out.push(Shape::line_segment([at(20.5, 9.5), at(15.5, 14.5)], stroke));
+        return out;
+    }
+    let waves = match level {
+        l if l <= 0.0 => 0,
+        l if l <= 0.33 => 1,
+        l if l <= 0.66 => 2,
+        _ => 3,
+    };
+    for i in 0..waves {
+        let r = 3.5 + i as f32 * 3.0;
+        let points = arc_points(12.0, 12.0, r, -0.9, 0.9, 12).into_iter().map(|(x, y)| at(x, y)).collect();
+        out.push(Shape::line(points, stroke));
+    }
+    out
 }
 
 fn arc_points(cx: f32, cy: f32, r: f32, from: f32, to: f32, steps: usize) -> Vec<(f32, f32)> {

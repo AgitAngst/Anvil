@@ -1,7 +1,9 @@
 //! Витрина `anvil-ui`: макет командного центра Anvil и все элементы набора.
 //!
 //! `cargo run -p anvil-ui --example gallery [-- --dark|--light] [--en|--ru] [--accent amber] [--tab elements|deck|motion]
-//!  [--reduced] [--size WxH] [--scroll px] [--dialog|--settings|--about]`
+//!  [--reduced] [--size WxH] [--scroll px] [--dialog|--settings|--about] [--popup menu|more|select]`
+//!
+//! `--popup` открывает на вкладке «Элементы» меню темы, меню «⋯» или выпадающий выбор — для снимков.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -11,9 +13,9 @@ use std::time::Instant;
 mod motion_page;
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
-use anvil_ui::widgets::{self as w, ChainNode, Toasts};
+use anvil_ui::widgets::{self as w, ChainNode, Slider, Toasts};
 use anvil_ui::{Accent, CommonSettings, Icon, Kind, Lang, Palette, ThemeChoice, Tone, semibold};
-use eframe::egui::{self, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Popup, RichText, Sense, Stroke, Ui, Vec2};
 
 const INFO: AppInfo = AppInfo {
     name: "Anvil",
@@ -54,6 +56,7 @@ fn main() -> eframe::Result<()> {
         None
     };
     let reduced = has("--reduced");
+    let popup = value("--popup");
     let scroll = value("--scroll").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
     let mut settings = CommonSettings { theme, ..CommonSettings::default() };
     if has("--en") {
@@ -81,7 +84,9 @@ fn main() -> eframe::Result<()> {
             anvil_ui::install(&cc.egui_ctx, Accent::ALL[accent], theme);
             anvil_ui::motion::set_reduced(&cc.egui_ctx, reduced);
             settings.apply(&cc.egui_ctx);
-            Ok(Box::new(Gallery::new(settings, accent, page, open, reduced, scroll)))
+            let mut gallery = Gallery::new(settings, accent, page, open, reduced, scroll);
+            gallery.popup = popup;
+            Ok(Box::new(gallery))
         }),
     )
 }
@@ -184,6 +189,16 @@ struct Gallery {
     started: Instant,
     deck_row: usize,
     motion: motion_page::MotionDemo,
+    /// Какое всплывающее открыть на «Элементах» (`--popup`): открывается один раз.
+    popup: Option<String>,
+    pick_theme: ThemeChoice,
+    pick_lang: Lang,
+    pick_check: u8,
+    generator: usize,
+    volume: f32,
+    balance: f32,
+    mic: f32,
+    menu_theme: ThemeChoice,
 }
 
 impl Gallery {
@@ -214,6 +229,15 @@ impl Gallery {
             started: Instant::now(),
             deck_row: 0,
             motion: motion_page::MotionDemo::new(reduced, scroll),
+            popup: None,
+            pick_theme: ThemeChoice::System,
+            pick_lang: Lang::Ru,
+            pick_check: 0,
+            generator: 1,
+            volume: 0.45,
+            balance: -0.2,
+            mic: 0.3,
+            menu_theme: ThemeChoice::System,
         }
     }
 }
@@ -783,11 +807,204 @@ impl Gallery {
         }
     }
 
+    /// Открыть всплывающее у `button`, если его просили флагом `--popup` (один раз, для снимков).
+    fn open_once(&mut self, which: &str, button: &egui::Response) {
+        if self.popup.as_deref() == Some(which) {
+            Popup::open_id(&button.ctx, Popup::default_response_id(button));
+            self.popup = None;
+        }
+    }
+
+    /// Элементы, которые программы семьи рисовали каждая сама: сегменты поровну, выпадающий выбор, ползунки,
+    /// строки-переходы, меню поднятым слоем и значки звука, «наружу», клавиатуры и кубика. Подписи — на языке
+    /// программы: меню подгоняется под самую длинную.
+    fn shared(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        let ru = anvil_ui::lang::language(&ctx) == Lang::Ru;
+        let t = |ru_text: &'static str, en_text: &'static str| if ru { ru_text } else { en_text };
+        let p = Palette::of(ui);
+        ui.columns(2, |cols| {
+            let (left, right) = cols.split_at_mut(1);
+            let (left, right) = (&mut left[0], &mut right[0]);
+
+            w::card(left, |ui| {
+                w::card_title(ui, Icon::Tiles, t("Выбор", "Choice"));
+                w::section_label(ui, t("Сегменты поровну", "Equal segments"));
+                ui.add_space(4.0);
+                w::segmented_full(
+                    ui,
+                    &mut self.pick_theme,
+                    &[
+                        (ThemeChoice::System, Some(Icon::Monitor), t("Система", "System")),
+                        (ThemeChoice::Light, Some(Icon::Sun), t("Светлая", "Light")),
+                        (ThemeChoice::Dark, Some(Icon::Moon), t("Тёмная", "Dark")),
+                    ],
+                );
+                ui.add_space(4.0);
+                w::segmented_full(ui, &mut self.pick_lang, &[(Lang::Ru, None, "Русский"), (Lang::En, None, "English")]);
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.allocate_ui(Vec2::new(230.0, 0.0), |ui| {
+                        w::segmented_full(
+                            ui,
+                            &mut self.pick_check,
+                            &[
+                                (0, None, t("При каждом запуске", "On every start")),
+                                (1, None, t("Раз в неделю", "Once a week")),
+                                (2, None, t("Никогда", "Never")),
+                            ],
+                        );
+                    });
+                    w::note(ui, t("Не помещаются в долю — столбиком", "No room for a share — a column"));
+                });
+
+                ui.add_space(12.0);
+                w::section_label(ui, t("Выпадающий выбор · 5 и больше", "Dropdown · 5 or more"));
+                ui.add_space(4.0);
+                let generators = [
+                    (0, t("Шум", "Noise")),
+                    (1, t("Вороной", "Voronoi")),
+                    (2, t("Кирпичи", "Bricks")),
+                    (3, t("Соты", "Hexagons")),
+                    (4, t("Плитка", "Tiles")),
+                    (5, t("Градиент по кругу с длинным названием", "Radial gradient with a long name")),
+                ];
+                let select = w::select(ui, &mut self.generator, &generators, 260.0);
+                self.open_once("select", &select);
+
+                ui.add_space(12.0);
+                w::section_label(ui, t("Ползунки", "Sliders"));
+                ui.add_space(2.0);
+                let pulse = (ui.input(|i| i.time) as f32 * 2.3).sin().abs();
+                let volume = format!("{:.0}%", self.volume * 100.0);
+                let level = self.volume * (0.55 + 0.4 * pulse);
+                w::field_row(ui, t("Громкость", "Volume"), |ui| {
+                    Slider::new(&mut self.volume, 0.0..=1.0)
+                        .step(0.02)
+                        .text(volume)
+                        .level(level)
+                        .label(t("Громкость", "Volume"))
+                        .show(ui);
+                });
+                let balance = match self.balance {
+                    b if b.abs() < 0.005 => t("Центр", "Center").to_owned(),
+                    b if b < 0.0 => format!("{} {:.0}", t("Л", "L"), -b * 100.0),
+                    b => format!("{} {:.0}", t("П", "R"), b * 100.0),
+                };
+                w::field_row(ui, t("Баланс", "Balance"), |ui| {
+                    Slider::new(&mut self.balance, -1.0..=1.0)
+                        .step(0.02)
+                        .center()
+                        .text(balance)
+                        .label(t("Баланс", "Balance"))
+                        .show(ui);
+                });
+                let mic = format!("{:.0}%", self.mic * 100.0);
+                w::field_row(ui, t("Без звука", "Muted"), |ui| {
+                    Slider::new(&mut self.mic, 0.0..=1.0).step(0.02).text(mic).dimmed(true).label("Mic").show(ui);
+                });
+            });
+
+            w::card(right, |ui| {
+                w::card_title(ui, Icon::Layers, t("Переходы и меню", "Pages and menus"));
+                w::section_label(ui, t("Переходы на страницы", "Go to a page"));
+                ui.add_space(4.0);
+                let rows = [
+                    (Some(Icon::Keyboard), t("Горячие клавиши", "Hotkeys"), ""),
+                    (Some(Icon::Layers), t("Профили", "Profiles"), "3"),
+                    (Some(Icon::Speaker), t("Звук", "Sound"), t("Динамики", "Speakers")),
+                ];
+                if let Some(i) = w::nav_rows(ui, &rows) {
+                    self.toasts.push(format!("→ {}", rows[i].1), Tone::Neutral);
+                }
+
+                ui.add_space(12.0);
+                w::section_label(ui, t("Меню у своей кнопки", "Menu at its button"));
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let theme = w::button(ui, Kind::Secondary, Some(Icon::Sun), t("Тема", "Theme"));
+                    let choices = [
+                        (ThemeChoice::System, t("Как в системе", "Same as the system")),
+                        (ThemeChoice::Light, t("Светлая", "Light")),
+                        (ThemeChoice::Dark, t("Тёмная", "Dark")),
+                    ];
+                    let settings = t("Параметры цвета Windows", "Windows color settings");
+                    let entries = [(choices[0].1, None), (choices[1].1, None), (choices[2].1, None), (settings, None)];
+                    w::menu_fit(&theme, 160.0, &entries, |ui| {
+                        for (choice, text) in choices {
+                            if w::menu_check(ui, self.menu_theme == choice, text).clicked() {
+                                self.menu_theme = choice;
+                            }
+                        }
+                        w::menu_separator(ui);
+                        w::menu_item(ui, Some(Icon::External), settings, None);
+                    });
+                    self.open_once("menu", &theme);
+                    w::note(ui, t("ширина — по самой длинной подписи", "width — by the longest label"));
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let more = w::icon_button(ui, Icon::More, t("Ещё", "More"));
+                        let items = [
+                            (Icon::Pencil, t("Изменить…", "Edit…"), Some("F2")),
+                            (Icon::Copy, t("Скопировать адрес", "Copy address"), Some("Ctrl+C")),
+                            (Icon::External, t("Открыть сайт", "Open the website"), None),
+                        ];
+                        let delete = t("Удалить…", "Delete…");
+                        let entries = [
+                            (items[0].1, items[0].2),
+                            (items[1].1, items[1].2),
+                            (items[2].1, items[2].2),
+                            (delete, None),
+                        ];
+                        w::menu_fit(&more, 180.0, &entries, |ui| {
+                            for (icon, text, keys) in items {
+                                w::menu_item(ui, Some(icon), text, keys);
+                            }
+                            w::menu_separator(ui);
+                            w::menu_item_danger(ui, Some(Icon::Trash), delete);
+                        });
+                        self.open_once("more", &more);
+                    });
+                });
+
+                ui.add_space(12.0);
+                w::section_label(
+                    ui,
+                    t("Значки: звук, наружу, клавиатура, кубик", "Icons: sound, external, keyboard, dice"),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    for size in [16.0, 24.0] {
+                        for icon in [Icon::Speaker, Icon::SpeakerMuted, Icon::External, Icon::Keyboard, Icon::Dice] {
+                            let (rect, r) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+                            anvil_ui::icons::paint(ui.painter(), rect, icon, p.text);
+                            r.on_hover_text(format!("{icon:?}"));
+                        }
+                        ui.add_space(8.0);
+                    }
+                    // Волны динамика — по уровню громкости: 0, до трети, до двух третей, громче.
+                    for level in [0.0, 0.3, 0.6, 1.0] {
+                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
+                        anvil_ui::icons::speaker(ui.painter(), rect, p.weak, level, false);
+                    }
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    w::icon_button(ui, Icon::Dice, t("Случайный seed (Ctrl+R)", "Random seed (Ctrl+R)"));
+                    w::button(ui, Kind::Ghost, Some(Icon::External), t("Исходный код", "Source code"));
+                });
+            });
+        });
+    }
+
     fn elements(&mut self, ui: &mut Ui) {
         let p = Palette::of(ui);
         ui.label(RichText::new("Элементы набора").font(semibold(24.0)).color(p.text));
         w::note(ui, "Всё, из чего собираются окна программ. Цвета берутся из палитры — тема и акцент меняются вверху.");
         ui.add_space(16.0);
+        self.shared(ui);
+        ui.add_space(12.0);
 
         ui.columns(2, |cols| {
             let (left, right) = cols.split_at_mut(1);

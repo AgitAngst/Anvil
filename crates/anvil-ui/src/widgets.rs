@@ -1,10 +1,13 @@
 //! Общие виджеты. Всё рисуется из [`Palette`], поэтому само следует за темой и акцентом.
 
+use std::ops::RangeInclusive;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use eframe::egui::text::{LayoutJob, TextWrapping};
 use eframe::egui::{
-    self, Align2, Color32, CornerRadius, CursorIcon, FontId, Margin, Rect, Response, RichText, Sense, Stroke,
-    StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
+    self, Align2, Color32, CornerRadius, CursorIcon, EventFilter, FontId, Galley, Key, Margin, MouseWheelUnit, Popup,
+    Rect, RectAlign, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType,
 };
 
 use crate::icons::{self, Icon};
@@ -379,21 +382,11 @@ pub fn toggle(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
 }
 
-/// Сегментный выбор: «Система · Светлая · Тёмная».
+/// Сегментный выбор: «Система · Светлая · Тёмная». Ширина сегмента — по подписи.
 pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, Option<Icon>, &str)]) -> Response {
-    let p = Palette::of(ui);
-    let font = FontId::proportional(13.0);
-    let widths: Vec<f32> = options
-        .iter()
-        .map(|(_, icon, text)| {
-            let w = ui.painter().layout_no_wrap(text.to_string(), font.clone(), p.text).size().x;
-            w + if icon.is_some() { 21.0 } else { 0.0 } + 20.0
-        })
-        .collect();
+    let widths: Vec<f32> = options.iter().map(|(_, icon, text)| segment_content(ui, *icon, text) + 20.0).collect();
     let size = Vec2::new(widths.iter().sum::<f32>() + 4.0, 30.0);
-    let (rect, mut response) = ui.allocate_exact_size(size, Sense::hover());
-    ui.painter().rect(rect, radius::CONTROL + 1, p.raised, Stroke::new(1.0, p.border), StrokeKind::Inside);
-
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
     let mut x = rect.left() + 2.0;
     let segs: Vec<Rect> = widths
         .iter()
@@ -403,20 +396,75 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
             seg
         })
         .collect();
-    // Ползунок выбранного: скользит к новому месту за LAYOUT (позиции — от левого края, чтобы сдвиг
+    paint_segments(ui, response, rect, &segs, false, value, options)
+}
+
+/// Сегменты поровну на всю ширину: соседние выборы одной группы («Тема» и «Язык») стоят одной колонкой.
+/// Самая длинная подпись не помещается в долю — варианты встают столбиком, по строке на вариант.
+/// Нужна другая ширина — дать её снаружи (`ui.allocate_ui`).
+pub fn segmented_full<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    options: &[(T, Option<Icon>, &str)],
+) -> Response {
+    let width = ui.available_width();
+    let count = options.len().max(1) as f32;
+    let each = (width - 4.0) / count;
+    let widest = options.iter().map(|(_, icon, text)| segment_content(ui, *icon, text)).fold(0.0, f32::max);
+    // Подписи нужно хотя бы 8 по бокам, иначе она касается краёв сегмента.
+    let column = widest + 16.0 > each;
+    let size = if column { Vec2::new(width, count * 26.0 + 4.0) } else { Vec2::new(width, 30.0) };
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
+    let segs: Vec<Rect> = (0..options.len())
+        .map(|i| {
+            let i = i as f32;
+            if column {
+                Rect::from_min_size(
+                    egui::pos2(rect.left() + 2.0, rect.top() + 2.0 + i * 26.0),
+                    Vec2::new(width - 4.0, 26.0),
+                )
+            } else {
+                Rect::from_min_size(egui::pos2(rect.left() + 2.0 + i * each, rect.top() + 2.0), Vec2::new(each, 26.0))
+            }
+        })
+        .collect();
+    paint_segments(ui, response, rect, &segs, column, value, options)
+}
+
+/// Ширина значка и подписи сегмента.
+fn segment_content(ui: &Ui, icon: Option<Icon>, text: &str) -> f32 {
+    let w = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(13.0), Color32::PLACEHOLDER).size().x;
+    w + if icon.is_some() { 21.0 } else { 0.0 }
+}
+
+/// Дорожка, ползунок выбранного и подписи сегментов в готовых местах `segs`. `column` — сегменты
+/// столбиком: подпись у левого края, а не посередине.
+fn paint_segments<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    mut response: Response,
+    rect: Rect,
+    segs: &[Rect],
+    column: bool,
+    value: &mut T,
+    options: &[(T, Option<Icon>, &str)],
+) -> Response {
+    let p = Palette::of(ui);
+    let font = FontId::proportional(13.0);
+    ui.painter().rect(rect, radius::CONTROL + 1, p.raised, Stroke::new(1.0, p.border), StrokeKind::Inside);
+    // Ползунок выбранного: скользит к новому месту за LAYOUT (позиции — от угла дорожки, чтобы сдвиг
     // окна или прокрутка не запускали переход).
     if let Some(sel) = options.iter().position(|(option, ..)| *value == *option) {
         let (ctx, motion) = (ui.ctx().clone(), Motion::of(ui.ctx()));
-        let left = motion.value(&ctx, response.id.with("thumb-left"), segs[sel].left() - rect.left(), motion::LAYOUT);
-        let right =
-            motion.value(&ctx, response.id.with("thumb-right"), segs[sel].right() - rect.left(), motion::LAYOUT);
-        let thumb = Rect::from_min_max(
-            egui::pos2(rect.left() + left, segs[sel].top()),
-            egui::pos2(rect.left() + right, segs[sel].bottom()),
-        );
+        let seg = segs[sel];
+        let edge = |name: &str, at: f32| motion.value(&ctx, response.id.with(name), at, motion::LAYOUT);
+        let left = edge("thumb-left", seg.left() - rect.left());
+        let right = edge("thumb-right", seg.right() - rect.left());
+        let top = edge("thumb-top", seg.top() - rect.top());
+        let bottom = edge("thumb-bottom", seg.bottom() - rect.top());
+        let thumb = Rect::from_min_max(rect.min + Vec2::new(left, top), rect.min + Vec2::new(right, bottom));
         ui.painter().rect(thumb, radius::CONTROL - 1, p.card, Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
     }
-    for (i, ((option, icon, text), seg)) in options.iter().zip(segs).enumerate() {
+    for (i, ((option, icon, text), seg)) in options.iter().zip(segs.iter().copied()).enumerate() {
         let id = response.id.with(i);
         let r = ui.interact(seg, id, Sense::click());
         let selected = *value == *option;
@@ -430,7 +478,7 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
         let color = if selected { p.text } else { p.weak };
         let galley = ui.painter().layout_no_wrap(text.to_string(), font.clone(), color);
         let content_w = galley.size().x + if icon.is_some() { 21.0 } else { 0.0 };
-        let mut cx = seg.center().x - content_w / 2.0;
+        let mut cx = if column { seg.left() + 10.0 } else { seg.center().x - content_w / 2.0 };
         if let Some(icon) = icon {
             let ir = Rect::from_min_size(egui::pos2(cx, seg.center().y - 8.0), Vec2::splat(16.0));
             icons::paint(ui.painter(), ir, *icon, color);
@@ -442,6 +490,243 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
         r.on_hover_cursor(CursorIcon::PointingHand);
     }
     response
+}
+
+/// Откуда идёт заливка ползунка.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SliderFill {
+    /// От начала: громкость, яркость, доля.
+    #[default]
+    Start,
+    /// От середины, с меткой середины: баланс, сдвиг, ±. Значение тогда — словами («Центр», «Л 20»).
+    Center,
+}
+
+/// Ширина колонки значения справа от ползунка — «100%» и «Л 100» не сдвигают дорожку.
+const SLIDER_VALUE_W: f32 = 44.0;
+
+/// Ползунок: дорожка `border_strong`, заливка `accent`, ручка 14 (под курсором 16), значение числом справа.
+/// Мышь — щелчок и перетаскивание; в фокусе стрелки — шаг, PageUp/PageDown — крупный шаг, Home/End — края;
+/// колесо над ним — шаг на щелчок колеса (страницу под ним при этом не прокручивает).
+///
+/// ```ignore
+/// Slider::new(&mut volume, 0.0..=1.0).step(0.02).text(format!("{:.0}%", volume * 100.0)).label("Громкость").show(ui);
+/// Slider::new(&mut balance, -1.0..=1.0).center().text(balance_words(balance)).show(ui);
+/// ```
+#[must_use = "ползунок появится только после `.show(ui)`"]
+pub struct Slider<'a> {
+    value: &'a mut f32,
+    range: RangeInclusive<f32>,
+    step: Option<f32>,
+    page: Option<f32>,
+    fill: SliderFill,
+    width: Option<f32>,
+    text: Option<String>,
+    level: Option<f32>,
+    quadratic: bool,
+    dimmed: bool,
+    label: &'a str,
+}
+
+impl<'a> Slider<'a> {
+    pub fn new(value: &'a mut f32, range: RangeInclusive<f32>) -> Self {
+        Slider {
+            value,
+            range,
+            step: None,
+            page: None,
+            fill: SliderFill::Start,
+            width: None,
+            text: None,
+            level: None,
+            quadratic: false,
+            dimmed: false,
+            label: "",
+        }
+    }
+
+    /// Шаг стрелок, колеса и сетка, к которой прилипает значение. По умолчанию — сотая диапазона.
+    pub fn step(mut self, step: f32) -> Self {
+        self.step = Some(step);
+        self
+    }
+
+    /// Крупный шаг PageUp/PageDown. По умолчанию — пять шагов.
+    pub fn page(mut self, page: f32) -> Self {
+        self.page = Some(page);
+        self
+    }
+
+    /// Заливка от середины с меткой середины.
+    pub fn center(mut self) -> Self {
+        self.fill = SliderFill::Center;
+        self
+    }
+
+    pub fn fill(mut self, fill: SliderFill) -> Self {
+        self.fill = fill;
+        self
+    }
+
+    /// Ширина вместе с колонкой значения. По умолчанию — всё доступное место.
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = Some(width);
+        self
+    }
+
+    /// Значение справа, моноширинным: «45%», «Центр», «Л 20».
+    pub fn text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
+
+    /// Уровень сигнала — доля диапазона 0..1: полоска `accent_text` под дорожкой (громкость: что сейчас звучит).
+    pub fn level(mut self, level: f32) -> Self {
+        self.level = Some(level);
+        self
+    }
+
+    /// Квадратичная шкала: место на дорожке — корень доли диапазона, тихое точнее (громкость). Стрелки и колесо
+    /// по-прежнему шагают по значению. Только с заливкой от начала.
+    pub fn quadratic(mut self, quadratic: bool) -> Self {
+        self.quadratic = quadratic;
+        self
+    }
+
+    /// Приглушить заливку до `faint`: родитель выключен или «без звука». Ползунок при этом работает.
+    pub fn dimmed(mut self, dimmed: bool) -> Self {
+        self.dimmed = dimmed;
+        self
+    }
+
+    /// Имя для диктора: «Громкость», «Баланс».
+    pub fn label(mut self, label: &'a str) -> Self {
+        self.label = label;
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let p = Palette::of(ui);
+        let enabled = ui.is_enabled();
+        let (lo, hi) = (*self.range.start(), *self.range.end());
+        let span = (hi - lo).max(f32::EPSILON);
+        let step = self.step.unwrap_or(span / 100.0).max(f32::EPSILON);
+        let page = self.page.unwrap_or(step * 5.0);
+        let snap = |v: f32| (lo + ((v - lo) / step).round() * step).clamp(lo, hi);
+
+        let width = self.width.unwrap_or_else(|| ui.available_width());
+        let galley = self.text.map(|t| ui.painter().layout_no_wrap(t, FontId::monospace(12.5), p.weak));
+        let value_w = galley.as_ref().map_or(0.0, |g| g.size().x.max(SLIDER_VALUE_W) + 10.0);
+        let (rect, mut response) = ui.allocate_exact_size(Vec2::new(width, 24.0), Sense::click_and_drag());
+        let area = Rect::from_min_max(rect.min, egui::pos2(rect.right() - value_w, rect.bottom()));
+        let track = Rect::from_min_max(
+            egui::pos2(area.left() + 8.0, area.center().y - 2.0),
+            egui::pos2(area.right() - 8.0, area.center().y + 2.0),
+        );
+
+        let mut v = *self.value;
+        let pressed = response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down());
+        if enabled
+            && pressed
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let t = ((pos.x - track.left()) / track.width().max(1.0)).clamp(0.0, 1.0);
+            v = snap(lo + if self.quadratic { t * t } else { t } * span);
+            response.request_focus();
+        }
+        if enabled && response.has_focus() {
+            // Стрелки двигают ползунок, а не фокус на соседний элемент.
+            let filter = EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() };
+            ui.memory_mut(|m| m.set_focus_lock_filter(response.id, filter));
+            let (delta, home, end) = ui.input(|i| {
+                let up = i.key_pressed(Key::ArrowRight) || i.key_pressed(Key::ArrowUp);
+                let down = i.key_pressed(Key::ArrowLeft) || i.key_pressed(Key::ArrowDown);
+                let pages = f32::from(i.key_pressed(Key::PageUp)) - f32::from(i.key_pressed(Key::PageDown));
+                (
+                    step * (f32::from(up) - f32::from(down)) + page * pages,
+                    i.key_pressed(Key::Home),
+                    i.key_pressed(Key::End),
+                )
+            });
+            if delta != 0.0 {
+                v = snap(v + delta);
+            }
+            if home {
+                v = lo;
+            }
+            if end {
+                v = hi;
+            }
+        }
+        if enabled && response.hovered() {
+            let notches: f32 = ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|e| match e {
+                        egui::Event::MouseWheel { unit: MouseWheelUnit::Line, delta, .. } => Some(delta.y),
+                        egui::Event::MouseWheel { delta, .. } => Some(delta.y / 50.0),
+                        _ => None,
+                    })
+                    .sum()
+            });
+            if notches != 0.0 {
+                v = snap(v + notches.signum() * step * notches.abs().round().max(1.0));
+            }
+            // Колесо над ползунком — его: прокрутка под ним стоит.
+            ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+        }
+        if v != *self.value {
+            *self.value = v;
+            response.mark_changed();
+        }
+
+        let painter = ui.painter();
+        // Место на дорожке (0..1) по доле диапазона: на квадратичной шкале — корень доли.
+        let at = |share: f32| if self.quadratic { share.clamp(0.0, 1.0).sqrt() } else { share.clamp(0.0, 1.0) };
+        let pos = at((v - lo) / span);
+        let fill = if enabled && !self.dimmed { p.accent } else { p.faint };
+        painter.rect_filled(track, 2, p.border_strong);
+        let origin: f32 = match self.fill {
+            SliderFill::Start => 0.0,
+            SliderFill::Center => {
+                let x = track.center().x;
+                let mark = [egui::pos2(x, track.center().y - 6.0), egui::pos2(x, track.center().y + 6.0)];
+                painter.line_segment(mark, Stroke::new(2.0, p.weak));
+                0.5
+            }
+        };
+        let filled = Rect::from_min_max(
+            egui::pos2(track.left() + track.width() * origin.min(pos), track.top()),
+            egui::pos2(track.left() + track.width() * origin.max(pos), track.bottom()),
+        );
+        painter.rect_filled(filled, 2, fill);
+        if let Some(level) = self.level
+            && enabled
+            && !self.dimmed
+            && level > 0.0
+        {
+            let line = Rect::from_min_max(
+                egui::pos2(track.left(), track.bottom() + 2.0),
+                egui::pos2(track.left() + track.width() * at(level), track.bottom() + 4.0),
+            );
+            painter.rect_filled(line, 1, p.accent_text);
+        }
+        let knob = egui::pos2(track.left() + track.width() * pos, track.center().y);
+        let grown = enabled && (response.hovered() || response.dragged());
+        painter.circle(knob, if grown { 8.0 } else { 7.0 }, fill, Stroke::new(2.0, p.card));
+        if let Some(galley) = galley {
+            let place = egui::pos2(rect.right() - galley.size().x, rect.center().y - galley.size().y / 2.0);
+            painter.galley(place, galley, p.weak);
+        }
+        focus_ring(ui, area, &response, radius::CONTROL);
+        response.widget_info(|| WidgetInfo::slider(enabled, f64::from(v), self.label));
+        if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
+    }
+}
+
+/// Ползунок без настроек: от начала, шаг — сотая диапазона, на всю ширину. Остальное — [`Slider`].
+pub fn slider(ui: &mut Ui, value: &mut f32, range: RangeInclusive<f32>, text: impl Into<String>) -> Response {
+    Slider::new(value, range).text(text).show(ui)
 }
 
 /// Вкладки с полоской акцента под выбранной. Возвращает, сменилась ли вкладка.
@@ -513,6 +798,74 @@ pub fn nav_item(ui: &mut Ui, selected: bool, tone: Tone, text: &str, trailing: O
     focus_ring(ui, rect, &response, radius::CONTROL);
     response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, text));
     response.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// Высота строки-перехода [`nav_rows`].
+pub const NAV_ROW: f32 = 40.0;
+
+/// Переходы на другие страницы отдельным блоком: строки в рамке `border`, у каждой значок, подпись,
+/// значение справа (`weak`, пустое — нет) и стрелка ›; под курсором — `hover`. Значки — у всех строк
+/// или ни у одной. Возвращает, по какой строке щёлкнули.
+///
+/// `rows`: `&[(Some(Icon::Keyboard), "Горячие клавиши", ""), (Some(Icon::Layers), "Профили", "3")]`.
+pub fn nav_rows(ui: &mut Ui, rows: &[(Option<Icon>, &str, &str)]) -> Option<usize> {
+    debug_assert!(
+        rows.iter().all(|(icon, ..)| icon.is_some()) || rows.iter().all(|(icon, ..)| icon.is_none()),
+        "значки — у всех переходов или ни у одного"
+    );
+    let p = Palette::of(ui);
+    let icons = rows.iter().any(|(icon, ..)| icon.is_some());
+    let height = (rows.len() as f32 * (NAV_ROW + 1.0) - 1.0).max(0.0);
+    let (frame, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
+    ui.painter().rect_stroke(frame, radius::CARD, Stroke::new(1.0, p.border), StrokeKind::Inside);
+    let mut clicked = None;
+    for (i, (icon, text, value)) in rows.iter().enumerate() {
+        let top = frame.top() + i as f32 * (NAV_ROW + 1.0);
+        let row = Rect::from_min_size(egui::pos2(frame.left(), top), Vec2::new(frame.width(), NAV_ROW)).shrink(1.0);
+        let r = ui.interact(row, response.id.with(i), Sense::click());
+        let hovered = r.hovered() && ui.is_enabled();
+        if hovered {
+            ui.painter().rect_filled(row, radius::CONTROL, p.hover);
+        }
+        if i > 0 {
+            let y = top - 0.5;
+            ui.painter().hline((frame.left() + 12.0)..=(frame.right() - 12.0), y, Stroke::new(1.0, p.border));
+        }
+        let mut x = row.left() + 12.0;
+        if icons {
+            if let Some(icon) = icon {
+                let glyph = Rect::from_min_size(egui::pos2(x, row.center().y - 8.0), Vec2::splat(16.0));
+                icons::paint(ui.painter(), glyph, *icon, if hovered { p.text } else { p.weak });
+            }
+            x += 16.0 + 10.0;
+        }
+        let arrow = Rect::from_center_size(egui::pos2(row.right() - 16.0, row.center().y), Vec2::splat(16.0));
+        icons::paint(ui.painter(), arrow, Icon::ArrowRight, p.weak);
+        let mut right = arrow.left() - 6.0;
+        if !value.is_empty() {
+            let room = (right - x - 60.0).max(40.0);
+            let galley = one_line(ui, value, FontId::proportional(13.0), p.weak, room);
+            right -= galley.size().x;
+            ui.painter().galley(egui::pos2(right, row.center().y - galley.size().y / 2.0), galley, p.weak);
+            right -= 12.0;
+        }
+        let galley = one_line(ui, text, FontId::proportional(14.0), p.text, (right - x).max(20.0));
+        ui.painter().galley(egui::pos2(x, row.center().y - galley.size().y / 2.0), galley, p.text);
+        focus_ring(ui, row, &r, radius::CONTROL);
+        let said = if value.is_empty() { (*text).to_owned() } else { format!("{text} · {value}") };
+        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), &said));
+        if r.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+            clicked = Some(i);
+        }
+    }
+    clicked
+}
+
+/// Текст в одну строку не шире `width`: что не влезло — многоточием.
+fn one_line(ui: &Ui, text: &str, font: FontId, color: Color32, width: f32) -> Arc<Galley> {
+    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = TextWrapping::truncate_at_width(width);
+    ui.painter().layout_job(job)
 }
 
 /// Поле поиска со значком лупы и подсказкой-клавишей справа.
@@ -626,19 +979,99 @@ pub fn spinner(ui: &mut Ui, size: f32) -> Response {
 
 // ─── Меню ───────────────────────────────────────────────────────────────────
 
-/// Выпадающее меню под кнопкой: открывается и закрывается её щелчком.
-pub fn menu<R>(button: &Response, width: f32, content: impl FnOnce(&mut Ui) -> R) -> Option<R> {
-    let p = Palette::of_ctx(&button.ctx);
-    let frame = egui::Frame::new()
-        .fill(p.card)
+// Меню — поднятый слой `popup` с рамкой `border_strong` и тенью `popup_shadow`: фон `card` совпадал с
+// карточкой или диалогом под меню, и пункты казались лежащими прямо на строках под ними.
+
+/// Просвет между кнопкой и её меню.
+const POPUP_GAP: f32 = 4.0;
+/// Внутренний отступ меню.
+const POPUP_MARGIN: i8 = 5;
+/// Высота пункта меню.
+const MENU_ITEM: f32 = 30.0;
+/// Сколько вариантов выпадающего выбора видно без прокрутки.
+const SELECT_ROWS: usize = 10;
+
+/// Рамка всплывающего слоя: меню и выпадающий список.
+fn popup_frame(p: &Palette) -> egui::Frame {
+    egui::Frame::new()
+        .fill(p.popup)
         .stroke(Stroke::new(1.0, p.border_strong))
         .corner_radius(radius::CARD)
-        .shadow(button.ctx.global_style().visuals.popup_shadow)
-        .inner_margin(Margin::same(5));
-    egui::Popup::menu(button)
+        .shadow(p.popup_shadow())
+        .inner_margin(Margin::same(POPUP_MARGIN))
+}
+
+/// Открыть ли всплывающее над кнопкой: внизу оно не помещается, а сверху места больше. `height` — его
+/// высота с прошлого кадра (в первом кадре её ещё нет — тогда вниз), `below` и `above` — место под и над кнопкой.
+fn popup_goes_up(height: Option<f32>, below: f32, above: f32) -> bool {
+    height.is_some_and(|height| height > below && above > below)
+}
+
+/// Место всплывающего у своей кнопки: под ней или над ней (не сбоку, поверх её же строки). `end` — правым
+/// краем по правому краю кнопки (меню), иначе левым по левому (выпадающий список).
+fn popup_align(button: &Response, popup: egui::Id, end: bool) -> RectAlign {
+    let ctx = &button.ctx;
+    let screen = ctx.content_rect();
+    let height = ctx.memory(|m| m.area_rect(popup)).map(|r| r.height());
+    let below = screen.bottom() - button.rect.bottom() - POPUP_GAP;
+    let above = button.rect.top() - screen.top() - POPUP_GAP;
+    match (popup_goes_up(height, below, above), end) {
+        (false, true) => RectAlign::BOTTOM_END,
+        (true, true) => RectAlign::TOP_END,
+        (false, false) => RectAlign::BOTTOM_START,
+        (true, false) => RectAlign::TOP_START,
+    }
+}
+
+/// Выпадающее меню у кнопки: открывается и закрывается её щелчком, Esc и щелчок мимо закрывают. Правый
+/// край — по правому краю кнопки, под ней; внизу нет места — над ней. Ширина подписей не знает —
+/// подогнать её под самую длинную подпись: [`menu_fit`].
+pub fn menu<R>(button: &Response, width: f32, content: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+    menu_sized(button, |_| width, content)
+}
+
+/// То же меню шириной по самой длинной подписи на текущем языке, но не уже `floor`. `entries` — подписи
+/// пунктов и их клавиши (`("Изменить…", Some("F2"))`); мерятся, только когда меню открыто.
+pub fn menu_fit<R>(
+    button: &Response,
+    floor: f32,
+    entries: &[(&str, Option<&str>)],
+    content: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    menu_sized(button, |ctx| menu_width(ctx, floor, entries), content)
+}
+
+/// Ширина меню по подписям: место значка (34), подпись, клавиши через 16, поля меню и рамка; не меньше `floor`.
+/// Пункты рисуют подписи без обрезки — меню уже подписи уводило бы её за край.
+pub fn menu_width(ctx: &egui::Context, floor: f32, entries: &[(&str, Option<&str>)]) -> f32 {
+    let width = |text: &str, size: f32| {
+        ctx.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), FontId::proportional(size), Color32::PLACEHOLDER)).size().x
+    };
+    let widest = entries
+        .iter()
+        .map(|(text, keys)| width(text, 14.0) + keys.map_or(0.0, |keys| 16.0 + width(keys, 12.5)))
+        .fold(0.0, f32::max);
+    floor.max(2.0 * f32::from(POPUP_MARGIN) + 2.0 + 34.0 + widest + 10.0).ceil()
+}
+
+fn menu_sized<R>(
+    button: &Response,
+    width: impl FnOnce(&egui::Context) -> f32,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    let id = Popup::default_response_id(button);
+    // Закрытому меню ни ширина, ни место не нужны: подписи не мерятся на каждую строку списка в каждом кадре.
+    if !(button.clicked() || Popup::is_id_open(&button.ctx, id)) {
+        return None;
+    }
+    let width = width(&button.ctx);
+    let p = Palette::of_ctx(&button.ctx);
+    Popup::menu(button)
         .width(width)
-        .gap(4.0)
-        .frame(frame)
+        .gap(POPUP_GAP)
+        .align(popup_align(button, id, true))
+        .align_alternatives(&[])
+        .frame(popup_frame(&p))
         .show(|ui| {
             ui.spacing_mut().item_spacing.y = 1.0;
             content(ui)
@@ -646,19 +1079,40 @@ pub fn menu<R>(button: &Response, width: f32, content: impl FnOnce(&mut Ui) -> R
         .map(|r| r.inner)
 }
 
-/// Пункт меню: значок, текст, клавиши справа. Щелчок закрывает меню.
+/// Пункт меню: значок, текст, клавиши справа. Щелчок закрывает меню. Значки — у всех пунктов меню или
+/// ни у одного.
 pub fn menu_item(ui: &mut Ui, icon: Option<Icon>, text: &str, shortcut: Option<&str>) -> Response {
-    menu_item_toned(ui, icon, text, shortcut, false)
+    let r = menu_row(ui, MenuMark::Icon(icon), text, shortcut, false);
+    name(&r, WidgetType::Button, text);
+    r
 }
 
-/// Опасный пункт меню: красный.
+/// Опасный пункт меню: красный. Ставится последним, после разделителя.
 pub fn menu_item_danger(ui: &mut Ui, icon: Option<Icon>, text: &str) -> Response {
-    menu_item_toned(ui, icon, text, None, true)
+    let r = menu_row(ui, MenuMark::Icon(icon), text, None, true);
+    name(&r, WidgetType::Button, text);
+    r
 }
 
-fn menu_item_toned(ui: &mut Ui, icon: Option<Icon>, text: &str, shortcut: Option<&str>, danger: bool) -> Response {
+/// Пункт выбора в меню: текущий — с галочкой. Место галочки есть у всех таких пунктов, поэтому подписи
+/// стоят на одной вертикали. Варианты — прямо в меню, без подменю.
+pub fn menu_check(ui: &mut Ui, checked: bool, text: &str) -> Response {
+    let r = menu_row(ui, MenuMark::Check(checked), text, None, false);
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, enabled, checked, text));
+    r
+}
+
+/// Что стоит в месте значка пункта.
+enum MenuMark {
+    Icon(Option<Icon>),
+    /// Галочка текущего; место есть и без неё.
+    Check(bool),
+}
+
+fn menu_row(ui: &mut Ui, mark: MenuMark, text: &str, shortcut: Option<&str>, danger: bool) -> Response {
     let p = Palette::of(ui);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MENU_ITEM), Sense::click());
     let enabled = ui.is_enabled();
     let hovered = response.hovered() && enabled;
     let color = match (enabled, danger) {
@@ -667,14 +1121,18 @@ fn menu_item_toned(ui: &mut Ui, icon: Option<Icon>, text: &str, shortcut: Option
         (true, false) => p.text,
     };
     if hovered {
-        let fill = if danger { p.badge_fill(p.danger) } else { p.hover };
+        let fill = if danger { p.badge_fill(p.danger) } else { p.popup_hover };
         ui.painter().rect_filled(rect, radius::CONTROL, fill);
     }
-    if let Some(icon) = icon {
-        let r = Rect::from_min_size(egui::pos2(rect.left() + 9.0, rect.center().y - 8.0), Vec2::splat(16.0));
-        icons::paint(ui.painter(), r, icon, if danger || hovered { color } else { p.weak });
+    let slot = Rect::from_min_size(egui::pos2(rect.left() + 9.0, rect.center().y - 8.0), Vec2::splat(16.0));
+    let (glyph, slotted) = match mark {
+        MenuMark::Icon(icon) => (icon.map(|i| (i, if danger || hovered { color } else { p.weak })), icon.is_some()),
+        MenuMark::Check(checked) => (checked.then_some((Icon::Check, color)), true),
+    };
+    if let Some((icon, tint)) = glyph {
+        icons::paint(ui.painter(), slot, icon, tint);
     }
-    let x = rect.left() + if icon.is_some() { 34.0 } else { 10.0 };
+    let x = rect.left() + if slotted { 34.0 } else { 10.0 };
     ui.painter().text(egui::pos2(x, rect.center().y), Align2::LEFT_CENTER, text, FontId::proportional(14.0), color);
     if let Some(keys) = shortcut {
         ui.painter().text(
@@ -682,21 +1140,108 @@ fn menu_item_toned(ui: &mut Ui, icon: Option<Icon>, text: &str, shortcut: Option
             Align2::RIGHT_CENTER,
             keys,
             FontId::proportional(12.5),
-            p.faint,
+            // Не `faint`: у того на `popup` 3:1, а сочетание надо прочитать.
+            if enabled { p.weak } else { p.faint },
         );
     }
+    focus_ring(ui, rect, &response, radius::CONTROL);
     if response.clicked() {
         ui.close();
     }
-    name(&response, WidgetType::Button, text);
-    response
+    if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
 }
 
-/// Разделитель между группами пунктов меню.
+/// Разделитель между группами пунктов меню: `border_strong` — `border` на `popup` почти не виден.
 pub fn menu_separator(ui: &mut Ui) {
     let p = Palette::of(ui);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
-    ui.painter().hline(rect.x_range().shrink(6.0), rect.center().y, Stroke::new(1.0, p.border));
+    ui.painter().hline(rect.x_range().shrink(6.0), rect.center().y, Stroke::new(1.0, p.border_strong));
+}
+
+/// Выпадающий выбор одного из многих (5 и больше; до 4 коротких — [`segmented`]): поле с текущим значением
+/// и галочкой вниз, по щелчку — список под полем (внизу нет места — над ним) шириной не уже поля, текущий
+/// вариант с галочкой. В фокусе ↑/↓ меняют значение без списка, Enter и пробел открывают список.
+pub fn select<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str)], width: f32) -> Response {
+    let p = Palette::of(ui);
+    let enabled = ui.is_enabled();
+    let (rect, mut response) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::click());
+    let popup = Popup::default_response_id(&response);
+    let open = Popup::is_id_open(ui.ctx(), popup);
+    let current = options.iter().position(|(option, _)| *option == *value);
+
+    if enabled && response.has_focus() && !open && !options.is_empty() {
+        let filter = EventFilter { vertical_arrows: true, ..Default::default() };
+        ui.memory_mut(|m| m.set_focus_lock_filter(response.id, filter));
+        let step = ui.input(|i| i32::from(i.key_pressed(Key::ArrowDown)) - i32::from(i.key_pressed(Key::ArrowUp)));
+        if step != 0 {
+            let last = options.len() as i32 - 1;
+            let next = current.map_or(0, |i| (i as i32 + step).clamp(0, last) as usize);
+            if Some(next) != current {
+                *value = options[next].0;
+                response.mark_changed();
+            }
+        }
+    }
+    let shown = options.iter().find(|(option, _)| *option == *value).map_or("", |(_, text)| *text);
+
+    let hovered = response.hovered() && enabled;
+    let (fill, border, fg) = if !enabled {
+        (p.raised, p.border, p.faint)
+    } else if hovered || open {
+        (p.hover, p.border_strong, p.text)
+    } else {
+        (p.raised, p.border, p.text)
+    };
+    ui.painter().rect(rect, radius::CONTROL, fill, Stroke::new(1.0, border), StrokeKind::Inside);
+    let chevron = Rect::from_center_size(egui::pos2(rect.right() - 18.0, rect.center().y), Vec2::splat(16.0));
+    icons::paint(
+        ui.painter(),
+        chevron,
+        if open { Icon::ChevronUp } else { Icon::ArrowDown },
+        if enabled { p.weak } else { p.faint },
+    );
+    let room = (chevron.left() - 6.0 - (rect.left() + 12.0)).max(10.0);
+    let galley = one_line(ui, shown, FontId::proportional(14.0), fg, room);
+    let cut =
+        galley.size().x + 0.5 < ui.painter().layout_no_wrap(shown.to_owned(), FontId::proportional(14.0), fg).size().x;
+    ui.painter().galley(egui::pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0), galley, fg);
+    focus_ring(ui, rect, &response, radius::CONTROL);
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, enabled, shown));
+
+    if response.clicked() || open {
+        let mut picked = None;
+        let entries: Vec<(&str, Option<&str>)> = options.iter().map(|(_, text)| (*text, None)).collect();
+        let list_width = menu_width(ui.ctx(), width, &entries);
+        Popup::menu(&response)
+            .width(list_width)
+            .gap(POPUP_GAP)
+            .align(popup_align(&response, popup, false))
+            .align_alternatives(&[])
+            .frame(popup_frame(&p))
+            .show(|ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                // Длинный список — не выше SELECT_ROWS строк, дальше прокрутка.
+                egui::ScrollArea::vertical()
+                    .id_salt(popup)
+                    .max_height(SELECT_ROWS as f32 * (MENU_ITEM + 1.0) - 1.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for (option, text) in options {
+                            if menu_check(ui, *option == *value, text).clicked() {
+                                picked = Some(*option);
+                            }
+                        }
+                    });
+            });
+        if let Some(option) = picked
+            && option != *value
+        {
+            *value = option;
+            response.mark_changed();
+        }
+    }
+    let response = if cut { response.on_hover_text(shown) } else { response };
+    if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
 }
 
 // ─── Всплывающее ────────────────────────────────────────────────────────────
@@ -1098,4 +1643,377 @@ pub fn list_row(ui: &mut Ui, id: egui::Id, selected: bool, height: f32, label: &
     }
     response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::ThemeChoice;
+    use eframe::egui::{Context, Event, Modifiers, PointerButton, Pos2, RawInput};
+
+    fn context(theme: ThemeChoice) -> Context {
+        let ctx = Context::default();
+        crate::install(&ctx, Accent::BLUE, theme);
+        ctx
+    }
+
+    /// Один кадр окна `screen` с событиями `events`.
+    fn run(ctx: &Context, screen: Vec2, events: Vec<Event>, mut add: impl FnMut(&mut Ui)) {
+        let input =
+            RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, screen)), events, ..Default::default() };
+        let mut output = ctx.run_ui(input, |ui| add(ui));
+        output.textures_delta.clear();
+    }
+
+    fn key(key: Key) -> Event {
+        Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
+    }
+
+    /// Щелчок левой кнопкой в `pos`: подвести, нажать, отпустить — три кадра.
+    fn click(pos: Pos2) -> [Vec<Event>; 3] {
+        let button =
+            |pressed| Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+        [vec![Event::PointerMoved(pos)], vec![button(true)], vec![button(false)]]
+    }
+
+    const SCREEN: Vec2 = Vec2::new(460.0, 400.0);
+
+    // ─── Меню ───────────────────────────────────────────────────────────────
+
+    /// Один кадр окна `screen` с кнопкой «⋯» в `at`; меню открыто, когда `open`. Возвращает место меню.
+    fn menu_frame(ctx: &Context, screen: Vec2, at: Pos2, open: bool) -> Option<Rect> {
+        let mut id = None;
+        run(ctx, screen, vec![], |ui| {
+            let button = ui.put(Rect::from_center_size(at, Vec2::splat(30.0)), egui::Button::new("⋯"));
+            id = Some(Popup::default_response_id(&button));
+            if open {
+                Popup::open_id(ui.ctx(), Popup::default_response_id(&button));
+            }
+            menu(&button, 236.0, |ui| {
+                for text in ["Подключить", "Изменить…", "Подробности…", "Скопировать адрес", "Поделиться…"]
+                {
+                    menu_item(ui, None, text, None);
+                }
+                menu_separator(ui);
+                menu_item_danger(ui, None, "Удалить…");
+            });
+        });
+        ctx.memory(|m| m.area_rect(id?))
+    }
+
+    /// Несколько кадров подряд: первый — «меряющий» (меню невидимо), дальше — на месте.
+    fn settle(ctx: &Context, screen: Vec2, at: Pos2) -> Rect {
+        let mut rect = menu_frame(ctx, screen, at, true);
+        for _ in 0..3 {
+            rect = menu_frame(ctx, screen, at, false);
+        }
+        rect.expect("меню открыто")
+    }
+
+    /// Меню у верхней строки — под её кнопкой, правым краем по её правому краю, и целиком в окне.
+    #[test]
+    fn the_menu_opens_under_its_own_button_with_the_right_edges_aligned() {
+        let screen = Vec2::new(460.0, 760.0);
+        let at = Pos2::new(420.0, 200.0);
+        for theme in [ThemeChoice::Dark, ThemeChoice::Light] {
+            let ctx = context(theme);
+            let rect = settle(&ctx, screen, at);
+            let button = Rect::from_center_size(at, Vec2::splat(30.0));
+            assert!(rect.top() >= button.bottom(), "{theme:?}: меню {rect:?} не под кнопкой {button:?}");
+            assert!(rect.top() - button.bottom() < 12.0, "{theme:?}: меню далеко от кнопки: {rect:?}");
+            assert!((rect.right() - button.right()).abs() < 3.0, "{theme:?}: правые края: {rect:?} и {button:?}");
+            assert!(Rect::from_min_size(Pos2::ZERO, screen).contains_rect(rect), "{theme:?}: меню вне окна: {rect:?}");
+        }
+    }
+
+    /// У нижней строки меню не лезет вниз — оно над кнопкой, а не сбоку поверх её строки.
+    #[test]
+    fn the_menu_of_the_last_row_goes_up() {
+        let screen = Vec2::new(460.0, 680.0);
+        let at = Pos2::new(420.0, 620.0);
+        let rect = settle(&context(ThemeChoice::Dark), screen, at);
+        let button = Rect::from_center_size(at, Vec2::splat(30.0));
+        assert!(rect.bottom() <= button.top(), "меню {rect:?} не над кнопкой {button:?}");
+        assert!(button.top() - rect.bottom() < 12.0, "меню далеко от кнопки: {rect:?}");
+        assert!((rect.right() - button.right()).abs() < 3.0, "правые края: {rect:?} и {button:?}");
+        assert!(rect.top() >= 0.0, "меню вышло за верх окна: {rect:?}");
+    }
+
+    /// Нигде не помещается — меню остаётся в окне и садится туда, где больше места.
+    #[test]
+    fn a_menu_that_fits_nowhere_takes_the_roomier_side_and_stays_in_the_window() {
+        let screen = Vec2::new(460.0, 330.0);
+        for (y, up) in [(100.0, false), (230.0, true)] {
+            let at = Pos2::new(420.0, y);
+            let rect = settle(&context(ThemeChoice::Light), screen, at);
+            assert!(Rect::from_min_size(Pos2::ZERO, screen).contains_rect(rect), "y {y}: меню вне окна: {rect:?}");
+            assert!((rect.center().y < at.y) == up, "y {y}: меню {rect:?} с неверной стороны от кнопки");
+        }
+    }
+
+    #[test]
+    fn the_side_follows_the_room() {
+        assert!(!popup_goes_up(None, 10.0, 500.0), "высота ещё неизвестна — вниз");
+        assert!(!popup_goes_up(Some(200.0), 300.0, 100.0), "внизу помещается");
+        assert!(popup_goes_up(Some(200.0), 100.0, 300.0), "внизу нет, вверху есть");
+        assert!(popup_goes_up(Some(400.0), 100.0, 250.0), "нигде не помещается — где больше места");
+        assert!(!popup_goes_up(Some(400.0), 250.0, 100.0), "нигде не помещается — где больше места");
+    }
+
+    /// Ширина — по самой длинной подписи, не уже `floor`; клавиши справа добавляются к подписи.
+    #[test]
+    fn the_menu_width_fits_the_longest_label() {
+        let ctx = context(ThemeChoice::Dark);
+        let mut widths = (0.0, 0.0, 0.0, 0.0);
+        run(&ctx, SCREEN, vec![], |_| {
+            widths = (
+                menu_width(&ctx, 220.0, &[("Настройки…", None), ("Проверять обновления при запуске…", None)]),
+                menu_width(&ctx, 220.0, &[("Settings…", None), ("Check for updates…", None)]),
+                menu_width(&ctx, 0.0, &[("Изменить…", Some("F2"))]),
+                menu_width(&ctx, 0.0, &[("Изменить…", None)]),
+            );
+        });
+        assert!(widths.0 > 236.0, "длинная русская подпись шире 220: {}", widths.0);
+        assert_eq!(widths.1, 220.0, "короткие подписи — не уже `floor`");
+        assert!(widths.2 > widths.3, "клавиши справа добавляются к подписи");
+    }
+
+    /// Закрытому меню ширина не нужна: подписи не мерятся на каждую строку списка в каждом кадре.
+    #[test]
+    fn a_closed_menu_does_not_measure_its_labels() {
+        let ctx = context(ThemeChoice::Dark);
+        let calls = std::cell::Cell::new(0);
+        let frame = |open: bool| {
+            run(&ctx, SCREEN, vec![], |ui| {
+                let at = Rect::from_center_size(Pos2::new(420.0, 100.0), Vec2::splat(30.0));
+                let button = ui.put(at, egui::Button::new("⋯"));
+                if open {
+                    Popup::open_id(ui.ctx(), Popup::default_response_id(&button));
+                }
+                let width = |_: &egui::Context| {
+                    calls.set(calls.get() + 1);
+                    236.0
+                };
+                menu_sized(&button, width, |ui| menu_item(ui, None, "Подключить", None));
+            });
+        };
+        for _ in 0..3 {
+            frame(false);
+        }
+        assert_eq!(calls.get(), 0, "закрытое меню мерило подписи");
+        frame(true);
+        assert_eq!(calls.get(), 1, "открываемое меню не померило подписи");
+        frame(false);
+        assert_eq!(calls.get(), 2, "открытое меню мерит подписи, пока открыто");
+    }
+
+    // ─── Ползунок ───────────────────────────────────────────────────────────
+
+    fn slider_frame(ctx: &Context, value: &mut f32, events: Vec<Event>) -> Response {
+        let mut response = None;
+        run(ctx, SCREEN, events, |ui| {
+            response = Some(Slider::new(value, 0.0..=1.0).step(0.02).text("40%").show(ui));
+        });
+        response.expect("ползунок нарисован")
+    }
+
+    /// В фокусе: стрелки — шаг, PageUp/PageDown — пять шагов, Home/End — края. Фокус без клавиш значение
+    /// не трогает — даже не на сетке шага.
+    #[test]
+    fn the_slider_follows_the_keys() {
+        let ctx = context(ThemeChoice::Dark);
+        let mut value = 0.333;
+        let r = slider_frame(&ctx, &mut value, vec![]);
+        ctx.memory_mut(|m| m.request_focus(r.id));
+        for _ in 0..2 {
+            slider_frame(&ctx, &mut value, vec![]);
+        }
+        assert_eq!(value, 0.333, "фокус без клавиш сдвинул значение");
+        value = 0.4;
+        let press = |k: Key, value: &mut f32| {
+            let r = slider_frame(&ctx, value, vec![key(k)]);
+            assert!(r.has_focus(), "{k:?}: стрелки увели фокус с ползунка");
+            *value
+        };
+        assert!((press(Key::ArrowRight, &mut value) - 0.42).abs() < 1e-4);
+        assert!((press(Key::ArrowDown, &mut value) - 0.40).abs() < 1e-4);
+        assert!((press(Key::PageUp, &mut value) - 0.50).abs() < 1e-4);
+        assert_eq!(press(Key::End, &mut value), 1.0);
+        assert_eq!(press(Key::ArrowRight, &mut value), 1.0, "за край не уходит");
+        assert_eq!(press(Key::Home, &mut value), 0.0);
+    }
+
+    /// Колесо над ползунком — шаг на щелчок колеса; щелчок по дорожке ставит значение под курсором.
+    #[test]
+    fn the_slider_follows_the_wheel_and_the_pointer() {
+        let ctx = context(ThemeChoice::Light);
+        let mut value = 0.4;
+        let r = slider_frame(&ctx, &mut value, vec![]);
+        let over = r.rect.left_center() + Vec2::new(100.0, 0.0);
+        slider_frame(&ctx, &mut value, vec![Event::PointerMoved(over)]);
+        let wheel = |y: f32| Event::MouseWheel {
+            unit: MouseWheelUnit::Line,
+            delta: Vec2::new(0.0, y),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        };
+        slider_frame(&ctx, &mut value, vec![wheel(1.0)]);
+        assert!((value - 0.42).abs() < 1e-4, "колесо вверх: {value}");
+        slider_frame(&ctx, &mut value, vec![wheel(-2.0)]);
+        assert!((value - 0.38).abs() < 1e-4, "два щелчка вниз: {value}");
+        // Дорожка — от 8 до (ширина − колонка значения − 8): её середина — 0.5.
+        let track_left = r.rect.left() + 8.0;
+        let track_right = r.rect.right() - (SLIDER_VALUE_W + 10.0) - 8.0;
+        let middle = Pos2::new((track_left + track_right) / 2.0, r.rect.center().y);
+        for events in click(middle) {
+            slider_frame(&ctx, &mut value, events);
+        }
+        assert!((value - 0.5).abs() < 0.011, "щелчок по середине дорожки: {value}");
+    }
+
+    /// Квадратичная шкала: середина дорожки — четверть диапазона, а стрелки шагают по значению.
+    #[test]
+    fn the_quadratic_slider_puts_a_quarter_in_the_middle() {
+        let ctx = context(ThemeChoice::Dark);
+        let mut value = 0.4;
+        let frame = |value: &mut f32, events: Vec<Event>| {
+            let mut response = None;
+            run(&ctx, SCREEN, events, |ui| {
+                response = Some(Slider::new(value, 0.0..=1.0).step(0.02).quadratic(true).show(ui));
+            });
+            response.expect("ползунок нарисован")
+        };
+        let r = frame(&mut value, vec![]);
+        let middle = Pos2::new((r.rect.left() + 8.0 + r.rect.right() - 8.0) / 2.0, r.rect.center().y);
+        for events in click(middle) {
+            frame(&mut value, events);
+        }
+        assert!((value - 0.25).abs() < 0.015, "середина квадратичной дорожки: {value}");
+        let r = frame(&mut value, vec![]);
+        assert!(r.has_focus(), "щелчок дал ползунку фокус");
+        let before = value;
+        frame(&mut value, vec![key(Key::ArrowRight)]);
+        assert!((value - before - 0.02).abs() < 1e-4, "стрелка — шаг по значению: {before} → {value}");
+    }
+
+    // ─── Выбор ──────────────────────────────────────────────────────────────
+
+    const OPTIONS: [(usize, &str); 6] =
+        [(0, "Шум"), (1, "Вороной"), (2, "Кирпичи"), (3, "Соты"), (4, "Плитка"), (5, "Градиент")];
+
+    fn select_frame(ctx: &Context, value: &mut usize, events: Vec<Event>) -> Response {
+        let mut response = None;
+        run(ctx, SCREEN, events, |ui| {
+            ui.add_space(20.0);
+            response = Some(select(ui, value, &OPTIONS, 200.0));
+        });
+        response.expect("выбор нарисован")
+    }
+
+    /// В фокусе ↑/↓ меняют значение без списка и не уводят фокус; на краях стоят.
+    #[test]
+    fn the_select_steps_with_the_arrows() {
+        let ctx = context(ThemeChoice::Dark);
+        let mut value = 1;
+        let r = select_frame(&ctx, &mut value, vec![]);
+        ctx.memory_mut(|m| m.request_focus(r.id));
+        select_frame(&ctx, &mut value, vec![]);
+        for (k, want) in [(Key::ArrowDown, 2), (Key::ArrowUp, 1), (Key::ArrowUp, 0), (Key::ArrowUp, 0)] {
+            let r = select_frame(&ctx, &mut value, vec![key(k)]);
+            assert_eq!(value, want, "{k:?}");
+            assert!(r.has_focus(), "{k:?}: стрелка увела фокус");
+        }
+        assert!(!Popup::is_id_open(&ctx, Popup::default_response_id(&r)), "стрелки открыли список");
+    }
+
+    /// Щелчок открывает список под полем, щелчок по варианту ставит его и закрывает список.
+    #[test]
+    fn the_select_list_picks_a_value() {
+        let ctx = context(ThemeChoice::Light);
+        let mut value = 1;
+        let r = select_frame(&ctx, &mut value, vec![]);
+        for events in click(r.rect.center()) {
+            select_frame(&ctx, &mut value, events);
+        }
+        let popup = Popup::default_response_id(&r);
+        for _ in 0..3 {
+            select_frame(&ctx, &mut value, vec![]);
+        }
+        assert!(Popup::is_id_open(&ctx, popup), "щелчок не открыл список");
+        let list = ctx.memory(|m| m.area_rect(popup)).expect("список на экране");
+        assert!(list.top() >= r.rect.bottom(), "список {list:?} не под полем {:?}", r.rect);
+        assert!((list.left() - r.rect.left()).abs() < 1.0, "список {list:?} не от левого края поля {:?}", r.rect);
+        assert!(list.width() >= r.rect.width() - 0.5, "список уже поля: {list:?}");
+        // Пункты по 30 через 1, с отступом меню 5 и рамкой 1: четвёртый — «Соты».
+        let fourth = Pos2::new(list.center().x, list.top() + 6.0 + 3.0 * 31.0 + 15.0);
+        for events in click(fourth) {
+            select_frame(&ctx, &mut value, events);
+        }
+        select_frame(&ctx, &mut value, vec![]);
+        assert_eq!(value, 3);
+        assert!(!Popup::is_id_open(&ctx, popup), "список не закрылся");
+    }
+
+    /// Длинный список не выше десяти строк: дальше прокрутка, а не край окна.
+    #[test]
+    fn a_long_select_list_scrolls() {
+        let ctx = context(ThemeChoice::Dark);
+        let options: Vec<(usize, String)> = (0..30).map(|i| (i, format!("Вариант {i}"))).collect();
+        let options: Vec<(usize, &str)> = options.iter().map(|(i, text)| (*i, text.as_str())).collect();
+        let mut value = 0;
+        let screen = Vec2::new(460.0, 900.0);
+        let mut id = None;
+        for open in [true, false, false, false] {
+            run(&ctx, screen, vec![], |ui| {
+                let r = select(ui, &mut value, &options, 200.0);
+                id = Some(Popup::default_response_id(&r));
+                if open {
+                    Popup::open_id(ui.ctx(), Popup::default_response_id(&r));
+                }
+            });
+        }
+        let list = ctx.memory(|m| m.area_rect(id.expect("выбор нарисован"))).expect("список открыт");
+        let most = SELECT_ROWS as f32 * (MENU_ITEM + 1.0) + 2.0 * f32::from(POPUP_MARGIN) + 2.0;
+        assert!(list.height() <= most + 0.5, "список {} выше {most}", list.height());
+        assert!(list.height() > most - 40.0, "список {} обрезан короче десяти строк", list.height());
+    }
+
+    /// Равные сегменты: подписи помещаются — в ряд высотой 30, нет — столбиком по 26 на вариант.
+    #[test]
+    fn equal_segments_fall_into_a_column_when_labels_do_not_fit() {
+        let ctx = context(ThemeChoice::Dark);
+        let options = [(0, None, "При каждом запуске"), (1, None, "Раз в неделю"), (2, None, "Никогда")];
+        let mut sizes = Vec::new();
+        for width in [440.0, 220.0] {
+            run(&ctx, SCREEN, vec![], |ui| {
+                let mut value = 0;
+                let r = ui.allocate_ui(Vec2::new(width, 0.0), |ui| segmented_full(ui, &mut value, &options)).inner;
+                sizes.push((r.rect.width(), r.rect.height()));
+            });
+        }
+        assert_eq!(sizes[0], (440.0, 30.0));
+        assert_eq!(sizes[1], (220.0, 3.0 * 26.0 + 4.0));
+    }
+
+    /// Строки-переходы: щелчок по второй строке возвращает 1.
+    #[test]
+    fn nav_rows_report_the_clicked_row() {
+        let ctx = context(ThemeChoice::Light);
+        let rows = [(Some(Icon::Keyboard), "Горячие клавиши", ""), (Some(Icon::Layers), "Профили", "3")];
+        let frame = |events: Vec<Event>| {
+            let (mut clicked, mut top) = (None, 0.0);
+            run(&ctx, SCREEN, events, |ui| {
+                top = ui.cursor().top();
+                clicked = nav_rows(ui, &rows);
+            });
+            (clicked, top)
+        };
+        let (clicked, top) = frame(vec![]);
+        assert_eq!(clicked, None);
+        let second = Pos2::new(200.0, top + NAV_ROW + 1.0 + NAV_ROW / 2.0);
+        let [moved, down, up] = click(second);
+        frame(moved);
+        frame(down);
+        assert_eq!(frame(up).0, Some(1));
+    }
 }

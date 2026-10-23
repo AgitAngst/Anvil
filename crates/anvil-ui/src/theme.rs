@@ -111,6 +111,11 @@ pub struct Palette {
     pub border_strong: Color32,
     /// Фон поля ввода.
     pub field: Color32,
+    /// Фон всплывающего слоя: меню, выпадающий список. На ступень выше `card`, чтобы меню не сливалось
+    /// с карточкой или диалогом под ним.
+    pub popup: Color32,
+    /// Пункт меню под курсором: заметнее, чем `hover` на `popup`.
+    pub popup_hover: Color32,
     pub text: Color32,
     /// Второстепенный текст: подписи, пояснения.
     pub weak: Color32,
@@ -138,6 +143,8 @@ impl Palette {
                 border: rgb(0x2C2C31),
                 border_strong: rgb(0x3D3D44),
                 field: rgb(0x121214),
+                popup: rgb(0x252529),
+                popup_hover: rgb(0x323238),
                 text: rgb(0xECECEE),
                 weak: rgb(0xA0A0A8),
                 faint: rgb(0x6E6E76),
@@ -159,6 +166,8 @@ impl Palette {
                 border: rgb(0xE2E2E5),
                 border_strong: rgb(0xCBCBD0),
                 field: rgb(0xFFFFFF),
+                popup: rgb(0xF0F0F2),
+                popup_hover: rgb(0xDCDCDF),
                 text: rgb(0x17171A),
                 weak: rgb(0x55555D),
                 faint: rgb(0x8A8A92),
@@ -195,6 +204,17 @@ impl Palette {
     /// Рамка Danger-кнопки: красный наполовину.
     pub fn danger_line(&self) -> Color32 {
         self.danger.gamma_multiply(0.5)
+    }
+
+    /// Тень всплывающего: меню, выпадающий список, уведомление, подсказка. Глубже прежней (120/255 и 35/255):
+    /// с той край меню не читался ни на тёмном, ни на светлом.
+    pub fn popup_shadow(&self) -> Shadow {
+        Shadow {
+            offset: [0, 8],
+            blur: 24,
+            spread: 0,
+            color: Color32::from_black_alpha(if self.dark { 200 } else { 70 }),
+        }
     }
 
     /// Цвета знака предмета: заливка, значок и внутренняя кромка, если она нужна.
@@ -338,8 +358,7 @@ fn apply(style: &mut egui::Style, theme: Theme, accent: Accent) {
     v.window_stroke = Stroke::new(1.0, p.border);
     v.window_shadow =
         Shadow { offset: [0, 12], blur: 36, spread: 0, color: Color32::from_black_alpha(if dark { 140 } else { 45 }) };
-    v.popup_shadow =
-        Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(if dark { 120 } else { 35 }) };
+    v.popup_shadow = p.popup_shadow();
 
     let r = CornerRadius::same(radius::CONTROL);
     let w = &mut v.widgets;
@@ -425,6 +444,12 @@ mod tests {
                     ("акцентный текст на выбранной строке Пульта", p.accent_text, p.raised),
                     ("нейтральный знак", p.text, p.raised),
                     ("Danger-кнопка", p.danger, p.badge_fill(p.danger)),
+                    ("значение ползунка на фоне", p.weak, p.bg),
+                    ("пункт меню", p.text, p.popup),
+                    ("значок пункта меню", p.weak, p.popup),
+                    ("пункт меню под курсором", p.text, p.popup_hover),
+                    ("значок пункта меню под курсором", p.weak, p.popup_hover),
+                    ("опасный пункт меню", p.danger, p.popup),
                 ];
                 for (name, tone) in [
                     ("подпись", p.weak),
@@ -459,12 +484,32 @@ mod tests {
         }
         assert!(
             failures.is_empty(),
-            "контраст ниже 4.5:1:
+            "контраст ниже 4.5:1 (у графики — 3:1):
 {}",
             failures.join(
                 "
 "
             )
         );
+    }
+
+    /// Меню — поднятый слой: непрозрачное, не цвета карточки и фона под ним, с заметной тенью; пункт под
+    /// курсором и разделитель видны на нём лучше, чем `hover` и `border`.
+    #[test]
+    fn the_popup_layer_stands_out() {
+        let gap = |a: Color32, b: Color32| -> i32 {
+            (0..3).map(|i| (i32::from(a.to_array()[i]) - i32::from(b.to_array()[i])).abs()).sum()
+        };
+        for dark in [true, false] {
+            let p = Palette::new(dark, Accent::BLUE);
+            assert_eq!(p.popup.a(), 255, "dark {dark}: меню непрозрачное");
+            assert_ne!(p.popup, p.card, "dark {dark}: меню сливалось бы с карточкой");
+            assert_ne!(p.popup, p.bg, "dark {dark}");
+            let shadow = p.popup_shadow();
+            assert!(shadow.color.a() >= 70 && shadow.blur >= 20, "dark {dark}: тень {shadow:?}");
+            assert!(gap(p.border_strong, p.popup) > gap(p.border, p.popup), "dark {dark}: разделитель");
+            assert!(gap(p.popup_hover, p.popup) > gap(p.hover, p.popup), "dark {dark}: подсветка");
+            assert!(gap(p.popup_hover, p.popup) >= 24, "dark {dark}: подсветка слабее 24 из 765");
+        }
     }
 }

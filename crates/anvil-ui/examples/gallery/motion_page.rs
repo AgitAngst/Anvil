@@ -179,7 +179,9 @@ impl MotionDemo {
             });
             demo_row(ui, tx(&ctx, "Полоса, доля", "Bar, fraction"), |ui| {
                 w::progress(ui, Some(self.fraction), 220.0);
-                ui.add(egui::Slider::new(&mut self.fraction, 0.0..=1.0).show_value(false));
+                let text = format!("{:.0}%", self.fraction * 100.0);
+                let label = tx(&ctx, "Доля", "Fraction");
+                w::Slider::new(&mut self.fraction, 0.0..=1.0).width(220.0).text(text).label(label).show(ui);
             });
             demo_row(ui, tx(&ctx, "Цепочка", "Chain"), |ui| self.chain(ui));
             demo_row(ui, tx(&ctx, "Живая точка", "Live dot"), |ui| {
