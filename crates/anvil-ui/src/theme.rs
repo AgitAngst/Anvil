@@ -186,8 +186,9 @@ impl Palette {
         Self::of_ctx(ui.ctx())
     }
 
+    /// Палитра окна: подменённая программой (`set_palette_override`), иначе — таблица набора для темы и акцента.
     pub fn of_ctx(ctx: &egui::Context) -> Palette {
-        Palette::new(ctx.global_style().visuals.dark_mode, accent(ctx))
+        palette_override(ctx).unwrap_or_else(|| Palette::new(ctx.global_style().visuals.dark_mode, accent(ctx)))
     }
 
     /// Мягкая подложка цвета: бейджи, выбранная строка, баннер.
@@ -250,6 +251,23 @@ pub fn accent(ctx: &egui::Context) -> Accent {
     ctx.data(|d| d.get_temp(accent_id())).unwrap_or(Accent::BLUE)
 }
 
+fn override_id() -> egui::Id {
+    egui::Id::new("anvil-ui-palette-override")
+}
+
+/// Палитра, которую подменила программа (`None` — работает таблица набора).
+pub fn palette_override(ctx: &egui::Context) -> Option<Palette> {
+    ctx.data(|d| d.get_temp::<Option<Palette>>(override_id())).flatten()
+}
+
+/// Подменить палитру целиком (высокий контраст системы и подобное) или снять подмену (`None`). Пока подмена
+/// задана, её берут `Palette::of`/`of_ctx`, а значит и все виджеты набора, и стиль egui пересобирается из неё. Подмена
+/// не зависит от темы: `Palette::dark` решает, тёмная ли основа стиля; тему программа выбирает сама (`choose`).
+pub fn set_palette_override(ctx: &egui::Context, palette: Option<Palette>) {
+    ctx.data_mut(|d| d.insert_temp(override_id(), palette));
+    rebuild_styles(ctx);
+}
+
 /// Поставить шрифты и стиль. Звать один раз при запуске.
 pub fn install(ctx: &egui::Context, accent: Accent, choice: ThemeChoice) {
     ctx.set_fonts(fonts());
@@ -261,8 +279,15 @@ pub fn install(ctx: &egui::Context, accent: Accent, choice: ThemeChoice) {
 /// Сменить акцент на ходу — стиль обеих тем пересобирается.
 pub fn set_accent(ctx: &egui::Context, accent: Accent) {
     ctx.data_mut(|d| d.insert_temp(accent_id(), accent));
+    rebuild_styles(ctx);
+}
+
+/// Пересобрать стиль обеих тем из акцента и подмены палитры, если она есть.
+fn rebuild_styles(ctx: &egui::Context) {
+    let accent = accent(ctx);
+    let over = palette_override(ctx);
     for theme in [Theme::Dark, Theme::Light] {
-        ctx.style_mut_of(theme, |style| apply(style, theme, accent));
+        ctx.style_mut_of(theme, |style| apply(style, theme, accent, over));
     }
 }
 
@@ -336,9 +361,9 @@ pub mod radius {
     pub const WINDOW: u8 = 12;
 }
 
-fn apply(style: &mut egui::Style, theme: Theme, accent: Accent) {
-    let dark = theme == Theme::Dark;
-    let p = Palette::new(dark, accent);
+fn apply(style: &mut egui::Style, theme: Theme, accent: Accent, over: Option<Palette>) {
+    let p = over.unwrap_or_else(|| Palette::new(theme == Theme::Dark, accent));
+    let dark = p.dark;
     let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
 
     v.panel_fill = p.surface;
@@ -417,6 +442,73 @@ mod tests {
         let luminance = |c: Color32| 0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b());
         let (x, y) = (luminance(a), luminance(b));
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    fn marked(base: Palette) -> Palette {
+        Palette {
+            bg: Color32::from_rgb(1, 2, 3),
+            surface: Color32::from_rgb(4, 5, 6),
+            text: Color32::from_rgb(250, 251, 252),
+            border_strong: Color32::from_rgb(7, 8, 9),
+            accent: Color32::from_rgb(10, 11, 12),
+            ..base
+        }
+    }
+
+    #[test]
+    fn override_replaces_the_palette_and_the_style_then_restores_both() {
+        let ctx = egui::Context::default();
+        install(&ctx, Accent::BLUE, ThemeChoice::Dark);
+        let base = Palette::of_ctx(&ctx);
+        let base_panel = ctx.style_of(Theme::Dark).visuals.panel_fill;
+        assert_eq!(palette_override(&ctx).map(|p| p.bg), None);
+
+        let custom = marked(base);
+        set_palette_override(&ctx, Some(custom));
+        let now = Palette::of_ctx(&ctx);
+        assert_eq!((now.bg, now.text, now.accent), (custom.bg, custom.text, custom.accent));
+        assert_eq!(palette_override(&ctx).map(|p| p.bg), Some(custom.bg));
+        // Стиль egui собран из подменённой палитры — у обеих тем.
+        for theme in [Theme::Dark, Theme::Light] {
+            let v = ctx.style_of(theme).visuals.clone();
+            assert_eq!(v.panel_fill, custom.surface, "{theme:?}");
+            assert_eq!(v.widgets.noninteractive.fg_stroke.color, custom.text, "{theme:?}");
+            assert_eq!(v.widgets.hovered.bg_stroke.color, custom.border_strong, "{theme:?}");
+        }
+
+        assert_eq!(crate::chrome::clear_color_of(&ctx), egui::Rgba::from(custom.bg).to_array());
+        set_palette_override(&ctx, None);
+        assert_eq!(Palette::of_ctx(&ctx).bg, base.bg);
+        assert_eq!(ctx.style_of(Theme::Dark).visuals.panel_fill, base_panel);
+        assert_eq!(palette_override(&ctx).map(|p| p.bg), None);
+    }
+
+    #[test]
+    fn override_survives_an_accent_change_and_comes_back_clean() {
+        let ctx = egui::Context::default();
+        install(&ctx, Accent::BLUE, ThemeChoice::Light);
+        let custom = marked(Palette::of_ctx(&ctx));
+        set_palette_override(&ctx, Some(custom));
+        set_accent(&ctx, Accent::AMBER);
+        assert_eq!(Palette::of_ctx(&ctx).bg, custom.bg);
+        assert_eq!(ctx.style_of(Theme::Light).visuals.panel_fill, custom.surface);
+        set_palette_override(&ctx, None);
+        // После снятия — акцент, который поставили последним.
+        assert_eq!(Palette::of_ctx(&ctx).accent, Accent::AMBER.swatch(false).fill);
+    }
+
+    #[test]
+    fn override_picks_the_dark_or_light_base_by_its_own_flag() {
+        let ctx = egui::Context::default();
+        install(&ctx, Accent::BLUE, ThemeChoice::Light);
+        // Светлая тема окна, но палитра тёмная: основа стиля — тёмная у обеих тем.
+        let dark = Palette { dark: true, ..marked(Palette::new(true, Accent::BLUE)) };
+        set_palette_override(&ctx, Some(dark));
+        assert!(ctx.style_of(Theme::Light).visuals.dark_mode);
+        assert!(ctx.style_of(Theme::Dark).visuals.dark_mode);
+        set_palette_override(&ctx, None);
+        assert!(!ctx.style_of(Theme::Light).visuals.dark_mode);
+        assert!(ctx.style_of(Theme::Dark).visuals.dark_mode);
     }
 
     #[test]

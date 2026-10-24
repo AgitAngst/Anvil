@@ -63,6 +63,11 @@ pub fn clear_color(visuals: &egui::Visuals, accent: Accent) -> [f32; 4] {
     egui::Rgba::from(Palette::new(visuals.dark_mode, accent).bg).to_array()
 }
 
+/// То же с учётом палитры, которую подменила программа (`theme::set_palette_override`).
+pub fn clear_color_of(ctx: &egui::Context) -> [f32; 4] {
+    egui::Rgba::from(Palette::of_ctx(ctx).bg).to_array()
+}
+
 /// Знак программы: квадрат акцента со значком.
 pub fn app_mark(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
     let p = Palette::of(ui);
