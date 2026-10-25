@@ -26,3 +26,6 @@ mod shell;
 pub use painter::Painter;
 #[cfg(windows)]
 pub use shell::{Config, Content, Make, run};
+/// Событие окна для `Content::window_event` — тот же `winit`, что у крейта.
+#[cfg(windows)]
+pub use winit::event::WindowEvent;

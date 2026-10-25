@@ -2,6 +2,10 @@
 
 Замысел и этапы — [SPEC.md](SPEC.md). Здесь — где остановились и как тут работать.
 
+## 25.10.2026 — набор 0.9.1: крючки `anvil-d3d` для Kamerton
+
+- По слову владельца («анвил3д»): `Config::active`, `Config::popup(title, size)`, `Content::window_event(&WindowEvent)` (событие окна до egui; `anvil_d3d::WindowEvent`) — то, что отличало собственную копию окна Kamerton от крейта. Изменение OpenSpec `kit-0-9-1-d3d-hooks`, `docs/D3D.md`. Проверено на ПК: fmt, тесты (в том числе новый на `Config`), clippy Windows и Linux.
+
 ## 25.10.2026 — набор 0.9.0: и лимит запросов GitHub в `anvil-update`
 
 - По слову владельца («Понятный текст и обход лимита при 403», «Тег для анвил»): на 403/429 проверка обновления идёт запасным путём без API (`<сайт>/<репозиторий>/releases/latest` → тег → архив и `SHA256SUMS` по адресам соглашения), иначе ошибка «GitHub: HTTP 403 (rate limit), retry in N min»; `anvil_update::errors::describe(error, ru)` — текст на языке окна. Изменение OpenSpec `kit-0-9-update-rate-limit`, `docs/RELEASES.md`. Проверено на ПК: тесты (20 у `anvil-update`, в том числе на локальном сервере) и один по сети на настоящем GitHub (`--ignored`).

@@ -30,6 +30,9 @@ pub trait Content {
     fn close_requested(&mut self) -> bool {
         true
     }
+    /// Событие окна — до egui и для каждого, кроме перерисовки, закрытия и уничтожения: так ловятся нажатия, которых egui
+    /// не отдаёт (медиа-клавиши громкости: `KeyboardInput` с `KeyCode::AudioVolumeUp`).
+    fn window_event(&mut self, _event: &WindowEvent) {}
 }
 
 /// Окно: заголовок, размер и вид.
@@ -45,6 +48,25 @@ pub struct Config {
     pub always_on_top: bool,
     /// Без кнопки на панели задач.
     pub skip_taskbar: bool,
+    /// Давать окну фокус при показе; `false` — всплывашка, которая не должна красть фокус.
+    pub active: bool,
+}
+
+impl Config {
+    /// Всплывающее окно: без рамки и изменения размера, поверх всех, без кнопки на панели задач, не берёт фокус и
+    /// создаётся за экранами — место ставит содержимое на первом кадре (окно наготове, `docs/D3D.md`).
+    pub fn popup(title: impl Into<String>, size: [f32; 2]) -> Config {
+        Config {
+            title: title.into(),
+            size,
+            position: Some([-32000, -32000]),
+            decorations: false,
+            resizable: false,
+            always_on_top: true,
+            skip_taskbar: true,
+            active: false,
+        }
+    }
 }
 
 impl Default for Config {
@@ -57,6 +79,7 @@ impl Default for Config {
             resizable: true,
             always_on_top: false,
             skip_taskbar: false,
+            active: true,
         }
     }
 }
@@ -183,7 +206,8 @@ impl ApplicationHandler<Wake> for Shell {
             .with_resizable(c.resizable)
             .with_visible(false)
             .with_inner_size(LogicalSize::new(c.size[0], c.size[1]))
-            .with_skip_taskbar(c.skip_taskbar);
+            .with_skip_taskbar(c.skip_taskbar)
+            .with_active(c.active);
         if c.always_on_top {
             attrs = attrs.with_window_level(WindowLevel::AlwaysOnTop);
         }
@@ -233,6 +257,9 @@ impl ApplicationHandler<Wake> for Shell {
             }
             WindowEvent::Destroyed => el.exit(),
             other => {
+                if let Some(content) = self.content.as_mut() {
+                    content.window_event(&other);
+                }
                 if let (Some(window), Some(state)) = (&self.window, &mut self.state)
                     && state.on_window_event(window, &other).repaint
                 {
@@ -264,5 +291,23 @@ impl ApplicationHandler<Wake> for Shell {
             Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
             None => el.set_control_flow(ControlFlow::Wait),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_window_takes_focus_and_popup_does_not() {
+        let d = Config::default();
+        assert!(
+            d.active && d.decorations && d.resizable && !d.always_on_top && !d.skip_taskbar && d.position.is_none()
+        );
+        let p = Config::popup("Tray", [360.0, 200.0]);
+        assert_eq!((p.title.as_str(), p.size), ("Tray", [360.0, 200.0]));
+        assert!(!p.active && !p.decorations && !p.resizable && p.always_on_top && p.skip_taskbar);
+        // Создаётся за экранами: место ставит содержимое на первом кадре.
+        assert_eq!(p.position, Some([-32000, -32000]));
     }
 }
