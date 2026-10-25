@@ -4,7 +4,7 @@
 
 ## 25.10.2026 — набор 0.9.1: крючки `anvil-d3d` для Kamerton
 
-- По слову владельца («анвил3д»): `Config::active`, `Config::popup(title, size)`, `Content::window_event(&WindowEvent)` (событие окна до egui; `anvil_d3d::WindowEvent`) — то, что отличало собственную копию окна Kamerton от крейта. Изменение OpenSpec `kit-0-9-1-d3d-hooks`, `docs/D3D.md`. Проверено на ПК: fmt, тесты (в том числе новый на `Config`), clippy Windows и Linux.
+- По слову владельца («анвил3д»): `Config::active`, `Config::popup(title, size)`, `Content::window_event(&WindowEvent)` (событие окна до egui; `anvil_d3d::WindowEvent`) — то, что отличало собственную копию окна Kamerton от крейта. Изменение OpenSpec `kit-0-9-1-d3d-hooks`, `docs/D3D.md`. Проверено на ПК: fmt, тесты (в том числе новый на `Config`), clippy Windows и Linux. Тег `kit-v0.9.1` поставлен 25.10.2026 (CI зелёный); Kamerton перешёл на `anvil-d3d` в 1.3.11 и удалил свою копию окна (память и ЦП те же).
 
 ## 25.10.2026 — набор 0.9.0: и лимит запросов GitHub в `anvil-update`
 
