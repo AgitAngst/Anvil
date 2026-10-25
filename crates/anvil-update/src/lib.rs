@@ -17,6 +17,7 @@
 //! `<app>-X.Y.Z-windows-x64.zip` и `SHA256SUMS` в GitHub Release. Без `SHA256SUMS` обновление не
 //! ставится: непроверенный файл хуже, чем старая версия.
 
+pub mod errors;
 pub mod install;
 mod releases;
 mod version;
@@ -48,11 +49,19 @@ pub struct Config {
     pub repo: String,
     /// Адрес API; меняется только в проверках.
     pub api: String,
+    /// Адрес сайта (запасной путь без API, когда лимит запросов исчерпан); меняется только в проверках.
+    pub web: String,
 }
 
 impl Config {
     pub fn new(app: &str, version: &str, repo: &str) -> Self {
-        Self { app: app.into(), version: version.into(), repo: repo.into(), api: "https://api.github.com".into() }
+        Self {
+            app: app.into(),
+            version: version.into(),
+            repo: repo.into(),
+            api: "https://api.github.com".into(),
+            web: "https://github.com".into(),
+        }
     }
 }
 
@@ -208,11 +217,49 @@ impl Updater {
             .header("Accept", "application/vnd.github+json")
             .send()
             .map_err(|e| e.without_url().to_string())?;
+        let code = response.status().as_u16();
+        if code == 403 || code == 429 {
+            // Анонимному запросу к API — 60 в час на адрес: лимит съедают соседи по сети, VPN, другие программы.
+            // Последний выпуск можно узнать и без API, поэтому сначала пробуем так, а ошибка — только если не вышло.
+            let minutes = limit_minutes(response.headers(), unix_now());
+            return self.fetch_without_api(&current).map_err(|_| match minutes {
+                Some(m) => errors::rate_limit(code, m),
+                None => errors::http_status(code),
+            });
+        }
         if !response.status().is_success() {
-            return Err(format!("GitHub: HTTP {}", response.status().as_u16()));
+            return Err(errors::http_status(code));
         }
         let list = response.json().map_err(|e| e.without_url().to_string())?;
         Ok(releases::choose(list, &self.config.app, &current, prerelease))
+    }
+
+    /// Последний выпуск без API: `<сайт>/<репозиторий>/releases/latest` отвечает переадресацией на страницу
+    /// тега, а архив и `SHA256SUMS` лежат по известным адресам. Видит только последний *обычный* выпуск
+    /// (пред-выпуски GitHub в `latest` не кладёт) и не знает заметок к выпуску.
+    fn fetch_without_api(&self, current: &Version) -> Result<Option<Update>, String> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent(concat!("anvil-update/", env!("CARGO_PKG_VERSION")))
+            .timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
+        let url = format!("{}/{}/releases/latest", self.config.web, self.config.repo);
+        let response = client.get(url).send().map_err(|e| e.without_url().to_string())?;
+        if !response.status().is_redirection() {
+            return Err(errors::http_status(response.status().as_u16()));
+        }
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or("no Location in the redirect")?;
+        let tag = latest_tag(location).ok_or("no release tag in the redirect")?;
+        let version = Version::parse(tag).ok_or("bad release tag")?;
+        if version <= *current {
+            return Ok(None);
+        }
+        Ok(Some(releases::from_tag(&self.config.app, &self.config.web, &self.config.repo, tag, version)))
     }
 
     /// Скачать и поставить доступное обновление (в фоне).
@@ -267,9 +314,135 @@ impl Updater {
     }
 }
 
+/// Тег из адреса переадресации `…/releases/tag/<тег>`.
+fn latest_tag(location: &str) -> Option<&str> {
+    let tag = location.rsplit_once("/releases/tag/")?.1;
+    let tag = tag.split(['?', '#']).next()?.trim_end_matches('/');
+    (!tag.is_empty()).then_some(tag)
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Через сколько минут снимется лимит по заголовкам ответа GitHub; `None` — это не лимит.
+fn limit_minutes(headers: &reqwest::header::HeaderMap, now: u64) -> Option<u64> {
+    let number = |name: &str| headers.get(name)?.to_str().ok()?.trim().parse::<u64>().ok();
+    let seconds = if let Some(retry) = number("retry-after") {
+        retry
+    } else if number("x-ratelimit-remaining") == Some(0) {
+        number("x-ratelimit-reset")?.saturating_sub(now)
+    } else {
+        return None;
+    };
+    Some(seconds.div_ceil(60).max(1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    #[test]
+    fn tag_from_redirect() {
+        assert_eq!(latest_tag("https://github.com/o/r/releases/tag/v1.3.5"), Some("v1.3.5"));
+        assert_eq!(latest_tag("/o/r/releases/tag/v1.3.5/"), Some("v1.3.5"));
+        assert_eq!(latest_tag("https://github.com/o/r/releases/tag/v2.0.0?x=1"), Some("v2.0.0"));
+        assert_eq!(latest_tag("https://github.com/o/r/releases"), None);
+        assert_eq!(latest_tag("https://github.com/o/r/releases/tag/"), None);
+    }
+
+    #[test]
+    fn limit_minutes_from_headers() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+        let mut h = HeaderMap::new();
+        assert_eq!(limit_minutes(&h, 1000), None);
+        h.insert("x-ratelimit-remaining", HeaderValue::from_static("0"));
+        h.insert("x-ratelimit-reset", HeaderValue::from_static("1000"));
+        assert_eq!(limit_minutes(&h, 1000), Some(1));
+        h.insert("x-ratelimit-reset", HeaderValue::from_static("2400"));
+        assert_eq!(limit_minutes(&h, 1000), Some(24));
+        h.insert("x-ratelimit-remaining", HeaderValue::from_static("5"));
+        assert_eq!(limit_minutes(&h, 1000), None);
+        h.insert("retry-after", HeaderValue::from_static("90"));
+        assert_eq!(limit_minutes(&h, 1000), Some(2));
+    }
+
+    /// Крошечный HTTP-сервер: на каждый запрос отвечает по `route(путь)` и закрывает соединение.
+    fn serve(route: impl Fn(&str, &str) -> String + Send + 'static) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let host = base.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let path = request.split_whitespace().nth(1).unwrap_or("").to_owned();
+                let _ = stream.write_all(route(&path, &host).as_bytes());
+            }
+        });
+        base
+    }
+
+    fn updater(base: &str, version: &str) -> Updater {
+        let mut config = Config::new("kamerton", version, "o/r");
+        config.api = base.to_owned();
+        config.web = base.to_owned();
+        Updater::with_repaint(config, || {})
+    }
+
+    #[test]
+    fn rate_limited_api_falls_back_to_the_site() {
+        let base = serve(|path, host| {
+            if path.starts_with("/repos/") {
+                "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 99999999999\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()
+            } else if path == "/o/r/releases/latest" {
+                format!(
+                    "HTTP/1.1 302 Found\r\nlocation: {host}/o/r/releases/tag/v1.4.0\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                )
+            } else {
+                "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()
+            }
+        });
+        let update = updater(&base, "1.3.0").fetch(false).unwrap().expect("a newer release");
+        assert_eq!(update.tag, "v1.4.0");
+        assert_eq!(update.version.to_string(), "1.4.0");
+        let asset = update.asset.unwrap();
+        assert_eq!(asset.name, asset_name("kamerton", &update.version));
+        assert_eq!(asset.url, format!("{base}/o/r/releases/download/v1.4.0/{}", asset.name));
+        assert_eq!(update.sums.unwrap().url, format!("{base}/o/r/releases/download/v1.4.0/SHA256SUMS"));
+        // Версия уже стоит — обновления нет.
+        assert!(updater(&base, "1.4.0").fetch(false).unwrap().is_none());
+    }
+
+    #[test]
+    fn rate_limit_without_a_fallback_gives_a_clear_error() {
+        let base = serve(|path, _| {
+            if path.starts_with("/repos/") {
+                "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 99999999999\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()
+            } else {
+                "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()
+            }
+        });
+        let error = updater(&base, "1.3.0").fetch(false).unwrap_err();
+        assert!(error.starts_with("GitHub: HTTP 403 (rate limit), retry in "), "{error}");
+        // Не лимит (403 без заголовков) — просто код.
+        let base = serve(|_, _| "HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into());
+        assert_eq!(updater(&base, "1.3.0").fetch(false).unwrap_err(), "GitHub: HTTP 403");
+    }
+
+    /// По сети: запасной путь на настоящем GitHub (`cargo test -p anvil-update -- --ignored`).
+    #[test]
+    #[ignore = "needs the network"]
+    fn fallback_on_the_real_site() {
+        let updater = Updater::with_repaint(Config::new("kamerton", "1.0.0", "AgitAngst/Kamerton"), || {});
+        let update = updater.fetch_without_api(&Version::parse("1.0.0").unwrap()).unwrap().expect("newer release");
+        eprintln!("latest: {} {}", update.tag, update.asset.unwrap().url);
+        assert!(update.version > Version::parse("1.3.0").unwrap());
+    }
 
     #[test]
     fn busy_states_block_new_checks() {

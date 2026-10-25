@@ -82,6 +82,7 @@ pub fn banner(ui: &mut Ui, updater: &Updater, settings: &mut CommonSettings) -> 
             ui.add_space(14.0);
         }
         State::Failed { update: Some(_), error } if shown => {
+            let error = crate::errors::describe(&error, anvil_ui::lang::language(&ctx) == anvil_ui::Lang::Ru);
             w::banner(ui, Tone::Danger, tr(&ctx, "Обновление не удалось"), &error, |ui| {
                 if w::button(ui, Kind::Ghost, None, tr(&ctx, "Скрыть")).clicked() {
                     updater.dismiss();
@@ -155,6 +156,9 @@ pub fn about_status(ctx: &egui::Context, updater: &Updater) -> Option<String> {
         State::Available(u) => format!("{} v{}", tr(ctx, "Доступна"), u.version),
         State::Downloading { update, .. } => format!("{} v{}", tr(ctx, "Скачиваю"), update.version),
         State::Ready { update, .. } => format!("{} · v{}", tr(ctx, "Обновление установлено"), update.version),
-        State::Failed { error, .. } => format!("{}: {error}", tr(ctx, "Проверка не удалась")),
+        State::Failed { error, .. } => {
+            let error = crate::errors::describe(&error, anvil_ui::lang::language(ctx) == anvil_ui::Lang::Ru);
+            format!("{}: {error}", tr(ctx, "Проверка не удалась"))
+        }
     })
 }

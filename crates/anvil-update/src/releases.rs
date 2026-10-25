@@ -46,6 +46,21 @@ struct ApiAsset {
     size: u64,
 }
 
+/// Выпуск по одному тегу, без API: архив и `SHA256SUMS` — по адресам из соглашения (`docs/RELEASES.md`), размер и
+/// заметки неизвестны. Есть ли файлы на самом деле, выяснится при скачивании.
+pub(crate) fn from_tag(app: &str, web: &str, repo: &str, tag: &str, version: Version) -> Update {
+    let name = asset_name(app, &version);
+    let file = |name: String| Asset { url: format!("{web}/{repo}/releases/download/{tag}/{name}"), name, size: 0 };
+    Update {
+        asset: Some(file(name)),
+        sums: Some(file("SHA256SUMS".into())),
+        tag: tag.to_owned(),
+        notes: String::new(),
+        page: format!("{web}/{repo}/releases/tag/{tag}"),
+        version,
+    }
+}
+
 /// Имя архива по соглашению: `<app>-<версия>-windows-x64.zip`.
 pub fn asset_name(app: &str, version: &Version) -> String {
     format!("{app}-{version}-{}.zip", platform())
