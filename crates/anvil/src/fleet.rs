@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn versions() {
         assert_eq!(extract_version(r#"{"status":"ok","version":"0.4.2"}"#).as_deref(), Some("0.4.2"));
-        assert_eq!(extract_version("amber-server 0.3.1 (build 12)\n").as_deref(), Some("0.3.1"));
+        assert_eq!(extract_version("demo-server 0.3.1 (build 12)\n").as_deref(), Some("0.3.1"));
         assert_eq!(extract_version("v1.12.0-rc").as_deref(), Some("1.12.0"));
         assert_eq!(extract_version("no digits here"), None);
         assert_eq!(extract_version("port 8080 only"), None);

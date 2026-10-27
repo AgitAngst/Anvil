@@ -5,7 +5,7 @@ Anvil SHALL list the repositories of the signed-in GitHub account (owner and org
 
 #### Scenario: Token present
 - **WHEN** the owner opens "Add project" on the "From GitHub" tab and a token exists
-- **THEN** the repositories are listed, connected ones are marked "Connected", local clones found by origin are marked "On disk", the rest offer "Clone"
+- **THEN** the repositories are listed, connected ones are marked "Connected" (a project with this origin was found), the rest offer "Clone"
 
 #### Scenario: No token or rate limit
 - **WHEN** there is no token or GitHub refuses the request
@@ -23,7 +23,7 @@ Anvil SHALL connect repositories that already lie in the search folders without 
 
 #### Scenario: New repository on the account
 - **WHEN** the account list contains a repository that is neither connected nor on disk
-- **THEN** the sidebar shows "New: N" that opens the "From GitHub" tab
+- **THEN** the sidebar shows "New repositories: N" that opens the "From GitHub" tab
 
 ### Requirement: Visibility mark
 Anvil SHALL keep a public/private mark per project with a GitHub origin, taken from the API and overridable by hand.

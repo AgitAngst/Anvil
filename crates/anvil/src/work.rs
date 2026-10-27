@@ -252,7 +252,7 @@ fn read_sessions(dir: &Path) -> Vec<Session> {
         .collect()
 }
 
-/// `E--dev-personal-Morok` → `Morok`; `D--dev-personal` → `dev_personal`; рабочее дерево — со словом (worktree).
+/// `E--dev-personal-Demo` → `Demo`; `D--dev-personal` → `dev_personal`; рабочее дерево — со словом (worktree).
 pub fn folder_label(name: &str) -> String {
     let (base, worktree) = match name.split_once("--claude-worktrees") {
         Some((base, _)) => (base, true),
@@ -329,9 +329,9 @@ mod tests {
 
     #[test]
     fn folder_labels() {
-        assert_eq!(folder_label("E--dev-personal-Morok"), "Morok");
+        assert_eq!(folder_label("E--dev-personal-Demo"), "Demo");
         assert_eq!(folder_label("D--dev-personal"), "dev_personal");
-        assert_eq!(folder_label("E--dev-personal-Morok--claude-worktrees-calm-fox-1"), "Morok (worktree)");
+        assert_eq!(folder_label("E--dev-personal-Demo--claude-worktrees-calm-fox-1"), "Demo (worktree)");
     }
 
     #[test]

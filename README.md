@@ -29,9 +29,9 @@
   `CLAUDE.md` и `docs/README.md`, слова из вашего списка в публичных репозиториях (файл `guard-words.txt` рядом с `anvil.toml`,
   в git не попадает), сборка на диске E:, CI закрытого репозитория не запускается сам. Только предупреждает; «Не давать
   выпускать при нарушениях» (Настройки → Кузница) закрывает шаг «Выпуск» мастера, пока есть нарушения.
-  «Ход работы» (значок часов над списком проектов): планы долгих задач из `~/.claude/progress` с полосой хода и этапами, сессии
+  «Ход работы» (меню «Другие виды» над списком проектов): планы долгих задач из `~/.claude/progress` с полосой хода и этапами, сессии
   Claude за сутки; когда план закончился — уведомление.
-  «Ресурсы и бюджет» (значок монитора): свободное место на дисках, SMART (что отдаёт Windows, без порогов), размер `target`
+  «Ресурсы и бюджет» (то же меню): свободное место на дисках, SMART (что отдаёт Windows, без порогов), размер `target`
   каждого проекта с кнопкой «Очистить», минуты GitHub Actions закрытых репозиториев за месяц (оценка) против вашего лимита.
   «Парк серверов»: записи `[[fleet]]` в `anvil.toml` (имя, группа, `probe = "tcp:хост:порт"` или адрес http, `update_cmd`,
   `rollback_cmd`) — жив ли, версия, задержка; «Обновить» и «Откатить» запускают ваши команды после подтверждения; серверы Amber
@@ -71,14 +71,14 @@ cargo run -p anvil-ui --example gallery --features demo
 Та же витрина — внутри Anvil: «Меню» → «Демо оформления…» (или `Ctrl+K`), отдельное окно со своими темой, языком и
 акцентом; закрыв его, Anvil возвращает ваши.
 
-Флаги: `--dark` / `--light`, `--en` / `--ru`, `--accent ember|amber|teal|rose|blue`,
-`--tab elements|deck|motion`, `--dialog` / `--settings` / `--about`.
+Флаги: `--dark` / `--light`, `--en` / `--ru`, `--accent violet|amber|teal|rose|blue`,
+`--tab elements|deck|motion`, `--reduced`, `--size WxH`, `--scroll px`, `--popup menu|more|select`, `--dialog` / `--settings` / `--about`.
 
 ## Подключение `anvil-ui`
 
 ```toml
 [dependencies]
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.3.0", features = ["serde"] }
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.9.1", features = ["serde"] }
 ```
 
 ```rust
@@ -111,7 +111,7 @@ chrome::content(ui, |ui| {
 
 ```toml
 [dependencies]
-anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.3.0" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.9.1" }
 ```
 
 ```rust
