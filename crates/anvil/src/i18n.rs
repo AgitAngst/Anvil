@@ -27,6 +27,11 @@ fn english() -> bool {
     ENGLISH.load(Ordering::Relaxed)
 }
 
+/// Сейчас английский.
+pub fn is_english() -> bool {
+    english()
+}
+
 /// Перевести строку. Нет перевода — остаётся русская (тест не даёт этому случиться).
 pub fn t(ru: &'static str) -> &'static str {
     if english() { EN.get(ru).copied().unwrap_or(ru) } else { ru }

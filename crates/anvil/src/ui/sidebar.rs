@@ -79,6 +79,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             if w::icon_button(ui, Icon::Tiles, t("Обзор проектов · Ctrl+0")).clicked() {
                 app.toggle_view();
             }
+            if w::icon_button(ui, Icon::Clock, t("Ход работы")).clicked() {
+                app.open_work();
+            }
         });
     });
     let fresh = app.new_repo_count();

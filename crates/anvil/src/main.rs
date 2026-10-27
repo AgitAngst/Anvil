@@ -33,6 +33,7 @@ mod sources;
 mod tasks;
 mod tray;
 mod ui;
+mod work;
 mod worker;
 
 use eframe::egui;

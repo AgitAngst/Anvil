@@ -73,6 +73,7 @@ enum Command {
     AddFolder,
     AddProject,
     Demo,
+    Work,
     Log,
     About,
     CheckUpdates,
@@ -1067,6 +1068,7 @@ fn forge_rows(app: &App, out: &mut Vec<Row>) {
         global(Icon::Gear, t("Настройки"), Some("Ctrl+,"), Command::Settings),
         global(Icon::Download, t("Проверить обновления Anvil"), None, Command::CheckUpdates),
         global(Icon::Layers, t("Демо оформления…"), None, Command::Demo),
+        global(Icon::Clock, t("Ход работы"), None, Command::Work),
         global(Icon::Info, t("О программе"), None, Command::About),
     ]);
 }
@@ -1159,6 +1161,7 @@ fn run(app: &mut App, ctx: &egui::Context, command: Command) {
         Command::Log => app.log_open = !app.log_open,
         Command::About => app.about_open = true,
         Command::Demo => app.open_demo(),
+        Command::Work => app.open_work(),
         Command::CheckUpdates => app.updater.check(app.config.common.prerelease, None, true),
     }
     if quick && !opens_window {

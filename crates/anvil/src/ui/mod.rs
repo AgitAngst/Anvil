@@ -18,6 +18,7 @@ mod project;
 pub mod release;
 mod settings;
 mod sidebar;
+mod work;
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
 use anvil_ui::widgets as w;
@@ -68,6 +69,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             (Mode::Deck, _) => deck::show(app, ui, &deck),
             (Mode::Forge, View::Project) => project::show(app, ui),
             (Mode::Forge, View::Overview) => overview::show(app, ui),
+            (Mode::Forge, View::Work) => work::show(app, ui),
         }
     });
 

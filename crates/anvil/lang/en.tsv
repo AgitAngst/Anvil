@@ -743,3 +743,16 @@ CI закрытого репозитория запускается сам	CI of
 Нарушений правил:	Rule violations:
 Исправьте их на вкладке «Правила» или отключите блокировку в настройках.	Fix them on the Rules tab or turn the block off in Settings.
 Страж правил не пускает выпуск	The rule guard blocks the release
+Ход работы	Progress
+Перечитать	Reload
+Прочитано	Read
+Планы пишет скилл progress в папку .claude/progress, сессии берутся из .claude/projects.	Plans are written by the progress skill into .claude/progress; sessions come from .claude/projects.
+Читаю…	Reading…
+Планов нет	No plans
+Долгая задача с планом появится здесь, пока идёт, и ещё сутки после конца.	A long task with a plan shows up here while it runs and for a day after it ends.
+Сессии Claude за сутки	Claude sessions in the last day
+Сессий за последние сутки нет.	No sessions in the last day.
+упала	failed
+осталось ≈	left ≈
+без названия	untitled
+Долгая задача кончилась	A long task has finished

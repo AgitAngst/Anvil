@@ -42,6 +42,8 @@ pub enum Tab {
 pub enum View {
     Project,
     Overview,
+    /// Ход работы: планы долгих задач и сессии Claude.
+    Work,
 }
 
 /// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
@@ -173,6 +175,12 @@ pub struct App {
     /// CI и выпуски проектов на GitHub.
     pub remotes: Remotes,
     pub gh_auth: Option<Auth>,
+    /// Ход работы: последний снимок планов и сессий; читается в потоке.
+    pub work: Option<crate::work::Snapshot>,
+    work_busy: bool,
+    work_last: Option<Instant>,
+    work_tx: Sender<crate::work::Snapshot>,
+    work_rx: Receiver<crate::work::Snapshot>,
     /// Страж правил: итог последней проверки проекта и какие проверяются сейчас.
     pub guard: HashMap<PathBuf, guard::Report>,
     pub guard_busy: std::collections::HashSet<PathBuf>,
@@ -324,6 +332,7 @@ impl App {
             crate::hotkey::Hotkey::spawn(crate::hotkey::Combo::parse(&config.quick.hotkey), wake(&cc.egui_ctx));
         let (clone_tx, clone_rx) = std::sync::mpsc::channel();
         let (guard_tx, guard_rx) = std::sync::mpsc::channel();
+        let (work_tx, work_rx) = std::sync::mpsc::channel();
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -372,6 +381,11 @@ impl App {
             presets_for: None,
             remotes: Remotes::new(),
             gh_auth: None,
+            work: None,
+            work_busy: false,
+            work_last: None,
+            work_tx,
+            work_rx,
             guard: HashMap::new(),
             guard_busy: Default::default(),
             guard_private: HashMap::new(),
@@ -585,6 +599,60 @@ impl App {
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
     }
 
+    /// Открыть «Ход работы» в Кузнице.
+    pub fn open_work(&mut self) {
+        self.set_mode(Mode::Forge);
+        self.view = View::Work;
+        self.refresh_work();
+    }
+
+    /// Перечитать планы и сессии в потоке.
+    pub fn refresh_work(&mut self) {
+        let Some(claude) = crate::work::claude_dir() else { return };
+        if self.work_busy {
+            return;
+        }
+        self.work_busy = true;
+        self.work_last = Some(Instant::now());
+        let (tx, ctx) = (self.work_tx.clone(), self.ctx.clone());
+        let spawned = std::thread::Builder::new().name("anvil-work".into()).spawn(move || {
+            let _ = tx.send(crate::work::read(&claude));
+            ctx.request_repaint();
+        });
+        if spawned.is_err() {
+            self.work_busy = false;
+        }
+    }
+
+    /// Окно открыто — каждые 5 с; закрыто — раз в 30 с, чтобы заметить конец задачи.
+    fn work_tick(&mut self, ctx: &egui::Context) {
+        let open = self.mode == Mode::Forge && self.view == View::Work;
+        let every = Duration::from_secs(if open { 5 } else { 30 });
+        if open {
+            ctx.request_repaint_after(every);
+        }
+        if !self.work_busy && self.work_last.is_none_or(|at| at.elapsed() >= every) {
+            self.refresh_work();
+        }
+    }
+
+    fn apply_work(&mut self, snapshot: crate::work::Snapshot) {
+        self.work_busy = false;
+        if let Some(old) = &self.work {
+            let english = i18n::is_english();
+            for plan in snapshot.plans.iter().filter(|p| p.finished) {
+                let was_running =
+                    old.plans.iter().any(|o| o.project == plan.project && !o.finished && o.created_same(plan));
+                if was_running {
+                    let title = plan.title(english).to_owned();
+                    self.toasts.push(format!("{title} — {}", t("готово")), Tone::Success);
+                    self.notifier.job_done(title, t("Долгая задача кончилась").to_owned(), Duration::from_secs(3600));
+                }
+            }
+        }
+        self.work = Some(snapshot);
+    }
+
     /// Видимость репозитория проекта: слово владельца, иначе ответ GitHub.
     fn guard_private_of(&self, path: &Path) -> Option<bool> {
         sources::is_private(&self.config, path, self.remotes.get(path))
@@ -756,6 +824,10 @@ impl App {
             self.guard.insert(path, report);
         }
         self.guard_tick();
+        while let Ok(snapshot) = self.work_rx.try_recv() {
+            self.apply_work(snapshot);
+        }
+        self.work_tick(ctx);
         // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
         let targets = github::targets(&self.projects, &self.config);
         if targets != self.gh_targets {
@@ -865,7 +937,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview => View::Project,
+            View::Overview | View::Work => View::Project,
         };
     }
 
