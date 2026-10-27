@@ -18,6 +18,7 @@ use crate::installs::{self, Installed};
 use crate::jobs::{self, JobId};
 use crate::procs::{self, Running, Snapshot};
 use crate::registry;
+use crate::sources;
 use crate::tasks::{self, Job, Locked, Resolve, Task, UnitsCache};
 use crate::worker::{self, Busy, Cmd, Event, Project};
 
@@ -168,6 +169,10 @@ pub struct App {
     /// CI и выпуски проектов на GitHub.
     pub remotes: Remotes,
     pub gh_auth: Option<Auth>,
+    /// Окно «Добавить проект»: репозитории аккаунта, клонирование.
+    pub sources: sources::State,
+    clone_tx: Sender<sources::Cloned>,
+    clone_rx: Receiver<sources::Cloned>,
     /// Зависимости проектов: итог последней проверки.
     pub deps: HashMap<PathBuf, deps::Report>,
     /// Какой проект сейчас проверяется.
@@ -306,6 +311,7 @@ impl App {
         let tray = crate::tray::Tray::new(tray_tx, cc.egui_ctx.clone(), Vec::new()).ok();
         let hotkey =
             crate::hotkey::Hotkey::spawn(crate::hotkey::Combo::parse(&config.quick.hotkey), wake(&cc.egui_ctx));
+        let (clone_tx, clone_rx) = std::sync::mpsc::channel();
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -353,6 +359,9 @@ impl App {
             presets_for: None,
             remotes: Remotes::new(),
             gh_auth: None,
+            sources: sources::State::default(),
+            clone_tx,
+            clone_rx,
             deps: HashMap::new(),
             deps_busy: None,
             toolchain: None,
@@ -462,6 +471,95 @@ impl App {
         let _ = self.gh_commands.send(github::Cmd::SetToken(token));
     }
 
+    /// Открыть «Добавить проект» на вкладке по умолчанию: «С GitHub», если есть вход, иначе «Папка».
+    pub fn open_add_project_default(&mut self) {
+        let signed_in = self.gh_auth.as_ref().is_some_and(|a| a.login.is_some());
+        self.open_add_project(if signed_in { 0 } else { 1 });
+    }
+
+    /// Окно «Добавить проект» на вкладке: 0 — с GitHub, 1 — папка, 2 — адрес.
+    pub fn open_add_project(&mut self, tab: usize) {
+        self.sources.open = true;
+        self.sources.tab = tab;
+        self.sources.error = None;
+        if tab == 0 && self.sources.account.as_ref().is_none_or(Result::is_err) && !self.sources.loading {
+            self.list_account();
+        }
+        if tab == 0 {
+            self.mark_account_seen();
+        }
+    }
+
+    /// Спросить у GitHub список репозиториев аккаунта.
+    pub fn list_account(&mut self) {
+        self.sources.loading = true;
+        let _ = self.gh_commands.send(github::Cmd::ListRepos);
+    }
+
+    fn apply_repos(&mut self, repos: Result<Vec<github::AccountRepo>, String>) {
+        self.sources.loading = false;
+        if let Ok(list) = &repos
+            && self.config.seen_repos.is_none()
+        {
+            // Первый список — точка отсчёта: «новыми» считаются только те, что появятся после него.
+            self.config.seen_repos = Some(sources::slugs(list));
+            self.save();
+        }
+        self.sources.account = Some(repos);
+        if self.sources.open && self.sources.tab == 0 {
+            self.mark_account_seen();
+        }
+    }
+
+    /// Всё, что сейчас в списке аккаунта, считается показанным владельцу.
+    pub fn mark_account_seen(&mut self) {
+        let Some(Ok(list)) = &self.sources.account else { return };
+        let slugs = sources::slugs(list);
+        if self.config.seen_repos.as_ref() != Some(&slugs) {
+            self.config.seen_repos = Some(slugs);
+            self.save();
+        }
+    }
+
+    /// Сколько репозиториев аккаунта появилось с прошлого просмотра и ещё не лежит на диске.
+    pub fn new_repo_count(&self) -> usize {
+        match &self.sources.account {
+            Some(Ok(list)) => sources::new_repos(&self.config, list, &self.projects).len(),
+            _ => 0,
+        }
+    }
+
+    /// Клонировать репозиторий в папку клонов.
+    pub fn start_clone(&mut self, repo: github::Repo) {
+        if self.sources.cloning.is_some() {
+            return;
+        }
+        let Some(root) = sources::clone_root(&self.config) else {
+            self.sources.error = Some(t("Сначала добавьте папку с проектами: в неё Anvil клонирует.").to_owned());
+            return;
+        };
+        self.sources.error = None;
+        self.sources.cloning = Some(repo.clone());
+        sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
+    }
+
+    fn apply_cloned(&mut self, done: sources::Cloned) {
+        self.sources.cloning = None;
+        match done.result {
+            Ok(path) => {
+                // Клон лёг вне папок поиска — сама папка становится корнем, чтобы проект был найден.
+                if !self.config.roots.iter().any(|r| registry::same_dir(r, &path) || path.starts_with(r)) {
+                    self.config.roots.push(path);
+                    self.save();
+                }
+                self.sources.address.clear();
+                self.toasts.push(format!("{} {}", done.repo.slug(), t("склонирован")), Tone::Success);
+                self.rescan();
+            }
+            Err(e) => self.sources.error = Some(format!("{}: {e}", done.repo.slug())),
+        }
+    }
+
     pub fn fetch(&mut self) {
         self.last_fetch = Instant::now();
         let _ = self.commands.send(Cmd::Fetch);
@@ -510,7 +608,15 @@ impl App {
                 github::Event::Remote(path, remote) => {
                     self.remotes.insert(path, *remote);
                 }
-                github::Event::Auth(auth) => self.gh_auth = Some(auth),
+                github::Event::Auth(auth) => {
+                    // Токен есть — список репозиториев аккаунта читается сам, один раз за запуск.
+                    let signed_in = auth.source != github::TokenSource::None && auth.login.is_some();
+                    self.gh_auth = Some(auth);
+                    if signed_in && self.sources.account.is_none() && !self.sources.loading {
+                        self.list_account();
+                    }
+                }
+                github::Event::Repos(repos) => self.apply_repos(repos),
                 github::Event::Watch(path, watch) => {
                     self.watches.insert(path, *watch);
                 }
@@ -519,6 +625,9 @@ impl App {
                     self.toasts.push(format!("{}: {e}", t("Токен не сохранён")), Tone::Danger)
                 }
             }
+        }
+        while let Ok(done) = self.clone_rx.try_recv() {
+            self.apply_cloned(done);
         }
         // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
         let targets = github::targets(&self.projects, &self.config);

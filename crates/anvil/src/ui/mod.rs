@@ -1,5 +1,6 @@
 //! Отрисовка окна. Каждая часть — в своём файле.
 
+mod add_project;
 mod amber;
 mod deck;
 pub mod deps;
@@ -69,6 +70,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     });
 
     settings::show(app, &ctx);
+    add_project::show(app, &ctx);
     presets::show(app, &ctx);
     release::show(app, &ctx);
     dialogs::show(app, &ctx);

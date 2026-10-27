@@ -16,7 +16,6 @@ origin не ответил у	origin did not respond for
 Всё закоммичено	Everything is committed
 Всё закоммичено и отправлено	Everything committed and pushed
 Дерево	Tree
-Добавить папку с проектами	Add a folder with projects
 Добавить папку…	Add folder…
 Добавьте папку, в которой лежат проекты на Rust: Anvil найдёт в ней всё, где есть Cargo.toml.	Add a folder with your Rust projects: Anvil will find everything that has a Cargo.toml.
 Ещё	More
@@ -669,3 +668,42 @@ Git (просто репозиторий)	Git (just a repository)
 Писать ли вывод в файл — Настройки → Запуск → «Писать вывод».	Whether output is saved to a file: Settings → Launch → Save output.
 Пишется вывод всех запусков — и установленных программ, и игр. На запуск — до двух файлов по 5 МБ.	Output of every run is saved — installed programs and games too. Up to two files of 5 MB per run.
 не на Пульте	not on the Deck
+закрытый	private
+публичный	public
+Репозиторий	Repository
+видимость не известна	visibility unknown
+Авто	Auto
+Публичный	Public
+Закрытый	Private
+Добавить проект…	Add project…
+Добавить проект	Add project
+Папка	Folder
+Адрес	Address
+Нужен токен GitHub	A GitHub token is needed
+Добавьте его в Настройки → Кузница: Anvil покажет ваши репозитории и сможет их клонировать.	Add it in Settings → Forge: Anvil will list your repositories and be able to clone them.
+Открыть настройки	Open settings
+GitHub не отдал список	GitHub did not return the list
+Повторить	Retry
+GitHub отклонил токен: проверьте его в Настройки → Кузница.	GitHub rejected the token: check it in Settings → Forge.
+Достигнут лимит запросов GitHub: попробуйте позже.	GitHub request limit reached: try again later.
+Список ещё не загружен.	The list is not loaded yet.
+Найти репозиторий	Find a repository
+Обновить список	Refresh the list
+Ничего не найдено.	Nothing found.
+форк	fork
+Подключён	Connected
+Клонирую…	Cloning…
+Клонировать	Clone
+Папка с проектом	Project folder
+Выберите папку проекта или папку, в которой лежат проекты: Anvil найдёт в ней Rust, Godot и Unity.	Choose a project folder or a folder that holds projects: Anvil finds Rust, Godot and Unity in it.
+Выбрать папку…	Choose a folder…
+Адрес репозитория	Repository address
+https://github.com/владелец/репозиторий или владелец/репозиторий	https://github.com/owner/repository or owner/repository
+Не похоже на адрес репозитория GitHub.	That does not look like a GitHub repository address.
+Клонируется в:	Clones into:
+папка не выбрана	no folder chosen
+Папка клонов	Clone folder
+Не удалось клонировать	Could not clone
+Сначала добавьте папку с проектами: в неё Anvil клонирует.	Add a projects folder first: Anvil clones into it.
+склонирован	cloned
+Новых репозиториев:	New repositories:

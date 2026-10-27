@@ -7,6 +7,7 @@ use anvil_ui::{Icon, Kind, Palette, Tone, semibold};
 use eframe::egui::{self, RichText, Ui};
 
 use crate::app::{App, Tab};
+use crate::config::Visibility;
 use crate::git::{Change, GitState};
 use crate::i18n::{self, t};
 use crate::open;
@@ -36,6 +37,14 @@ enum Action {
     AmberAdmin,
     /// Вернуться на Пульт — к предмету этого проекта.
     ToDeck,
+    /// Задать видимость репозитория руками (`None` — по ответу GitHub).
+    SetVisibility(Option<Visibility>),
+}
+
+/// Закрытый ли репозиторий: что известно и что задано руками.
+struct Vis {
+    private: Option<bool>,
+    manual: Option<Visibility>,
 }
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -47,7 +56,11 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let remote = app.remotes.get(&project.path).cloned();
     // Сборка, запуск, установка и зависимости — только у проектов на Rust; у остальных — git и GitHub.
     let rust = project.kind == ProjectKind::Rust;
-    header(ui, &project, remote.as_ref(), &mut actions);
+    let vis = Vis {
+        private: crate::sources::is_private(&app.config, &project.path, remote.as_ref()),
+        manual: app.config.project(&project.path).visibility,
+    };
+    header(ui, &project, remote.as_ref(), &vis, &mut actions);
     ui.add_space(12.0);
     if rust {
         toolbar(ui, app, &project, &mut actions);
@@ -63,13 +76,13 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
     if rust {
         ui.columns(3, |cols| {
-            git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
+            git_card(&mut cols[0], &project, remote.as_ref(), &vis, &mut actions);
             version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
             bins_card(&mut cols[2], app, &project, &mut actions);
         });
     } else {
         ui.columns(2, |cols| {
-            git_card(&mut cols[0], &project, remote.as_ref(), &mut actions);
+            git_card(&mut cols[0], &project, remote.as_ref(), &vis, &mut actions);
             version_card(&mut cols[1], &project, remote.as_ref(), &mut actions);
         });
     }
@@ -167,6 +180,10 @@ fn run(app: &mut App, ctx: &egui::Context, dir: &Path, action: Action) {
         }
         Action::Release => app.open_release(dir),
         Action::AmberAdmin => app.open_amber_admin(dir),
+        Action::SetVisibility(visibility) => {
+            app.config.project_mut(dir).visibility = visibility;
+            app.save();
+        }
         // Выбор общий: на Пульте встаёт строка этого проекта (та же, с которой пришли, если она его).
         Action::ToDeck => app.set_mode(crate::app::Mode::Deck),
         Action::Install(action) => {
@@ -208,7 +225,13 @@ fn empty(app: &mut App, ui: &mut Ui) {
     });
 }
 
-fn header(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>, actions: &mut Vec<Action>) {
+fn header(
+    ui: &mut Ui,
+    project: &Project,
+    remote: Option<&crate::github::Remote>,
+    vis: &Vis,
+    actions: &mut Vec<Action>,
+) {
     let p = Palette::of(ui);
     let meta = project.meta();
     let git = project.git();
@@ -239,6 +262,7 @@ fn header(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>
                     w::badge(ui, project.kind.label(), Tone::Accent);
                 }
                 super::github::ci_badge(ui, remote);
+                super::github::visibility_badge(ui, vis.private);
             });
             ui.horizontal(|ui| {
                 if let Some(description) = meta.and_then(|m| m.description.as_deref()) {
@@ -427,7 +451,13 @@ fn problems(ui: &mut Ui, project: &Project) {
 const COMMITS_RU: [&str; 3] = ["коммит", "коммита", "коммитов"];
 const COMMITS_EN: [&str; 2] = ["commit", "commits"];
 
-fn git_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remote>, actions: &mut Vec<Action>) {
+fn git_card(
+    ui: &mut Ui,
+    project: &Project,
+    remote: Option<&crate::github::Remote>,
+    vis: &Vis,
+    actions: &mut Vec<Action>,
+) {
     let p = Palette::of(ui);
     w::card(ui, |ui| {
         w::card_title(ui, Icon::Branch, "Git");
@@ -487,6 +517,11 @@ fn git_card(ui: &mut Ui, project: &Project, remote: Option<&crate::github::Remot
         let head = git.commits.first().map(|c| c.full.as_str());
         if let Some(url) = super::github::ci_row(ui, remote, head) {
             actions.push(Action::Url(url));
+        }
+        if git.github().is_some()
+            && let Some(manual) = super::github::visibility_row(ui, vis.private, vis.manual)
+        {
+            actions.push(Action::SetVisibility(manual));
         }
     });
 }

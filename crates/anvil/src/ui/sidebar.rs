@@ -69,14 +69,24 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         ui.add_space(6.0);
         w::section_label(ui, t("Проекты"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if w::icon_button(ui, Icon::Plus, t("Добавить папку с проектами")).clicked() {
-                super::settings::add_root(app);
+            if w::icon_button(ui, Icon::Plus, t("Добавить проект…")).clicked() {
+                app.open_add_project_default();
             }
             if w::icon_button(ui, Icon::Tiles, t("Обзор проектов · Ctrl+0")).clicked() {
                 app.toggle_view();
             }
         });
     });
+    let fresh = app.new_repo_count();
+    if fresh > 0 {
+        ui.horizontal(|ui| {
+            ui.add_space(6.0);
+            let text = format!("{} {fresh}", t("Новых репозиториев:"));
+            if w::button(ui, anvil_ui::Kind::Ghost, Some(Icon::Download), &text).clicked() {
+                app.open_add_project(0);
+            }
+        });
+    }
     ui.add_space(4.0);
 
     let visible: Vec<Row> = app

@@ -16,6 +16,11 @@ pub struct Config {
     pub roots: Vec<PathBuf>,
     /// Проекты, скрытые из списка (полные пути).
     pub hidden: Vec<PathBuf>,
+    /// Куда клонировать репозитории из окна «Добавить проект». Не задана — первая из папок поиска.
+    pub clone_dir: Option<PathBuf>,
+    /// Репозитории аккаунта (`owner/name` в нижнем регистре), о которых владельцу уже сказано: «новые» — не из этого списка.
+    /// `None` — список аккаунта ещё ни разу не читали: первый ответ становится точкой отсчёта.
+    pub seen_repos: Option<Vec<String>>,
     /// Как часто спрашивать origin, минут; 0 — только по кнопке.
     pub fetch_minutes: u32,
     /// Последний выбранный проект.
@@ -154,6 +159,16 @@ pub struct ProjectSettings {
     pub releases: Option<String>,
     /// Значок проекта Godot или Unity на Пульте: `cube`, `gamepad`, `target`, `layers`.
     pub icon: Option<String>,
+    /// Публичный или закрытый репозиторий, если владелец задал руками; иначе — по ответу GitHub.
+    pub visibility: Option<Visibility>,
+}
+
+/// Видимость репозитория на GitHub.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    Public,
+    Private,
 }
 
 /// Профиль запуска (в 0.2 — «пресет»): какой бинарник, откуда и с какими аргументами.
@@ -211,6 +226,8 @@ impl Default for Config {
         Self {
             roots: Vec::new(),
             hidden: Vec::new(),
+            clone_dir: None,
+            seen_repos: None,
             fetch_minutes: 15,
             selected: None,
             build_jobs: 0,
@@ -349,6 +366,18 @@ kinds = ['rust']",
         let preset = &config.project(Path::new(r"D:\x")).presets[0];
         assert_eq!(preset.source, Source::Code);
         assert_eq!(preset.port(), Some(18731));
+    }
+
+    #[test]
+    fn visibility_and_clone_dir_round_trip() {
+        let mut config = Config { clone_dir: Some(PathBuf::from(r"E:\src")), ..Config::default() };
+        config.project_mut(Path::new(r"E:\src\x")).visibility = Some(Visibility::Private);
+        let text = toml::to_string_pretty(&config).unwrap();
+        assert!(text.contains("visibility = \"private\""));
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back, config);
+        assert_eq!(back.project(Path::new(r"E:\SRC\X")).visibility, Some(Visibility::Private));
+        assert_eq!(Config::default().project(Path::new("x")).visibility, None);
     }
 
     #[test]

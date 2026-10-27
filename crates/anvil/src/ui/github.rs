@@ -5,6 +5,7 @@ use anvil_ui::{Icon, Kind, Palette, Tone, semibold};
 use eframe::egui::{self, RichText, Ui};
 
 use crate::app::App;
+use crate::config::Visibility;
 use crate::github::{Auth, CiRun, Release, Remote, RunState, TokenSource};
 use crate::i18n::{self, t};
 
@@ -33,6 +34,38 @@ pub fn ci_badge(ui: &mut Ui, remote: Option<&Remote>) {
     if let Some(run) = remote.and_then(Remote::latest) {
         w::badge(ui, &format!("CI {}", run_label(run.state)), run_tone(run.state)).on_hover_text(&run.workflow);
     }
+}
+
+/// Бейдж «публичный / закрытый» рядом с названием проекта; пока не известно — ничего.
+pub fn visibility_badge(ui: &mut Ui, private: Option<bool>) {
+    match private {
+        Some(true) => w::badge(ui, t("закрытый"), Tone::Neutral),
+        Some(false) => w::badge(ui, t("публичный"), Tone::Neutral),
+        None => return,
+    };
+}
+
+/// Строка «Репозиторий» в карточке Git: что известно и выбор руками. Вернёт новый выбор, если его сменили.
+pub fn visibility_row(ui: &mut Ui, private: Option<bool>, manual: Option<Visibility>) -> Option<Option<Visibility>> {
+    let mut choice = manual;
+    w::field_row(ui, t("Репозиторий"), |ui| {
+        visibility_badge(ui, private);
+        if private.is_none() {
+            w::note(ui, t("видимость не известна"));
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            w::segmented(
+                ui,
+                &mut choice,
+                &[
+                    (None, None, t("Авто")),
+                    (Some(Visibility::Public), None, t("Публичный")),
+                    (Some(Visibility::Private), None, t("Закрытый")),
+                ],
+            );
+        });
+    });
+    (choice != manual).then_some(choice)
 }
 
 /// Строка «CI» в карточке Git. Возвращает адрес, если по нему щёлкнули.

@@ -27,6 +27,8 @@ const POLL_EVERY: Duration = Duration::from_secs(5 * 60);
 /// Слежение за выпуском: как часто и сколько всего.
 const WATCH_EVERY: Duration = Duration::from_secs(15);
 const WATCH_FOR: Duration = Duration::from_secs(30 * 60);
+/// Сколько страниц репозиториев аккаунта читать (по 100 на странице).
+const MAX_REPO_PAGES: u32 = 5;
 
 /// Репозиторий на GitHub: `owner/name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -131,6 +133,8 @@ pub struct Remote {
     pub error: Option<String>,
     /// Выпуски взяты не из репозитория проекта, а отсюда (`owner/name`).
     pub releases_from: Option<String>,
+    /// Закрытый ли репозиторий (по ответу GitHub); `None` — ещё не знаем.
+    pub private: Option<bool>,
 }
 
 impl Remote {
@@ -147,6 +151,16 @@ pub enum TokenSource {
     /// Тот же, что у git (Git Credential Manager).
     Git,
     None,
+}
+
+/// Репозиторий аккаунта в окне «Добавить проект».
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountRepo {
+    pub repo: Repo,
+    pub private: bool,
+    pub description: Option<String>,
+    pub fork: bool,
+    pub archived: bool,
 }
 
 /// Состояние входа: откуда токен и кто под ним.
@@ -179,6 +193,8 @@ pub enum Cmd {
     Refresh,
     /// Сохранить свой токен (`None` — забыть) и перечитать всё.
     SetToken(Option<String>),
+    /// Спросить список репозиториев аккаунта (владелец и организации).
+    ListRepos,
 }
 
 pub enum Event {
@@ -187,6 +203,8 @@ pub enum Event {
     Auth(Auth),
     /// Чем кончилось сохранение токена: `Ok` или текст ошибки.
     TokenSaved(Result<(), String>),
+    /// Репозитории аккаунта или причина, почему списка нет.
+    Repos(Result<Vec<AccountRepo>, String>),
 }
 
 /// `cache_dir` — куда класть последнее известное (`github.json`).
@@ -274,6 +292,11 @@ impl Hub {
                     continue;
                 }
                 Ok(Cmd::Refresh) => {}
+                Ok(Cmd::ListRepos) => {
+                    let repos = self.list_repos();
+                    self.send(Event::Repos(repos));
+                    continue;
+                }
                 Ok(Cmd::SetToken(token)) => {
                     let result = store_token(token.as_deref());
                     self.send(Event::TokenSaved(result));
@@ -307,6 +330,25 @@ impl Hub {
         self.send(Event::Auth(auth));
     }
 
+    /// Репозитории аккаунта: свои и организаций, где состоит владелец токена. До 5 страниц по 100.
+    fn list_repos(&self) -> Result<Vec<AccountRepo>, String> {
+        if self.token.is_none() {
+            return Err("no token".to_owned());
+        }
+        let mut all = Vec::new();
+        for page in 1..=MAX_REPO_PAGES {
+            let path =
+                format!("/user/repos?per_page=100&sort=pushed&affiliation=owner,organization_member&page={page}");
+            let (items, _) = self.get::<Vec<ApiRepoItem>>(&path)?;
+            let last = items.len() < 100;
+            all.extend(items.into_iter().filter_map(AccountRepo::from_api));
+            if last {
+                break;
+            }
+        }
+        Ok(all)
+    }
+
     fn poll_watches(&mut self) {
         let mut finished = Vec::new();
         for (i, Watching { path, repo, releases, tag, started }) in self.watches.iter().enumerate() {
@@ -336,6 +378,9 @@ impl Hub {
 
     fn poll(&mut self, target: &Target) {
         let mut remote = self.remote(target);
+        if remote.private.is_none() {
+            remote.private = self.known.get(&target.path).and_then(|old| old.private);
+        }
         match self.known.get(&target.path) {
             // Не достучались — показать прежнее с ошибкой, а не пустоту.
             Some(old) if remote.error.is_some() && remote.runs.is_empty() && remote.releases.is_empty() => {
@@ -352,6 +397,7 @@ impl Hub {
     fn remote(&self, target: &Target) -> Remote {
         let repo = format!("/repos/{}/{}", target.repo.owner, target.repo.name);
         let mut remote = Remote { checked: crate::i18n::now(), ..Remote::default() };
+        remote.private = self.get::<ApiRepoInfo>(&repo).ok().map(|(info, _)| info.private);
         let branch = target.branch.as_deref().map(|b| format!("&branch={}", encode(b))).unwrap_or_default();
         match self.get::<Runs>(&format!("{repo}/actions/runs?per_page=10{branch}")) {
             Ok((runs, _)) => remote.runs = runs.workflow_runs.into_iter().map(CiRun::from).collect(),
@@ -526,6 +572,34 @@ fn git_credential() -> Option<String> {
 #[derive(Deserialize)]
 struct User {
     login: String,
+}
+
+#[derive(Deserialize)]
+struct ApiRepoInfo {
+    private: bool,
+}
+
+#[derive(Deserialize)]
+struct ApiRepoItem {
+    full_name: String,
+    private: bool,
+    description: Option<String>,
+    #[serde(default)]
+    fork: bool,
+    #[serde(default)]
+    archived: bool,
+}
+
+impl AccountRepo {
+    fn from_api(item: ApiRepoItem) -> Option<AccountRepo> {
+        Some(AccountRepo {
+            repo: Repo::from_slug(&item.full_name)?,
+            private: item.private,
+            description: item.description.filter(|d| !d.trim().is_empty()),
+            fork: item.fork,
+            archived: item.archived,
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -748,6 +822,22 @@ mod tests {
             encode("feature/новая ветка"),
             "feature%2F%D0%BD%D0%BE%D0%B2%D0%B0%D1%8F%20%D0%B2%D0%B5%D1%82%D0%BA%D0%B0"
         );
+    }
+
+    #[test]
+    fn account_repos_parse() {
+        let items: Vec<ApiRepoItem> = serde_json::from_str(
+            r#"[{"full_name":"o/open","private":false,"description":"Open one","fork":false,"archived":false},
+            {"full_name":"o/closed","private":true,"description":"","fork":true},
+            {"full_name":"broken","private":false,"description":null}]"#,
+        )
+        .unwrap();
+        let repos: Vec<AccountRepo> = items.into_iter().filter_map(AccountRepo::from_api).collect();
+        assert_eq!(repos.len(), 2);
+        assert!(!repos[0].private && repos[0].description.as_deref() == Some("Open one"));
+        assert!(repos[1].private && repos[1].fork && repos[1].description.is_none() && !repos[1].archived);
+        let info: ApiRepoInfo = serde_json::from_str(r#"{"private":true,"id":1}"#).unwrap();
+        assert!(info.private);
     }
 
     #[test]

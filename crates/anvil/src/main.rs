@@ -28,6 +28,7 @@ mod release;
 mod run;
 mod runs;
 mod rustsec;
+mod sources;
 mod tasks;
 mod tray;
 mod ui;
