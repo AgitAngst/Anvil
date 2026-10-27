@@ -100,6 +100,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         t("Зависимости").to_owned()
     };
+    let rules_label = super::guard::label(app.guard.get(&project.path));
     let all = [
         (Tab::Commits, t("Коммиты")),
         (Tab::Changes, changes_label.as_str()),
@@ -107,6 +108,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         (Tab::Releases, t("Выпуски")),
         (Tab::Install, t("Установка")),
         (Tab::Deps, deps_label.as_str()),
+        (Tab::Rules, rules_label.as_str()),
         (Tab::Notes, t("Заметки")),
     ];
     let (order, tabs): (Vec<Tab>, Vec<&str>) =
@@ -118,6 +120,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let on_github = project.git().and_then(GitState::github).is_some();
     let head = project.git().and_then(|g| g.commits.first()).map(|c| c.full.clone());
     let mut deps_actions = Vec::new();
+    let mut guard_actions = Vec::new();
     let opened = match app.tab {
         Tab::Commits => {
             commits(ui, &project);
@@ -137,6 +140,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             deps_actions = super::deps::tab(app, ui, &project);
             None
         }
+        Tab::Rules => {
+            guard_actions = super::guard::tab(app, ui, &project);
+            None
+        }
         Tab::Notes => {
             notes(ui, &project, &mut actions);
             None
@@ -151,6 +158,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     }
     for action in deps_actions {
         super::deps::run(app, ui.ctx(), action);
+    }
+    for action in guard_actions {
+        super::guard::run(app, action);
     }
 }
 

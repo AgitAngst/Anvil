@@ -564,8 +564,19 @@ fn publish_step(app: &mut App, ui: &mut Ui, project: &Project) -> Option<Act> {
     let cargo = project.meta().and_then(|m| m.version.clone());
     let tag = project.git().and_then(|g| g.last_tag.clone());
     let base = release::base(cargo.as_deref(), tag.as_deref());
+    let violations = app.guard.get(&project.path).map_or(0, |g| g.violations());
+    let blocked = app.config.guard.block_release && violations > 0;
     let w = app.release.as_mut()?;
     let version = target_version(w, &base).ok()?;
+    if blocked {
+        let text = format!(
+            "{} {violations}. {}",
+            t("Нарушений правил:"),
+            t("Исправьте их на вкладке «Правила» или отключите блокировку в настройках.")
+        );
+        w::banner(ui, Tone::Danger, t("Страж правил не пускает выпуск"), &text, |_| {});
+        ui.add_space(8.0);
+    }
     w::note(ui, mode_text(w.mode));
     ui.add_space(6.0);
     if w.mode != Mode::Ci {
@@ -590,7 +601,7 @@ fn publish_step(app: &mut App, ui: &mut Ui, project: &Project) -> Option<Act> {
             "Сборка — до коммита и тега: если она не пройдёт, наружу ничего не уйдёт, а правки Cargo.toml останутся в рабочей копии.",
         ),
     );
-    let any = w.mode == Mode::Ci || w.bins.iter().any(|(_, on)| *on);
+    let any = !blocked && (w.mode == Mode::Ci || w.bins.iter().any(|(_, on)| *on));
     let mut act = footer(ui, true, None);
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

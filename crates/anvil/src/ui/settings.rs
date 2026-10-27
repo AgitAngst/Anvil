@@ -561,6 +561,8 @@ fn forge(app: &mut App, ui: &mut Ui) {
     ui.add_space(12.0);
     build(app, ui);
     ui.add_space(12.0);
+    super::guard::settings(app, ui);
+    ui.add_space(12.0);
     super::github::settings(app, ui);
 }
 

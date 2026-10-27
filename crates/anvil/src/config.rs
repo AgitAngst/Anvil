@@ -37,6 +37,8 @@ pub struct Config {
     pub projects: BTreeMap<String, ProjectSettings>,
     /// Пульт: закреплённое, убранное, когда что запускали.
     pub deck: DeckSettings,
+    /// Страж правил: проверять ли и блокировать ли выпуск.
+    pub guard: GuardSettings,
     /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
     pub godot: Option<PathBuf>,
     /// Быстрый запуск: сочетание, закрывать ли после запуска, искать ли в другой раскладке.
@@ -50,6 +52,22 @@ pub struct Config {
     #[serde(default)]
     pub version: u32,
     pub common: CommonSettings,
+}
+
+/// Страж правил (`guard.rs`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuardSettings {
+    /// Проверять правила проектов.
+    pub enabled: bool,
+    /// Мастер выпуска не пускает дальше, пока у проекта есть нарушения.
+    pub block_release: bool,
+}
+
+impl Default for GuardSettings {
+    fn default() -> Self {
+        Self { enabled: true, block_release: false }
+    }
 }
 
 /// Быстрый запуск (§7.5): глобальное сочетание и как он себя ведёт.
@@ -236,6 +254,7 @@ impl Default for Config {
             kinds: vec!["rust".to_owned(), "godot".to_owned(), "unity".to_owned()],
             projects: BTreeMap::new(),
             deck: DeckSettings::default(),
+            guard: GuardSettings::default(),
             godot: None,
             quick: QuickSettings::default(),
             window: WindowSettings::default(),

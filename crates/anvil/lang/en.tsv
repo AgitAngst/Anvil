@@ -709,3 +709,37 @@ GitHub отклонил токен: проверьте его в Настрой�
 владелец/репозиторий или адрес на GitHub	owner/repository or a GitHub address
 Демо оформления…	Style demo…
 Anvil — демо оформления	Anvil — style demo
+Правила	Rules
+правила	rules
+Версия не по схеме	Version does not follow the scheme
+нужно X.Y.Z	X.Y.Z is required
+После 0.9.x идёт 1.0.0	After 0.9.x comes 1.0.0
+Документация отстала от кода	Documentation lags behind the code
+кода после последней правки docs/	of code since docs/ was last edited
+Нет docs/README.md	No docs/README.md
+Проект настроен (есть openspec/), а оглавления документации нет	The project is set up (openspec/ exists) but has no documentation index
+Нет CLAUDE.md	No CLAUDE.md
+Проект настроен (есть openspec/), а правил проекта для агентов нет	The project is set up (openspec/ exists) but has no project rules for agents
+Слово из списка в публичном репозитории	Listed word in a public repository
+Ещё места со словами из списка	More places with listed words
+Список слов пуст	The word list is empty
+Репозиторий публичный, а проверять нечем: добавьте слова в файл слов (Настройки → Кузница)	The repository is public and there is nothing to check against: add words to the word file (Settings → Forge)
+Видимость репозитория не известна	Repository visibility is unknown
+Нужен вход в GitHub или выбор «Публичный» или «Закрытый» в карточке Git	Sign in to GitHub or choose Public or Private in the Git card
+Сборка не на диске E:	Build is not on drive E:
+CI закрытого репозитория запускается сам	CI of a private repository runs by itself
+минуты Actions считаны, запуск должен быть по кнопке	Actions minutes are counted, runs should be by button only
+Нарушений нет	No violations
+Все проверки правил прошли.	All rule checks passed.
+Слова ищутся в текстовых файлах под git и в последних 300 сообщениях коммитов; картинки смотрите глазами.	Words are searched in text files under git and in the last 300 commit messages; look at images yourself.
+нарушение	violation
+справка	note
+Страж правил	Rule guard
+Проверять правила проектов	Check project rules
+Не давать выпускать при нарушениях	Block releases while there are violations
+Открыть файл слов	Open the word file
+Слова, которых не должно быть в публичных репозиториях. Файл лежит рядом с anvil.toml и в git не попадает.	Words that must not appear in public repositories. The file lies next to anvil.toml and stays out of git.
+Файл слов не создан	The word file was not created
+Нарушений правил:	Rule violations:
+Исправьте их на вкладке «Правила» или отключите блокировку в настройках.	Fix them on the Rules tab or turn the block off in Settings.
+Страж правил не пускает выпуск	The rule guard blocks the release

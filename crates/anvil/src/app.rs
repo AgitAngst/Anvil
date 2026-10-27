@@ -13,6 +13,7 @@ use eframe::egui;
 use crate::config::{self, Config};
 use crate::deps;
 use crate::github::{self, Auth, Release, Remotes, Target};
+use crate::guard;
 use crate::i18n::{self, t};
 use crate::installs::{self, Installed};
 use crate::jobs::{self, JobId};
@@ -32,6 +33,7 @@ pub enum Tab {
     Releases,
     Install,
     Deps,
+    Rules,
     Notes,
 }
 
@@ -171,6 +173,13 @@ pub struct App {
     /// CI и выпуски проектов на GitHub.
     pub remotes: Remotes,
     pub gh_auth: Option<Auth>,
+    /// Страж правил: итог последней проверки проекта и какие проверяются сейчас.
+    pub guard: HashMap<PathBuf, guard::Report>,
+    pub guard_busy: std::collections::HashSet<PathBuf>,
+    /// Что знали при последней проверке: видимость репозитория и были ли прочитаны сведения cargo; узнали больше — проверить заново.
+    guard_private: HashMap<PathBuf, (Option<bool>, bool)>,
+    guard_tx: Sender<(PathBuf, guard::Report)>,
+    guard_rx: Receiver<(PathBuf, guard::Report)>,
     /// Окно «Добавить проект»: репозитории аккаунта, клонирование.
     pub sources: sources::State,
     clone_tx: Sender<sources::Cloned>,
@@ -314,6 +323,7 @@ impl App {
         let hotkey =
             crate::hotkey::Hotkey::spawn(crate::hotkey::Combo::parse(&config.quick.hotkey), wake(&cc.egui_ctx));
         let (clone_tx, clone_rx) = std::sync::mpsc::channel();
+        let (guard_tx, guard_rx) = std::sync::mpsc::channel();
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -362,6 +372,11 @@ impl App {
             presets_for: None,
             remotes: Remotes::new(),
             gh_auth: None,
+            guard: HashMap::new(),
+            guard_busy: Default::default(),
+            guard_private: HashMap::new(),
+            guard_tx,
+            guard_rx,
             sources: sources::State::default(),
             clone_tx,
             clone_rx,
@@ -570,6 +585,70 @@ impl App {
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
     }
 
+    /// Видимость репозитория проекта: слово владельца, иначе ответ GitHub.
+    fn guard_private_of(&self, path: &Path) -> Option<bool> {
+        sources::is_private(&self.config, path, self.remotes.get(path))
+    }
+
+    /// Проверить правила проектов в фоне: сведения собираются здесь, чтение git и файлов — в потоке.
+    pub fn check_guard(&mut self, paths: Vec<PathBuf>) {
+        let words = guard::load_words(&guard::words_path(&self.config_path));
+        let mut inputs = Vec::new();
+        for path in paths {
+            if self.guard_busy.contains(&path) {
+                continue;
+            }
+            let Some(project) = self.projects.iter().find(|p| p.path == path) else { continue };
+            let private = self.guard_private_of(&path);
+            self.guard_private.insert(path.clone(), (private, project.meta().is_some()));
+            self.guard_busy.insert(path.clone());
+            inputs.push(guard::Input {
+                path,
+                version: project.meta().and_then(|m| m.version.clone()),
+                private,
+                target_dir: project.meta().map(|m| m.target_dir.clone()),
+                words: words.clone(),
+            });
+        }
+        if inputs.is_empty() {
+            return;
+        }
+        let (tx, ctx) = (self.guard_tx.clone(), self.ctx.clone());
+        std::thread::Builder::new()
+            .name("anvil-guard".into())
+            .spawn(move || {
+                for input in inputs {
+                    let report = guard::check(&input);
+                    let _ = tx.send((input.path, report));
+                    ctx.request_repaint();
+                }
+            })
+            .ok();
+    }
+
+    /// Проекты без проверки или с узнанной после неё видимостью — проверить.
+    fn guard_tick(&mut self) {
+        if !self.config.guard.enabled {
+            return;
+        }
+        let todo: Vec<PathBuf> = self
+            .projects
+            .iter()
+            .filter(|p| !self.is_hidden(&p.path) && !self.guard_busy.contains(&p.path))
+            .filter(|p| {
+                !self.guard.contains_key(&p.path)
+                    || self.guard_private.get(&p.path).is_some_and(|(private, had_meta)| {
+                        (private.is_none() && self.guard_private_of(&p.path).is_some())
+                            || (!had_meta && p.meta().is_some())
+                    })
+            })
+            .map(|p| p.path.clone())
+            .collect();
+        if !todo.is_empty() {
+            self.check_guard(todo);
+        }
+    }
+
     /// Вид папки (Rust, Godot, Unity, просто git) выключен в настройках — включить, чтобы проект не пропал из списка.
     pub fn enable_kind_of(&mut self, path: &Path) {
         if let Some(kind) = registry::Kind::detect(path)
@@ -672,6 +751,11 @@ impl App {
         while let Ok(done) = self.clone_rx.try_recv() {
             self.apply_cloned(done);
         }
+        while let Ok((path, report)) = self.guard_rx.try_recv() {
+            self.guard_busy.remove(&path);
+            self.guard.insert(path, report);
+        }
+        self.guard_tick();
         // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
         let targets = github::targets(&self.projects, &self.config);
         if targets != self.gh_targets {

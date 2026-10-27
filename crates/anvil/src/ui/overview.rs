@@ -50,7 +50,7 @@ fn card(app: &mut App, ui: &mut Ui, project: &Project) -> bool {
     let servers = super::amber::servers(app, project);
     let remote = app.remotes.get(&project.path);
     let report = app.deps.get(&project.path);
-    let (tone, trailing) = super::sidebar::status(project, remote, &app.installs, report);
+    let (tone, trailing) = super::sidebar::status(project, remote, &app.installs, report, app.guard.get(&project.path));
     let inner = w::card_frame(ui).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.set_min_height(150.0);

@@ -7,6 +7,7 @@ mod demo;
 pub mod deps;
 mod dialogs;
 mod github;
+mod guard;
 pub mod install;
 mod jobs;
 mod overview;

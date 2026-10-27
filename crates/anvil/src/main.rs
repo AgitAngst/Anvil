@@ -13,6 +13,7 @@ mod deps;
 mod engines;
 mod git;
 mod github;
+mod guard;
 mod hotkey;
 mod i18n;
 mod installs;

@@ -14,6 +14,7 @@ pub fn status(
     remote: Option<&crate::github::Remote>,
     installs: &std::collections::HashMap<String, Option<crate::installs::Installed>>,
     deps: Option<&crate::deps::Report>,
+    guard: Option<&crate::guard::Report>,
 ) -> (Tone, Option<(String, Tone)>) {
     if project.git.is_err() {
         return (Tone::Danger, Some((t("ошибка git").to_owned(), Tone::Danger)));
@@ -26,6 +27,9 @@ pub fn status(
     }
     if deps.is_some_and(|d| d.vulnerabilities() > 0) {
         return (Tone::Danger, Some(("RustSec".to_owned(), Tone::Danger)));
+    }
+    if guard.is_some_and(|g| g.violations() > 0) {
+        return (Tone::Danger, Some((t("правила").to_owned(), Tone::Danger)));
     }
     let Some(git) = project.git() else {
         return (Tone::Neutral, Some((t("без git").to_owned(), Tone::Neutral)));
@@ -93,8 +97,13 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         .visible()
         .into_iter()
         .map(|project| {
-            let (tone, trailing) =
-                status(project, app.remotes.get(&project.path), &app.installs, app.deps.get(&project.path));
+            let (tone, trailing) = status(
+                project,
+                app.remotes.get(&project.path),
+                &app.installs,
+                app.deps.get(&project.path),
+                app.guard.get(&project.path),
+            );
             Row { path: project.path.clone(), name: project.name(), tone, trailing }
         })
         .collect();
