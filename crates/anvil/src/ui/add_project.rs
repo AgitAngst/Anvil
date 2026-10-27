@@ -205,15 +205,30 @@ fn folder_tab(app: &mut App, ui: &mut Ui) {
 fn address_tab(app: &mut App, ui: &mut Ui) {
     w::section_label(ui, t("Адрес репозитория"));
     ui.add_space(4.0);
-    let edit = egui::TextEdit::singleline(&mut app.sources.address)
-        .hint_text(t("https://github.com/владелец/репозиторий или владелец/репозиторий"))
-        .desired_width(ui.available_width());
-    ui.add(edit);
+    let p = Palette::of(ui);
     let typed = !app.sources.address.trim().is_empty();
     let repo = sources::parse_address(&app.sources.address);
+    let invalid = typed && repo.is_none();
+    ui.scope(|ui| {
+        // Ошибка — красная рамка поля и строка под ним со значком (общий гайдлайн §5).
+        if invalid {
+            let stroke = egui::Stroke::new(1.0, p.danger);
+            ui.visuals_mut().widgets.inactive.bg_stroke = stroke;
+            ui.visuals_mut().widgets.hovered.bg_stroke = stroke;
+            ui.visuals_mut().selection.stroke = stroke;
+        }
+        let edit = egui::TextEdit::singleline(&mut app.sources.address)
+            .hint_text(t("владелец/репозиторий или адрес на GitHub"))
+            .desired_width(ui.available_width());
+        ui.add(edit);
+    });
     ui.add_space(6.0);
-    if typed && repo.is_none() {
-        w::note(ui, t("Не похоже на адрес репозитория GitHub."));
+    if invalid {
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+            anvil_ui::icons::paint(ui.painter(), rect, Icon::Warning, p.danger);
+            ui.label(RichText::new(t("Не похоже на адрес репозитория GitHub.")).size(13.0).color(p.danger));
+        });
     }
     ui.add_space(8.0);
     let busy = app.sources.cloning.is_some();

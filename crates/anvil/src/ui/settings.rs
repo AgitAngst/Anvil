@@ -16,6 +16,7 @@ pub fn add_root(app: &mut App) {
         return;
     };
     if !app.config.roots.iter().any(|r| crate::registry::same_dir(r, &dir)) {
+        app.enable_kind_of(&dir);
         app.config.roots.push(dir);
         app.save();
         app.rescan();

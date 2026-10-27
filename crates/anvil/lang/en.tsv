@@ -698,7 +698,6 @@ GitHub отклонил токен: проверьте его в Настрой�
 Выберите папку проекта или папку, в которой лежат проекты: Anvil найдёт в ней Rust, Godot и Unity.	Choose a project folder or a folder that holds projects: Anvil finds Rust, Godot and Unity in it.
 Выбрать папку…	Choose a folder…
 Адрес репозитория	Repository address
-https://github.com/владелец/репозиторий или владелец/репозиторий	https://github.com/owner/repository or owner/repository
 Не похоже на адрес репозитория GitHub.	That does not look like a GitHub repository address.
 Клонируется в:	Clones into:
 папка не выбрана	no folder chosen
@@ -707,3 +706,4 @@ https://github.com/владелец/репозиторий или владеле
 Сначала добавьте папку с проектами: в неё Anvil клонирует.	Add a projects folder first: Anvil clones into it.
 склонирован	cloned
 Новых репозиториев:	New repositories:
+владелец/репозиторий или адрес на GitHub	owner/repository or a GitHub address

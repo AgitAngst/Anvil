@@ -543,14 +543,30 @@ impl App {
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
     }
 
+    /// Вид папки (Rust, Godot, Unity, просто git) выключен в настройках — включить, чтобы проект не пропал из списка.
+    pub fn enable_kind_of(&mut self, path: &Path) {
+        if let Some(kind) = registry::Kind::detect(path)
+            && !self.config.kinds.iter().any(|k| k.eq_ignore_ascii_case(kind.code()))
+        {
+            self.config.kinds.push(kind.code().to_owned());
+            self.save();
+        }
+    }
+
     fn apply_cloned(&mut self, done: sources::Cloned) {
         self.sources.cloning = None;
         match done.result {
             Ok(path) => {
+                self.enable_kind_of(&path);
                 // Клон лёг вне папок поиска — сама папка становится корнем, чтобы проект был найден.
                 if !self.config.roots.iter().any(|r| registry::same_dir(r, &path) || path.starts_with(r)) {
                     self.config.roots.push(path);
                     self.save();
+                }
+                // С вкладки «Адрес» — закрыть окно (результат виден в списке и в уведомлении); из списка аккаунта — оставить:
+                // у строки появится «Подключён», а клонировать можно следующий.
+                if self.sources.tab == 2 {
+                    self.sources.open = false;
                 }
                 self.sources.address.clear();
                 self.toasts.push(format!("{} {}", done.repo.slug(), t("склонирован")), Tone::Success);
