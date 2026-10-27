@@ -51,11 +51,14 @@ cargo run -p anvil --release
 ## Витрина
 
 ```sh
-cargo run -p anvil-ui --example gallery
+cargo run -p anvil-ui --example gallery --features demo
 ```
 
+Та же витрина — внутри Anvil: «Меню» → «Демо оформления…» (или `Ctrl+K`), отдельное окно со своими темой, языком и
+акцентом; закрыв его, Anvil возвращает ваши.
+
 Флаги: `--dark` / `--light`, `--en` / `--ru`, `--accent ember|amber|teal|rose|blue`,
-`--tab elements|deck`, `--dialog` / `--settings` / `--about`.
+`--tab elements|deck|motion`, `--dialog` / `--settings` / `--about`.
 
 ## Подключение `anvil-ui`
 

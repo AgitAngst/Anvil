@@ -3,6 +3,7 @@
 mod add_project;
 mod amber;
 mod deck;
+mod demo;
 pub mod deps;
 mod dialogs;
 mod github;
@@ -71,6 +72,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
 
     settings::show(app, &ctx);
     add_project::show(app, &ctx);
+    demo::show(app, &ctx);
     presets::show(app, &ctx);
     release::show(app, &ctx);
     dialogs::show(app, &ctx);
@@ -396,6 +398,9 @@ fn top_bar(app: &mut App, ui: &mut Ui) {
                 }
                 if w::menu_item(ui, Some(Icon::Info), t("О программе"), None).clicked() {
                     app.about_open = true;
+                }
+                if w::menu_item(ui, Some(Icon::Layers), t("Демо оформления…"), None).clicked() {
+                    app.open_demo();
                 }
                 w::menu_separator(ui);
                 if w::menu_item(ui, Some(Icon::File), t("Открыть anvil.toml"), None).clicked() {

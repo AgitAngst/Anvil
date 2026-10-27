@@ -1,13 +1,13 @@
 //! Вкладка «Движение» витрины: вся шкала, кривые и каждая анимация набора вживую.
 //!
-//! Открыть сразу: `cargo run -p anvil-ui --example gallery -- --tab motion [--reduced]`.
+//! Открыть сразу: `cargo run -p anvil-ui --example gallery --features demo -- --tab motion [--reduced]`.
 //! Новая анимация в `anvil_ui::motion` — сюда строку-пример, так её видно и проверяют глазами
 //! в обеих темах и на обоих языках, в том числе с `--reduced` («меньше движения»).
 
-use anvil_ui::icons::{self, Icon};
-use anvil_ui::motion::{self, Curve, Motion, effects, widgets as fx};
-use anvil_ui::widgets::{self as w, Kind, Tone};
-use anvil_ui::{Lang, Palette, semibold};
+use crate::icons::{self, Icon};
+use crate::motion::{self, Curve, Motion, effects, widgets as fx};
+use crate::widgets::{self as w, Kind, Tone};
+use crate::{Lang, Palette, semibold};
 use eframe::egui::{self, Align2, FontId, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -69,7 +69,7 @@ impl MotionDemo {
 
 /// Строка на двух языках: витрина показывает и русский, и английский.
 fn tx<'a>(ctx: &egui::Context, ru: &'a str, en: &'a str) -> &'a str {
-    if anvil_ui::lang::language(ctx) == Lang::Ru { ru } else { en }
+    if crate::lang::language(ctx) == Lang::Ru { ru } else { en }
 }
 
 /// Подпись слева, пример справа.
@@ -98,8 +98,8 @@ impl MotionDemo {
             ui,
             tx(
                 &ctx,
-                "Шкала времени, кривые и готовые анимации набора. Всё из anvil_ui::motion; описание — docs/MOTION.md.",
-                "Time scale, curves and the kit's ready animations. All from anvil_ui::motion; guide — docs/MOTION.md.",
+                "Шкала времени, кривые и готовые анимации набора. Всё из crate::motion; описание — docs/MOTION.md.",
+                "Time scale, curves and the kit's ready animations. All from crate::motion; guide — docs/MOTION.md.",
             ),
         );
         ui.add_space(10.0);
@@ -382,7 +382,7 @@ impl MotionDemo {
 fn scale_table(ui: &mut Ui) {
     let p = Palette::of(ui);
     let ctx = ui.ctx().clone();
-    let ru = anvil_ui::lang::language(&ctx) == Lang::Ru;
+    let ru = crate::lang::language(&ctx) == Lang::Ru;
     for step in motion::SCALE {
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());

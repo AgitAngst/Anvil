@@ -6,6 +6,8 @@
 
 pub mod appicon;
 pub mod chrome;
+#[cfg(feature = "demo")]
+pub mod demo;
 pub mod family;
 pub mod icons;
 pub mod lang;

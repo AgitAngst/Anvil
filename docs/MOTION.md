@@ -172,7 +172,7 @@ let motion = Motion::of(ui.ctx());
 размер занимай одинаковый и при движении, и без. Дочерний `Ui` с движущимся содержимым делай через
 `shifted` (тот же `id_salt` каждый кадр — идентификаторы внутри не прыгают).
 
-**Всегда:** строка в витрине (`crates/anvil-ui/examples/gallery/motion_page.rs`), строка в каталоге
+**Всегда:** строка в витрине (`crates/anvil-ui/src/demo/motion_page.rs`), строка в каталоге
 выше, запись в `HANDOFF.md` Anvil. Не забыть английский вариант подписи в витрине.
 
 **Проверка:**
@@ -180,7 +180,7 @@ let motion = Motion::of(ui.ctx());
 ```bash
 cargo test -p anvil-ui motion                # переходы, эффекты, «в покое», шкала описана здесь
 cargo clippy -p anvil-ui --all-targets -- -D warnings
-cargo run -p anvil-ui --example gallery -- --tab motion [--dark|--light] [--en|--ru] [--reduced]
+cargo run -p anvil-ui --example gallery --features demo -- --tab motion [--dark|--light] [--en|--ru] [--reduced]
 ```
 
 Флаги витрины: `--size 1440x1000` (окно), `--scroll 700` (прокрутить вниз на первом кадре — для

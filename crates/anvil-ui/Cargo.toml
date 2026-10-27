@@ -10,6 +10,12 @@ publish.workspace = true
 [features]
 # Сериализация общих настроек (тема, язык, обновления) — программа хранит их у себя.
 serde = ["dep:serde"]
+# Витрина всех элементов и анимаций (`anvil_ui::demo`): своё окно в программе и пример `gallery`.
+demo = []
+
+[[example]]
+name = "gallery"
+required-features = ["demo"]
 
 [dependencies]
 anvil-wallpaper = { path = "../anvil-wallpaper" }

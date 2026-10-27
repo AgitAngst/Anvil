@@ -143,6 +143,8 @@ pub struct App {
     pub toasts: Toasts,
     pub settings_open: bool,
     pub about_open: bool,
+    /// «Демо оформления»: витрина набора в отдельном окне, пока она открыта.
+    pub demo: Option<anvil_ui::demo::Demo>,
     /// Обновления самого Anvil.
     pub updater: anvil_update::Updater,
     /// Установленные копии бинарников (`%LOCALAPPDATA%\Programs`); `None` — не установлен.
@@ -345,6 +347,7 @@ impl App {
             toasts: Toasts::default(),
             settings_open: false,
             about_open: false,
+            demo: None,
             updater,
             installs: HashMap::new(),
             uninstall_confirm: None,
@@ -469,6 +472,30 @@ impl App {
     pub fn set_token(&mut self, token: Option<String>) {
         self.gh_auth = None;
         let _ = self.gh_commands.send(github::Cmd::SetToken(token));
+    }
+
+    /// Открыть «Демо оформления» — витрину набора со своими темой, языком и акцентом.
+    pub fn open_demo(&mut self) {
+        if self.demo.is_some() {
+            return;
+        }
+        let accent = anvil_ui::Accent::ALL.iter().position(|a| a.name == ACCENT.name).unwrap_or(0);
+        self.demo = Some(anvil_ui::demo::Demo::new(
+            self.config.common.clone(),
+            accent,
+            anvil_ui::demo::Page::Center,
+            None,
+            false,
+            0.0,
+        ));
+    }
+
+    /// Закрыть демо и вернуть то, что выбрал владелец: тему, язык, акцент (демо меняет их в общем контексте).
+    pub fn close_demo(&mut self, ctx: &egui::Context) {
+        self.demo = None;
+        self.config.common.apply(ctx);
+        anvil_ui::set_accent(ctx, ACCENT);
+        i18n::set(ctx, self.config.common.language);
     }
 
     /// Открыть «Добавить проект» на вкладке по умолчанию: «С GitHub», если есть вход, иначе «Папка».
