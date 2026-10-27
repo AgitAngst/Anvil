@@ -25,6 +25,13 @@ use crate::worker::{self, Busy, Cmd, Event, Project};
 
 pub const ACCENT: Accent = Accent::VIOLET;
 
+/// Что пришло от потоков парка серверов.
+pub enum FleetEvent {
+    Status(Vec<(String, crate::fleet::Status)>),
+    /// Команда записи кончилась: имя, что делали, код выхода, хвост вывода.
+    Done(String, crate::ui::fleet::What, i32, String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Commits,
@@ -46,6 +53,8 @@ pub enum View {
     Work,
     /// Ресурсы и бюджет: диски, сборки, минуты Actions.
     Resources,
+    /// Парк серверов и ботов.
+    Fleet,
 }
 
 /// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
@@ -185,6 +194,14 @@ pub struct App {
     resources_tx: Sender<crate::resources::Snapshot>,
     resources_rx: Receiver<crate::resources::Snapshot>,
     pub minutes: HashMap<PathBuf, Result<github::Usage, String>>,
+    /// Парк: состояние записей по имени, форма новой записи, команда на подтверждении.
+    pub fleet_status: HashMap<String, crate::fleet::Status>,
+    pub fleet_form: Option<crate::ui::fleet::Form>,
+    pub fleet_ask: Option<(String, crate::ui::fleet::What, String)>,
+    fleet_busy: bool,
+    fleet_last: Option<Instant>,
+    fleet_tx: Sender<FleetEvent>,
+    fleet_rx: Receiver<FleetEvent>,
     work_busy: bool,
     work_last: Option<Instant>,
     work_tx: Sender<crate::work::Snapshot>,
@@ -342,6 +359,7 @@ impl App {
         let (guard_tx, guard_rx) = std::sync::mpsc::channel();
         let (work_tx, work_rx) = std::sync::mpsc::channel();
         let (resources_tx, resources_rx) = std::sync::mpsc::channel();
+        let (fleet_tx, fleet_rx) = std::sync::mpsc::channel();
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -396,6 +414,13 @@ impl App {
             resources_tx,
             resources_rx,
             minutes: HashMap::new(),
+            fleet_status: HashMap::new(),
+            fleet_form: None,
+            fleet_ask: None,
+            fleet_busy: false,
+            fleet_last: None,
+            fleet_tx,
+            fleet_rx,
             work_busy: false,
             work_last: None,
             work_tx,
@@ -611,6 +636,100 @@ impl App {
         self.sources.error = None;
         self.sources.cloning = Some(repo.clone());
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
+    }
+
+    /// Открыть «Парк серверов» в Кузнице.
+    pub fn open_fleet(&mut self) {
+        self.set_mode(Mode::Forge);
+        self.view = View::Fleet;
+        self.refresh_fleet();
+    }
+
+    pub fn fleet_busy(&self) -> bool {
+        self.fleet_busy
+    }
+
+    /// Проверить все записи парка в потоке.
+    pub fn refresh_fleet(&mut self) {
+        self.fleet_last = Some(Instant::now());
+        if self.fleet_busy || self.config.fleet.is_empty() {
+            return;
+        }
+        self.fleet_busy = true;
+        let (entries, tx, ctx) = (self.config.fleet.clone(), self.fleet_tx.clone(), self.ctx.clone());
+        let spawned = std::thread::Builder::new().name("anvil-fleet".into()).spawn(move || {
+            let list = std::thread::scope(|scope| {
+                let handles: Vec<_> =
+                    entries.iter().map(|e| scope.spawn(move || (e.name.clone(), crate::fleet::check(e)))).collect();
+                handles.into_iter().filter_map(|h| h.join().ok()).collect()
+            });
+            let _ = tx.send(FleetEvent::Status(list));
+            ctx.request_repaint();
+        });
+        if spawned.is_err() {
+            self.fleet_busy = false;
+        }
+    }
+
+    /// Вид открыт — проверять каждые 30 с.
+    fn fleet_tick(&mut self, ctx: &egui::Context) {
+        if !(self.mode == Mode::Forge && self.view == View::Fleet) {
+            return;
+        }
+        let every = Duration::from_secs(30);
+        ctx.request_repaint_after(every);
+        if !self.fleet_busy && self.fleet_last.is_none_or(|at| at.elapsed() >= every) {
+            self.refresh_fleet();
+        }
+    }
+
+    /// Спросить подтверждение команды записи.
+    pub fn ask_fleet(&mut self, name: &str, what: crate::ui::fleet::What) {
+        let Some(entry) = self.config.fleet.iter().find(|e| e.name == name) else { return };
+        let command = match what {
+            crate::ui::fleet::What::Update => entry.update_cmd.clone(),
+            crate::ui::fleet::What::Rollback => entry.rollback_cmd.clone(),
+        };
+        if !command.trim().is_empty() {
+            self.fleet_ask = Some((name.to_owned(), what, command));
+        }
+    }
+
+    /// Выполнить подтверждённую команду записи в потоке; итог придёт уведомлением.
+    pub fn run_fleet(&mut self, name: String, what: crate::ui::fleet::What, command: String) {
+        self.toasts.push(format!("{name}: {}", t("команда запущена")), Tone::Accent);
+        let (tx, ctx) = (self.fleet_tx.clone(), self.ctx.clone());
+        std::thread::Builder::new()
+            .name("anvil-fleet-cmd".into())
+            .spawn(move || {
+                let (code, tail) = crate::fleet::run_command(&command);
+                let _ = tx.send(FleetEvent::Done(name, what, code, tail));
+                ctx.request_repaint();
+            })
+            .ok();
+    }
+
+    fn apply_fleet(&mut self, event: FleetEvent) {
+        match event {
+            FleetEvent::Status(list) => {
+                self.fleet_busy = false;
+                self.fleet_status.extend(list);
+            }
+            FleetEvent::Done(name, what, code, tail) => {
+                let what = match what {
+                    crate::ui::fleet::What::Update => t("Обновление"),
+                    crate::ui::fleet::What::Rollback => t("Откат"),
+                };
+                let tone = if code == 0 { Tone::Success } else { Tone::Danger };
+                let text = if tail.is_empty() {
+                    format!("{name}: {what}, {} {code}", t("код"))
+                } else {
+                    format!("{name}: {what}, {} {code}\n{tail}", t("код"))
+                };
+                self.toasts.push(text, tone);
+                self.refresh_fleet();
+            }
+        }
     }
 
     /// Открыть «Ресурсы и бюджет» в Кузнице.
@@ -890,6 +1009,10 @@ impl App {
             self.apply_work(snapshot);
         }
         self.work_tick(ctx);
+        while let Ok(event) = self.fleet_rx.try_recv() {
+            self.apply_fleet(event);
+        }
+        self.fleet_tick(ctx);
         while let Ok(snapshot) = self.resources_rx.try_recv() {
             self.resources_busy = false;
             self.resources = Some(snapshot);
@@ -1003,7 +1126,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview | View::Work | View::Resources => View::Project,
+            View::Overview | View::Work | View::Resources | View::Fleet => View::Project,
         };
     }
 

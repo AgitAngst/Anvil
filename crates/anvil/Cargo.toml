@@ -2,7 +2,7 @@
 name = "anvil"
 description = "Пульт и кузница моих программ"
 # Своя, не из workspace: там версия набора (тег `kit-v…`), а приложение выпускается по тегу `v…`.
-version = "0.8.0"
+version = "0.9.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

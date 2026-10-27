@@ -11,6 +11,7 @@ mod config;
 mod deck;
 mod deps;
 mod engines;
+mod fleet;
 mod git;
 mod github;
 mod guard;

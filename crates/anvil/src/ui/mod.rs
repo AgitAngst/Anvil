@@ -6,6 +6,7 @@ mod deck;
 mod demo;
 pub mod deps;
 mod dialogs;
+pub mod fleet;
 mod github;
 mod guard;
 pub mod install;
@@ -72,12 +73,14 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             (Mode::Forge, View::Overview) => overview::show(app, ui),
             (Mode::Forge, View::Work) => work::show(app, ui),
             (Mode::Forge, View::Resources) => resources::show(app, ui),
+            (Mode::Forge, View::Fleet) => fleet::show(app, ui),
         }
     });
 
     settings::show(app, &ctx);
     add_project::show(app, &ctx);
     demo::show(app, &ctx);
+    fleet::dialogs(app, &ctx);
     presets::show(app, &ctx);
     release::show(app, &ctx);
     dialogs::show(app, &ctx);

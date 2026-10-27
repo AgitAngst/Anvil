@@ -777,3 +777,36 @@ Windows не отдала сведения о дисках (для части д
 прогонов	runs
 исправен	healthy
 Износ и температуру Windows отдаёт не всем дискам и не без прав администратора.	Windows gives wear and temperature only for some disks and only with administrator rights.
+Парк серверов	Fleet of servers
+Серверы	Servers
+Боты	Bots
+Службы	Services
+жив	alive
+не отвечает	not answering
+не проверяется	not probed
+Проверить сейчас	Check now
+Добавить…	Add…
+Серверы и боты семьи. Anvil проверяет порт или адрес; обновление и откат — командами, которые вы записали сами.	The family's servers and bots. Anvil probes a port or an address; update and rollback run commands you wrote yourself.
+Записей нет	No entries
+Добавьте сервер или бота: имя, как проверять (tcp:хост:порт или адрес http) и, если нужно, команды обновления и отката.	Add a server or a bot: a name, how to probe it (tcp:host:port or an http address) and, if needed, update and rollback commands.
+Серверы Amber (из amber-admin)	Amber servers (from amber-admin)
+Обновляется в amber-admin.	Updated in amber-admin.
+ещё не проверяли	not checked yet
+мс	ms
+Убрать запись	Remove entry
+Запись парка	Fleet entry
+Имя	Name
+Сервер	Server
+Бот	Bot
+Служба	Service
+Как проверять	How to probe
+Нужно tcp:хост:порт или адрес на http:// или https://.	tcp:host:port or an http:// or https:// address is required.
+Команда обновления (по желанию)	Update command (optional)
+Команда отката (по желанию)	Rollback command (optional)
+Запись с таким именем уже есть.	An entry with this name already exists.
+Добавить	Add
+Будет выполнено на этом ПК:	Will run on this PC:
+команда запущена	command started
+Обновление	Update
+Откат	Rollback
+Другие виды	More views

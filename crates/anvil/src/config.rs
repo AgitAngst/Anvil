@@ -41,6 +41,8 @@ pub struct Config {
     pub guard: GuardSettings,
     /// Сколько минут Actions в месяц у владельца (для полосы «Ресурсы и бюджет»); бесплатный тариф — 2000.
     pub actions_quota: u32,
+    /// Парк серверов и ботов (`[[fleet]]`).
+    pub fleet: Vec<crate::fleet::Entry>,
     /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
     pub godot: Option<PathBuf>,
     /// Быстрый запуск: сочетание, закрывать ли после запуска, искать ли в другой раскладке.
@@ -258,6 +260,7 @@ impl Default for Config {
             deck: DeckSettings::default(),
             guard: GuardSettings::default(),
             actions_quota: 2000,
+            fleet: Vec::new(),
             godot: None,
             quick: QuickSettings::default(),
             window: WindowSettings::default(),

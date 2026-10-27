@@ -79,12 +79,18 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             if w::icon_button(ui, Icon::Tiles, t("Обзор проектов · Ctrl+0")).clicked() {
                 app.toggle_view();
             }
-            if w::icon_button(ui, Icon::Clock, t("Ход работы")).clicked() {
-                app.open_work();
-            }
-            if w::icon_button(ui, Icon::Monitor, t("Ресурсы и бюджет")).clicked() {
-                app.open_resources();
-            }
+            let more = w::icon_button(ui, Icon::More, t("Другие виды"));
+            w::menu(&more, 240.0, |ui| {
+                if w::menu_item(ui, Some(Icon::Clock), t("Ход работы"), None).clicked() {
+                    app.open_work();
+                }
+                if w::menu_item(ui, Some(Icon::Monitor), t("Ресурсы и бюджет"), None).clicked() {
+                    app.open_resources();
+                }
+                if w::menu_item(ui, Some(Icon::Server), t("Парк серверов"), None).clicked() {
+                    app.open_fleet();
+                }
+            });
         });
     });
     let fresh = app.new_repo_count();
