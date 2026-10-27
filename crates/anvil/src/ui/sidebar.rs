@@ -82,6 +82,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             if w::icon_button(ui, Icon::Clock, t("Ход работы")).clicked() {
                 app.open_work();
             }
+            if w::icon_button(ui, Icon::Monitor, t("Ресурсы и бюджет")).clicked() {
+                app.open_resources();
+            }
         });
     });
     let fresh = app.new_repo_count();

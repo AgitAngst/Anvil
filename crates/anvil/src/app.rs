@@ -44,6 +44,8 @@ pub enum View {
     Overview,
     /// Ход работы: планы долгих задач и сессии Claude.
     Work,
+    /// Ресурсы и бюджет: диски, сборки, минуты Actions.
+    Resources,
 }
 
 /// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
@@ -177,6 +179,12 @@ pub struct App {
     pub gh_auth: Option<Auth>,
     /// Ход работы: последний снимок планов и сессий; читается в потоке.
     pub work: Option<crate::work::Snapshot>,
+    /// Ресурсы ПК и минуты Actions по проектам.
+    pub resources: Option<crate::resources::Snapshot>,
+    resources_busy: bool,
+    resources_tx: Sender<crate::resources::Snapshot>,
+    resources_rx: Receiver<crate::resources::Snapshot>,
+    pub minutes: HashMap<PathBuf, Result<github::Usage, String>>,
     work_busy: bool,
     work_last: Option<Instant>,
     work_tx: Sender<crate::work::Snapshot>,
@@ -333,6 +341,7 @@ impl App {
         let (clone_tx, clone_rx) = std::sync::mpsc::channel();
         let (guard_tx, guard_rx) = std::sync::mpsc::channel();
         let (work_tx, work_rx) = std::sync::mpsc::channel();
+        let (resources_tx, resources_rx) = std::sync::mpsc::channel();
         let (gh_commands, gh_events) = github::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
         let units_path = config_path.with_file_name("units.json");
         let (deps_commands, deps_events) = deps::spawn(cc.egui_ctx.clone(), config_path.with_file_name("cache"));
@@ -382,6 +391,11 @@ impl App {
             remotes: Remotes::new(),
             gh_auth: None,
             work: None,
+            resources: None,
+            resources_busy: false,
+            resources_tx,
+            resources_rx,
+            minutes: HashMap::new(),
             work_busy: false,
             work_last: None,
             work_tx,
@@ -599,6 +613,53 @@ impl App {
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
     }
 
+    /// Открыть «Ресурсы и бюджет» в Кузнице.
+    pub fn open_resources(&mut self) {
+        self.set_mode(Mode::Forge);
+        self.view = View::Resources;
+        self.refresh_resources();
+    }
+
+    pub fn resources_busy(&self) -> bool {
+        self.resources_busy
+    }
+
+    /// Перечитать диски, SMART, размеры сборок и спросить у GitHub минуты Actions закрытых репозиториев.
+    pub fn refresh_resources(&mut self) {
+        let visible: Vec<PathBuf> = self.visible().iter().map(|p| p.path.clone()).collect();
+        let mut input = crate::resources::Input::default();
+        input.letters.extend(['C', 'D', 'E']);
+        let builds = self.projects.iter().filter(|p| visible.contains(&p.path)).filter_map(|p| {
+            let target = p.meta()?.target_dir.clone();
+            Some((p.path.clone(), target))
+        });
+        for (project, target) in builds {
+            input.letters.extend(crate::resources::drive_letter(&target));
+            if !input.builds.iter().any(|(_, t)| *t == target) {
+                input.builds.push((project, target));
+            }
+        }
+        let targets: Vec<Target> = github::targets(&self.projects, &self.config)
+            .into_iter()
+            .filter(|t| sources::is_private(&self.config, &t.path, self.remotes.get(&t.path)) == Some(true))
+            .collect();
+        if !targets.is_empty() {
+            let _ = self.gh_commands.send(github::Cmd::Minutes(targets));
+        }
+        if self.resources_busy {
+            return;
+        }
+        self.resources_busy = true;
+        let (tx, ctx) = (self.resources_tx.clone(), self.ctx.clone());
+        let spawned = std::thread::Builder::new().name("anvil-resources".into()).spawn(move || {
+            let _ = tx.send(crate::resources::read(&input));
+            ctx.request_repaint();
+        });
+        if spawned.is_err() {
+            self.resources_busy = false;
+        }
+    }
+
     /// Открыть «Ход работы» в Кузнице.
     pub fn open_work(&mut self) {
         self.set_mode(Mode::Forge);
@@ -807,6 +868,7 @@ impl App {
                     }
                 }
                 github::Event::Repos(repos) => self.apply_repos(repos),
+                github::Event::Minutes(list) => self.minutes.extend(list),
                 github::Event::Watch(path, watch) => {
                     self.watches.insert(path, *watch);
                 }
@@ -828,6 +890,10 @@ impl App {
             self.apply_work(snapshot);
         }
         self.work_tick(ctx);
+        while let Ok(snapshot) = self.resources_rx.try_recv() {
+            self.resources_busy = false;
+            self.resources = Some(snapshot);
+        }
         // Проекты на GitHub изменились (нашлись, сменили ветку) — сказать потоку GitHub.
         let targets = github::targets(&self.projects, &self.config);
         if targets != self.gh_targets {
@@ -937,7 +1003,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview | View::Work => View::Project,
+            View::Overview | View::Work | View::Resources => View::Project,
         };
     }
 

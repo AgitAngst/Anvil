@@ -16,6 +16,7 @@ pub mod palette;
 mod presets;
 mod project;
 pub mod release;
+mod resources;
 mod settings;
 mod sidebar;
 mod work;
@@ -70,6 +71,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             (Mode::Forge, View::Project) => project::show(app, ui),
             (Mode::Forge, View::Overview) => overview::show(app, ui),
             (Mode::Forge, View::Work) => work::show(app, ui),
+            (Mode::Forge, View::Resources) => resources::show(app, ui),
         }
     });
 

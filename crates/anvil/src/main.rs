@@ -26,6 +26,7 @@ mod open;
 mod procs;
 mod registry;
 mod release;
+mod resources;
 mod run;
 mod runs;
 mod rustsec;

@@ -756,3 +756,24 @@ CI закрытого репозитория запускается сам	CI of
 осталось ≈	left ≈
 без названия	untitled
 Долгая задача кончилась	A long task has finished
+Ресурсы и бюджет	Resources and budget
+ГБ	GB
+Диски	Disks
+Диски не определились.	No disks found.
+свободно из	free of
+Износ дисков (SMART)	Disk wear (SMART)
+Windows не отдала сведения о дисках (для части дисков нужны права администратора).	Windows returned no disk data (some disks need administrator rights).
+Сборки (target)	Builds (target)
+Проектов на Rust не найдено.	No Rust projects found.
+Всего:	Total:
+износ	wear
+ч работы	h of work
+ошибок чтения	read errors
+нет данных	no data
+Минуты GitHub Actions в этом месяце	GitHub Actions minutes this month
+Закрытых репозиториев с GitHub не найдено: у публичных минуты бесплатные.	No private GitHub repositories found: minutes are free for public ones.
+мин из	min of
+Оценка по длительности прогонов, округлённой вверх до минуты; Windows у GitHub считается за две, здесь — за одну.	An estimate from run durations rounded up to a minute; GitHub counts Windows as two, here it counts as one.
+прогонов	runs
+исправен	healthy
+Износ и температуру Windows отдаёт не всем дискам и не без прав администратора.	Windows gives wear and temperature only for some disks and only with administrator rights.

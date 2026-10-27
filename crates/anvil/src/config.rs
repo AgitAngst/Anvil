@@ -39,6 +39,8 @@ pub struct Config {
     pub deck: DeckSettings,
     /// Страж правил: проверять ли и блокировать ли выпуск.
     pub guard: GuardSettings,
+    /// Сколько минут Actions в месяц у владельца (для полосы «Ресурсы и бюджет»); бесплатный тариф — 2000.
+    pub actions_quota: u32,
     /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
     pub godot: Option<PathBuf>,
     /// Быстрый запуск: сочетание, закрывать ли после запуска, искать ли в другой раскладке.
@@ -255,6 +257,7 @@ impl Default for Config {
             projects: BTreeMap::new(),
             deck: DeckSettings::default(),
             guard: GuardSettings::default(),
+            actions_quota: 2000,
             godot: None,
             quick: QuickSettings::default(),
             window: WindowSettings::default(),

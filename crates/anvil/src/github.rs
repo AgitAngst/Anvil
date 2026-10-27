@@ -173,6 +173,15 @@ pub struct Auth {
     pub error: Option<String>,
 }
 
+/// Минуты Actions репозитория за месяц: оценка по длительности завершённых прогонов.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Usage {
+    pub runs: u32,
+    pub minutes: f64,
+    /// Прогонов было больше, чем влезло на страницу: минут не меньше показанного.
+    pub capped: bool,
+}
+
 /// Как идёт выпуск по тегу: прогоны, которые тег запустил, и сам Release.
 #[derive(Debug, Clone)]
 pub struct Watch {
@@ -195,6 +204,8 @@ pub enum Cmd {
     SetToken(Option<String>),
     /// Спросить список репозиториев аккаунта (владелец и организации).
     ListRepos,
+    /// Минуты Actions с начала месяца у этих проектов.
+    Minutes(Vec<Target>),
 }
 
 pub enum Event {
@@ -205,6 +216,8 @@ pub enum Event {
     TokenSaved(Result<(), String>),
     /// Репозитории аккаунта или причина, почему списка нет.
     Repos(Result<Vec<AccountRepo>, String>),
+    /// Минуты Actions по проектам.
+    Minutes(Vec<(PathBuf, Result<Usage, String>)>),
 }
 
 /// `cache_dir` — куда класть последнее известное (`github.json`).
@@ -292,6 +305,12 @@ impl Hub {
                     continue;
                 }
                 Ok(Cmd::Refresh) => {}
+                Ok(Cmd::Minutes(targets)) => {
+                    let since = month_start(crate::i18n::now());
+                    let list = targets.iter().map(|t| (t.path.clone(), self.usage(t, &since))).collect();
+                    self.send(Event::Minutes(list));
+                    continue;
+                }
                 Ok(Cmd::ListRepos) => {
                     let repos = self.list_repos();
                     self.send(Event::Repos(repos));
@@ -328,6 +347,24 @@ impl Hub {
             auth.remaining = self.get::<RateLimit>("/rate_limit").ok().map(|(r, _)| r.rate.remaining);
         }
         self.send(Event::Auth(auth));
+    }
+
+    fn usage(&self, target: &Target, since: &str) -> Result<Usage, String> {
+        let path = format!(
+            "/repos/{}/actions/runs?per_page=100&status=completed&created={}",
+            target.repo.slug(),
+            encode(&format!(">={since}"))
+        );
+        let (runs, _) = self.get::<Runs>(&path)?;
+        let capped = runs.workflow_runs.len() >= 100;
+        let mut usage = Usage { runs: 0, minutes: 0.0, capped };
+        for run in &runs.workflow_runs {
+            let started = run.run_started_at.as_deref().and_then(parse_time);
+            let Some(secs) = started.and_then(|s| parse_time(&run.updated_at).map(|e| e - s)) else { continue };
+            usage.runs += 1;
+            usage.minutes += (secs.max(0) as f64 / 60.0).ceil().max(1.0);
+        }
+        Ok(usage)
     }
 
     /// Репозитории аккаунта: свои и организаций, где состоит владелец токена. До 5 страниц по 100.
@@ -628,6 +665,7 @@ struct ApiRun {
     display_title: Option<String>,
     html_url: String,
     updated_at: String,
+    run_started_at: Option<String>,
 }
 
 impl From<ApiRun> for CiRun {
@@ -723,6 +761,19 @@ impl From<ApiRelease> for Release {
     }
 }
 
+/// Первое число месяца, в котором лежит момент (`2026-09-23` → `2026-09-01`); дни — по алгоритму Хиннанта.
+pub fn month_start(now: i64) -> String {
+    let z = now.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-01")
+}
+
 /// `2026-09-23T15:04:05Z` → секунды UNIX.
 pub fn parse_time(text: &str) -> Option<i64> {
     let (date, time) = text.trim_end_matches('Z').split_once('T')?;
@@ -774,6 +825,14 @@ mod tests {
         assert_eq!(parse_time("2026-09-23T15:04:05Z"), Some(1_790_175_845));
         assert_eq!(parse_time("2000-02-29T12:00:00.123Z"), Some(951_825_600));
         assert_eq!(parse_time("вчера"), None);
+    }
+
+    #[test]
+    fn month_starts() {
+        assert_eq!(month_start(0), "1970-01-01");
+        assert_eq!(month_start(1_790_175_845), "2026-09-01");
+        assert_eq!(month_start(951_825_600), "2000-02-01");
+        assert_eq!(month_start(parse_time("2026-12-31T23:59:59Z").unwrap()), "2026-12-01");
     }
 
     #[test]
