@@ -55,6 +55,8 @@ pub enum View {
     Resources,
     /// Парк серверов и ботов.
     Fleet,
+    /// Каталог программ: установить и обновить разом.
+    Catalog,
 }
 
 /// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
@@ -196,6 +198,8 @@ pub struct App {
     pub minutes: HashMap<PathBuf, Result<github::Usage, String>>,
     /// Парк: состояние записей по имени, форма новой записи, команда на подтверждении.
     pub fleet_status: HashMap<String, crate::fleet::Status>,
+    /// Поле «Вставьте список» в каталоге программ.
+    pub catalog_import: String,
     pub fleet_form: Option<crate::ui::fleet::Form>,
     pub fleet_ask: Option<(String, crate::ui::fleet::What, String)>,
     fleet_busy: bool,
@@ -415,6 +419,7 @@ impl App {
             resources_rx,
             minutes: HashMap::new(),
             fleet_status: HashMap::new(),
+            catalog_import: String::new(),
             fleet_form: None,
             fleet_ask: None,
             fleet_busy: false,
@@ -631,11 +636,39 @@ impl App {
         }
         let Some(root) = sources::clone_root(&self.config) else {
             self.sources.error = Some(t("Сначала добавьте папку с проектами: в неё Anvil клонирует.").to_owned());
+            self.sources.queue.clear();
             return;
         };
         self.sources.error = None;
         self.sources.cloning = Some(repo.clone());
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
+    }
+
+    /// Открыть «Каталог программ» в Кузнице.
+    pub fn open_catalog(&mut self) {
+        self.set_mode(Mode::Forge);
+        self.view = View::Catalog;
+        self.refresh();
+    }
+
+    /// Поставить репозитории в очередь клонирования; уже лежащие на диске и уже стоящие в очереди пропускаются.
+    pub fn queue_clones(&mut self, repos: Vec<github::Repo>) {
+        for repo in repos {
+            let known = sources::local_for(&repo, &self.projects).is_some()
+                || self.sources.cloning.as_ref() == Some(&repo)
+                || self.sources.queue.contains(&repo);
+            if !known {
+                self.sources.queue.push(repo);
+            }
+        }
+        self.start_next_clone();
+    }
+
+    fn start_next_clone(&mut self) {
+        if self.sources.cloning.is_none() && !self.sources.queue.is_empty() {
+            let repo = self.sources.queue.remove(0);
+            self.start_clone(repo);
+        }
     }
 
     /// Открыть «Парк серверов» в Кузнице.
@@ -928,6 +961,7 @@ impl App {
             }
             Err(e) => self.sources.error = Some(format!("{}: {e}", done.repo.slug())),
         }
+        self.start_next_clone();
     }
 
     pub fn fetch(&mut self) {
@@ -1126,7 +1160,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview | View::Work | View::Resources | View::Fleet => View::Project,
+            View::Overview | View::Work | View::Resources | View::Fleet | View::Catalog => View::Project,
         };
     }
 

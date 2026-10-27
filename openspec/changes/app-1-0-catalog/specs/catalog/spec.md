@@ -1,0 +1,11 @@
+## ADDED Requirements
+
+### Requirement: Program catalog
+Anvil SHALL list the programs of connected projects with the installed version, the latest GitHub release and a state, and SHALL install or update one program or all programs of a state from the releases.
+
+#### Scenario: Update all
+- **WHEN** the owner presses "Update all"
+- **THEN** every installed program with a newer release is installed from that release
+
+### Requirement: Moving to another PC
+Anvil SHALL export the repositories of connected projects as a text list and SHALL clone a pasted list one by one into the clone folder, skipping repositories that already lie on disk.

@@ -76,6 +76,7 @@ enum Command {
     Work,
     Resources,
     Fleet,
+    Catalog,
     Log,
     About,
     CheckUpdates,
@@ -1073,6 +1074,7 @@ fn forge_rows(app: &App, out: &mut Vec<Row>) {
         global(Icon::Clock, t("Ход работы"), None, Command::Work),
         global(Icon::Monitor, t("Ресурсы и бюджет"), None, Command::Resources),
         global(Icon::Server, t("Парк серверов"), None, Command::Fleet),
+        global(Icon::Package, t("Каталог программ"), None, Command::Catalog),
         global(Icon::Info, t("О программе"), None, Command::About),
     ]);
 }
@@ -1168,6 +1170,7 @@ fn run(app: &mut App, ctx: &egui::Context, command: Command) {
         Command::Work => app.open_work(),
         Command::Resources => app.open_resources(),
         Command::Fleet => app.open_fleet(),
+        Command::Catalog => app.open_catalog(),
         Command::CheckUpdates => app.updater.check(app.config.common.prerelease, None, true),
     }
     if quick && !opens_window {

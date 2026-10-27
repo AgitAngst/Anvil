@@ -810,3 +810,21 @@ Windows не отдала сведения о дисках (для части д
 Обновление	Update
 Откат	Rollback
 Другие виды	More views
+Каталог программ	Program catalog
+Поставить все	Install all
+Обновить все	Update all
+Программы подключённых проектов: что стоит на этом ПК и что вышло на GitHub. Ставится из выпусков, данные программ не трогаются.	Programs of connected projects: what is installed on this PC and what is released on GitHub. Installs come from releases; program data is never touched.
+Программ нет	No programs
+Подключите проекты на Rust (кнопка + над списком): их программы появятся здесь.	Connect Rust projects (the + button above the list): their programs show up here.
+Перенос на другой ПК	Moving to another PC
+Скопируйте список репозиториев, на новом ПК вставьте его ниже: Anvil склонирует проекты, а программы вы поставите отсюда.	Copy the list of repositories and paste it below on the new PC: Anvil clones the projects and you install the programs from here.
+Скопировать список	Copy the list
+owner/name, по одному в строке	owner/name, one per line
+Подключить из списка	Connect from the list
+Клонирую, осталось:	Cloning, left:
+есть новая	newer available
+актуальна	up to date
+нет выпусков	no releases
+Собрать и поставить	Build and install
+Список скопирован	List copied
+Не адреса	Not addresses

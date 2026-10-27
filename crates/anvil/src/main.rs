@@ -7,6 +7,7 @@ mod amber;
 mod app;
 mod autostart;
 mod builds;
+mod catalog;
 mod config;
 mod deck;
 mod deps;

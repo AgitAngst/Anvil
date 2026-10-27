@@ -132,6 +132,8 @@ pub struct State {
     pub loading: bool,
     /// Что клонируется сейчас.
     pub cloning: Option<Repo>,
+    /// Очередь клонирования (из списка каталога).
+    pub queue: Vec<Repo>,
     /// Ошибка последнего клонирования.
     pub error: Option<String>,
 }

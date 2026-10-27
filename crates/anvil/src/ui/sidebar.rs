@@ -90,6 +90,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 if w::menu_item(ui, Some(Icon::Server), t("Парк серверов"), None).clicked() {
                     app.open_fleet();
                 }
+                if w::menu_item(ui, Some(Icon::Package), t("Каталог программ"), None).clicked() {
+                    app.open_catalog();
+                }
             });
         });
     });
