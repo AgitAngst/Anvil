@@ -55,8 +55,8 @@ pub enum View {
     Resources,
     /// Парк серверов и ботов.
     Fleet,
-    /// Каталог программ: установить и обновить разом.
-    Catalog,
+    /// Магазин программ: программы из выпусков репозиториев.
+    Store,
 }
 
 /// Режим окна: Пульт — запускать, Кузница — собирать и выпускать.
@@ -127,6 +127,8 @@ enum After {
     LaunchExe(String, PathBuf, Option<crate::runs::Tag>),
     /// Запомнить, из какого коммита собран exe.
     Built(PathBuf, crate::builds::Build),
+    /// Программа из магазина поставлена (или не вышло): перечитать установку.
+    Store(String),
 }
 
 /// Что вышло из остановки, начатой окном.
@@ -198,8 +200,8 @@ pub struct App {
     pub minutes: HashMap<PathBuf, Result<github::Usage, String>>,
     /// Парк: состояние записей по имени, форма новой записи, команда на подтверждении.
     pub fleet_status: HashMap<String, crate::fleet::Status>,
-    /// Поле «Вставьте список» в каталоге программ.
-    pub catalog_import: String,
+    /// Магазин программ: выпуски репозиториев, фильтры, ход установок.
+    pub store: crate::store::Store,
     pub fleet_form: Option<crate::ui::fleet::Form>,
     pub fleet_ask: Option<(String, crate::ui::fleet::What, String)>,
     fleet_busy: bool,
@@ -419,7 +421,7 @@ impl App {
             resources_rx,
             minutes: HashMap::new(),
             fleet_status: HashMap::new(),
-            catalog_import: String::new(),
+            store: crate::store::Store::default(),
             fleet_form: None,
             fleet_ask: None,
             fleet_busy: false,
@@ -606,6 +608,9 @@ impl App {
             self.save();
         }
         self.sources.account = Some(repos);
+        if self.mode == Mode::Forge && self.view == View::Store {
+            self.refresh_store();
+        }
         if self.sources.open && self.sources.tab == 0 {
             self.mark_account_seen();
         }
@@ -636,7 +641,6 @@ impl App {
         }
         let Some(root) = sources::clone_root(&self.config) else {
             self.sources.error = Some(t("Сначала добавьте папку с проектами: в неё Anvil клонирует.").to_owned());
-            self.sources.queue.clear();
             return;
         };
         self.sources.error = None;
@@ -644,30 +648,86 @@ impl App {
         sources::clone(self.ctx.clone(), self.clone_tx.clone(), repo, root);
     }
 
-    /// Открыть «Каталог программ» в Кузнице.
-    pub fn open_catalog(&mut self) {
+    /// Открыть «Магазин программ» в Кузнице.
+    pub fn open_store(&mut self) {
         self.set_mode(Mode::Forge);
-        self.view = View::Catalog;
-        self.refresh();
+        self.view = View::Store;
+        let signed_in = self.gh_auth.as_ref().is_some_and(|a| a.login.is_some());
+        if signed_in && self.sources.account.is_none() && !self.sources.loading {
+            self.list_account();
+        }
+        if self.store.read == 0 || i18n::now() - self.store.read > 600 {
+            self.refresh_store();
+        }
     }
 
-    /// Поставить репозитории в очередь клонирования; уже лежащие на диске и уже стоящие в очереди пропускаются.
-    pub fn queue_clones(&mut self, repos: Vec<github::Repo>) {
-        for repo in repos {
-            let known = sources::local_for(&repo, &self.projects).is_some()
-                || self.sources.cloning.as_ref() == Some(&repo)
-                || self.sources.queue.contains(&repo);
-            if !known {
-                self.sources.queue.push(repo);
+    /// Репозитории магазина: аккаунт (без форков и архивных) и подключённые проекты с origin на GitHub.
+    pub fn store_repos(&self) -> Vec<crate::store::RepoInfo> {
+        use crate::store::RepoInfo;
+        let mut out: Vec<RepoInfo> = Vec::new();
+        if let Some(Ok(list)) = &self.sources.account {
+            for r in list.iter().filter(|r| !r.archived && !r.fork) {
+                out.push(RepoInfo {
+                    repo: r.repo.clone(),
+                    description: r.description.clone(),
+                    private: r.private,
+                    project: sources::local_for(&r.repo, &self.projects).map(|p| p.path.clone()),
+                });
             }
         }
-        self.start_next_clone();
+        for p in self.projects.iter().filter(|p| !self.is_hidden(&p.path)) {
+            let Some(repo) = p.git().and_then(|g| g.github()).and_then(|url| github::Repo::from_url(&url)) else {
+                continue;
+            };
+            if out.iter().any(|r| r.repo.slug().eq_ignore_ascii_case(&repo.slug())) {
+                continue;
+            }
+            out.push(RepoInfo {
+                repo,
+                description: p.meta().and_then(|m| m.description.clone()),
+                private: sources::is_private(&self.config, &p.path, self.remotes.get(&p.path)) == Some(true),
+                project: Some(p.path.clone()),
+            });
+        }
+        out
     }
 
-    fn start_next_clone(&mut self) {
-        if self.sources.cloning.is_none() && !self.sources.queue.is_empty() {
-            let repo = self.sources.queue.remove(0);
-            self.start_clone(repo);
+    /// Прочитать выпуски репозиториев магазина в потоке GitHub.
+    pub fn refresh_store(&mut self) {
+        if self.store.loading {
+            return;
+        }
+        let repos: Vec<github::Repo> = self.store_repos().into_iter().map(|r| r.repo).collect();
+        if repos.is_empty() {
+            return;
+        }
+        self.store.loading = true;
+        let _ = self.gh_commands.send(github::Cmd::StoreScan(repos));
+    }
+
+    /// Перечитать установки всех программ, найденных в выпусках.
+    fn store_rescan_installs(&mut self) {
+        let prerelease = self.config.common.prerelease;
+        let bins: Vec<String> = self
+            .store_repos()
+            .iter()
+            .filter_map(|info| match self.store.releases.get(&info.repo.slug().to_lowercase()) {
+                Some(Ok(releases)) => Some(crate::store::programs(&info.repo, releases, prerelease)),
+                _ => None,
+            })
+            .flatten()
+            .map(|p| p.bin)
+            .collect();
+        for bin in bins {
+            self.installs.insert(bin.clone(), installs::scan(&bin));
+        }
+    }
+
+    /// Поставить программу из выпуска, без клонирования; ход — в карточке магазина.
+    pub fn store_install(&mut self, program: &crate::store::Program) {
+        if let Some(id) = self.install_release(&installs::programs_dir(), &program.bin, &program.release) {
+            self.after_job.entry(id).or_default().push(After::Store(program.bin.clone()));
+            self.store.jobs.insert(program.bin.clone(), id);
         }
     }
 
@@ -961,7 +1021,6 @@ impl App {
             }
             Err(e) => self.sources.error = Some(format!("{}: {e}", done.repo.slug())),
         }
-        self.start_next_clone();
     }
 
     pub fn fetch(&mut self) {
@@ -1022,6 +1081,20 @@ impl App {
                 }
                 github::Event::Repos(repos) => self.apply_repos(repos),
                 github::Event::Minutes(list) => self.minutes.extend(list),
+                github::Event::StoreRepo(repo, result) => {
+                    // Установленное у программ этого репозитория — сразу, а не после чтения всех.
+                    if let Ok(releases) = &result {
+                        for p in crate::store::programs(&repo, releases, self.config.common.prerelease) {
+                            self.installs.insert(p.bin.clone(), installs::scan(&p.bin));
+                        }
+                    }
+                    self.store.releases.insert(repo.slug().to_lowercase(), result);
+                }
+                github::Event::StoreDone => {
+                    self.store.loading = false;
+                    self.store.read = i18n::now();
+                    self.store_rescan_installs();
+                }
                 github::Event::Watch(path, watch) => {
                     self.watches.insert(path, *watch);
                 }
@@ -1160,7 +1233,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview | View::Work | View::Resources | View::Fleet | View::Catalog => View::Project,
+            View::Overview | View::Work | View::Resources | View::Fleet | View::Store => View::Project,
         };
     }
 
@@ -2227,6 +2300,12 @@ impl App {
                     self.build_info.insert(crate::builds::key(&exe), build);
                     crate::builds::save(&self.builds_path, &self.build_info);
                 }
+                After::Store(bin) => {
+                    self.installs.insert(bin.clone(), installs::scan(&bin));
+                    if outcome.ok {
+                        self.toasts.push(format!("{bin}: {}", t("установлена")), Tone::Success);
+                    }
+                }
                 _ => {}
             }
         }
@@ -2359,7 +2438,7 @@ impl App {
     }
 
     /// Удалить установку целиком (после подтверждения). Запущенную — не удаляем.
-    pub fn uninstall(&mut self, path: &Path, bin: &str) {
+    pub fn uninstall(&mut self, path: Option<&Path>, bin: &str) {
         let root = installs::root(bin);
         if self.running(bin).iter().any(|r| r.path.as_ref().is_some_and(|p| installs::inside(p, &root))) {
             self.toasts
@@ -2371,7 +2450,10 @@ impl App {
             Ok(()) => self.toasts.push(format!("{bin}: {}", t("установка удалена")), Tone::Neutral),
             Err(e) => self.toasts.push(format!("{bin}: {e}"), Tone::Danger),
         }
-        self.refresh_installs(path);
+        self.installs.insert(bin.to_owned(), installs::scan(bin));
+        if let Some(path) = path {
+            self.refresh_installs(path);
+        }
     }
 
     // ─── Зависимости ──────────────────────────────────────────────────────────

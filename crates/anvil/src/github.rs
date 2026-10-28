@@ -206,6 +206,8 @@ pub enum Cmd {
     ListRepos,
     /// Минуты Actions с начала месяца у этих проектов.
     Minutes(Vec<Target>),
+    /// Прочитать выпуски репозиториев для магазина программ; ответы приходят по одному.
+    StoreScan(Vec<Repo>),
 }
 
 pub enum Event {
@@ -218,6 +220,10 @@ pub enum Event {
     Repos(Result<Vec<AccountRepo>, String>),
     /// Минуты Actions по проектам.
     Minutes(Vec<(PathBuf, Result<Usage, String>)>),
+    /// Выпуски одного репозитория для магазина.
+    StoreRepo(Repo, Result<Vec<Release>, String>),
+    /// Чтение выпусков для магазина закончено.
+    StoreDone,
 }
 
 /// `cache_dir` — куда класть последнее известное (`github.json`).
@@ -305,6 +311,16 @@ impl Hub {
                     continue;
                 }
                 Ok(Cmd::Refresh) => {}
+                Ok(Cmd::StoreScan(repos)) => {
+                    for repo in repos {
+                        let result = self
+                            .get::<Vec<ApiRelease>>(&format!("/repos/{}/releases?per_page=8", repo.slug()))
+                            .map(|(list, _)| list.into_iter().map(Release::from).collect());
+                        self.send(Event::StoreRepo(repo, result));
+                    }
+                    self.send(Event::StoreDone);
+                    continue;
+                }
                 Ok(Cmd::Minutes(targets)) => {
                     let since = month_start(crate::i18n::now());
                     let list = targets.iter().map(|t| (t.path.clone(), self.usage(t, &since))).collect();

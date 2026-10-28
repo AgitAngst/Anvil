@@ -120,9 +120,7 @@ fn uninstall(app: &mut App, ctx: &egui::Context) {
         Some(true) => {
             app.uninstall_confirm = None;
             let path = app.current().map(|p| p.path.clone());
-            if let Some(path) = path {
-                app.uninstall(&path, &bin);
-            }
+            app.uninstall(path.as_deref(), &bin);
         }
         Some(false) => app.uninstall_confirm = None,
         None => {}

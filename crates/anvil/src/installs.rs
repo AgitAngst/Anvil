@@ -95,6 +95,9 @@ pub fn shortcut_path(bin: &str) -> PathBuf {
 /// Создать или обновить ярлык на `current\<exe>`: ярлык не устаревает при смене версии.
 pub fn create_shortcut(bin: &str) -> Result<PathBuf, String> {
     let lnk = shortcut_path(bin);
+    if let Some(dir) = lnk.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let current = root(bin).join("current");
     let target = current.join(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
     #[cfg(windows)]

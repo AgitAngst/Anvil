@@ -2,7 +2,6 @@
 
 mod add_project;
 mod amber;
-mod catalog;
 mod deck;
 mod demo;
 pub mod deps;
@@ -21,6 +20,7 @@ pub mod release;
 mod resources;
 mod settings;
 mod sidebar;
+mod store;
 mod work;
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
@@ -75,7 +75,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             (Mode::Forge, View::Work) => work::show(app, ui),
             (Mode::Forge, View::Resources) => resources::show(app, ui),
             (Mode::Forge, View::Fleet) => fleet::show(app, ui),
-            (Mode::Forge, View::Catalog) => catalog::show(app, ui),
+            (Mode::Forge, View::Store) => store::show(app, ui),
         }
     });
 

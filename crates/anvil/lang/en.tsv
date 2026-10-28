@@ -810,21 +810,32 @@ Windows не отдала сведения о дисках (для части д
 Обновление	Update
 Откат	Rollback
 Другие виды	More views
-Каталог программ	Program catalog
-Поставить все	Install all
 Обновить все	Update all
-Программы подключённых проектов: что стоит на этом ПК и что вышло на GitHub. Ставится из выпусков, данные программ не трогаются.	Programs of connected projects: what is installed on this PC and what is released on GitHub. Installs come from releases; program data is never touched.
 Программ нет	No programs
-Подключите проекты на Rust (кнопка + над списком): их программы появятся здесь.	Connect Rust projects (the + button above the list): their programs show up here.
-Перенос на другой ПК	Moving to another PC
-Скопируйте список репозиториев, на новом ПК вставьте его ниже: Anvil склонирует проекты, а программы вы поставите отсюда.	Copy the list of repositories and paste it below on the new PC: Anvil clones the projects and you install the programs from here.
-Скопировать список	Copy the list
-owner/name, по одному в строке	owner/name, one per line
-Подключить из списка	Connect from the list
-Клонирую, осталось:	Cloning, left:
-есть новая	newer available
-актуальна	up to date
 нет выпусков	no releases
 Собрать и поставить	Build and install
-Список скопирован	List copied
-Не адреса	Not addresses
+Магазин программ	Program store
+Перечитать выпуски	Reload releases
+Подключённые проекты	Connected projects
+Репозитории	Repositories
+выпуски прочитаны	releases read
+Войдите в GitHub (токен — в Настройки → Кузница): без входа видны только подключённые проекты.	Sign in to GitHub (token in Settings → Forge): without it only connected projects are visible.
+Найти программу	Find a program
+Все	All
+Установленные	Installed
+Обновления	Updates
+Читаю выпуски…	Reading releases…
+Здесь появятся программы из выпусков ваших репозиториев: архив по соглашению и SHA256SUMS.	Programs from the releases of your repositories show up here: an archive by the convention and SHA256SUMS.
+Скрыть без выпусков	Hide without releases
+Показать без выпусков	Show without releases
+Ставлю…	Installing…
+Сведения	Details
+инструмент	tool
+Не поставилось: смотрите журнал задач	Install failed: see the task log
+К списку	Back to the list
+Последний выпуск	Latest release
+Размер	Size
+Контрольная сумма SHA-256 сверяется с SHA256SUMS выпуска перед установкой.	The SHA-256 checksum is checked against the release's SHA256SUMS before installing.
+Данные программы при удалении не трогаются.	Program data is left untouched on uninstall.
+Страница на GitHub	GitHub page
+Установить	Install
