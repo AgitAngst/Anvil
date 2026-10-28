@@ -154,7 +154,7 @@ pub fn span(secs: i64) -> String {
     if secs < 60 { format!("{secs} {}", t("с")) } else { uptime(secs) }
 }
 
-/// «Amber · test упал» / «Amber · test crashed»; пустое `who` — одно слово. «упал» у CI переводится
+/// «Lantern · test упал» / «Lantern · test crashed»; пустое `who` — одно слово. «упал» у CI переводится
 /// иначе («failed»), поэтому здесь своя пара.
 pub fn crashed(who: &str) -> String {
     let word = if english() { "crashed" } else { "упал" };
@@ -209,7 +209,7 @@ pub fn on_github(version: &str) -> String {
     if english() { format!("{version} on GitHub") } else { format!("есть {version} на GitHub") }
 }
 
-/// «Из проекта Amber» / «From the Amber project».
+/// «Из проекта Lantern» / «From the Lantern project».
 pub fn from_project(name: &str) -> String {
     if english() { format!("From the {name} project") } else { format!("Из проекта {name}") }
 }
@@ -252,7 +252,7 @@ pub fn crashed_short(timestamp: i64) -> String {
     }
 }
 
-/// «amber-desktop из кода уже запущен (test)» / «amber-desktop from code is already running (test)».
+/// «lantern-desktop из кода уже запущен (test)» / «lantern-desktop from code is already running (test)».
 pub fn already_running(bin: &str, profile: &str) -> String {
     let tail = if profile.is_empty() { String::new() } else { format!(" ({profile})") };
     if english() {

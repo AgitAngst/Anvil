@@ -41,7 +41,7 @@ const EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 /// Что за программа и где её выпуски.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Начало имени архива: `amber-desktop` → `amber-desktop-0.3.1-windows-x64.zip`.
+    /// Начало имени архива: `lantern-desktop` → `lantern-desktop-0.3.1-windows-x64.zip`.
     pub app: String,
     /// Текущая версия — обычно `env!("CARGO_PKG_VERSION")`.
     pub version: String,

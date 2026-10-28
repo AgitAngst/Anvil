@@ -105,7 +105,7 @@ jobs:
         shell: pwsh
         run: |
           # Один архив <app>-… со всеми бинарниками, а без app — по архиву <бинарник>-… на каждый
-          # (у Amber клиент и командный центр обновляются по отдельности). Суммы — в одном файле.
+          # (например, клиент и командный центр обновляются по отдельности). Суммы — в одном файле.
           $version = '${{ steps.version.outputs.version }}'
           $bins = '${{ inputs.bins }}'.Split(' ', [StringSplitOptions]::RemoveEmptyEntries)
           $groups = if ('${{ inputs.app }}') { @{ '${{ inputs.app }}' = $bins } } else { $g = [ordered]@{}; foreach ($b in $bins) { $g[$b] = @($b) }; $g }

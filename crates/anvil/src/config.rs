@@ -223,7 +223,7 @@ pub enum Source {
 }
 
 impl Preset {
-    /// Порт из условия готовности `port:18731` — для чипа «amber-server :18731».
+    /// Порт из условия готовности `port:18731` — для чипа «lantern-server :18731».
     pub fn port(&self) -> Option<u16> {
         self.ready.strip_prefix("port:")?.trim().parse().ok()
     }
@@ -348,19 +348,19 @@ mod tests {
             roots: vec![PathBuf::from(r"D:\dev_personal")],
             hidden: vec![PathBuf::from(r"D:\dev_personal\old")],
             fetch_minutes: 5,
-            selected: Some(PathBuf::from(r"D:\dev_personal\amber")),
+            selected: Some(PathBuf::from(r"P:\lantern")),
             build_jobs: 4,
             ..Config::default()
         };
-        let amber = config.project_mut(Path::new(r"D:\dev_personal\amber"));
-        amber.release = true;
-        amber.presets.push(Preset {
+        let lantern = config.project_mut(Path::new(r"P:\lantern"));
+        lantern.release = true;
+        lantern.presets.push(Preset {
             name: "Тест".into(),
-            bin: "amber-desktop".into(),
+            bin: "lantern-desktop".into(),
             args: "--profile t".into(),
             ..Preset::default()
         });
-        assert_eq!(config.project(Path::new(r"D:\DEV_PERSONAL\Amber")).presets.len(), 1);
+        assert_eq!(config.project(Path::new(r"P:\Lantern")).presets.len(), 1);
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
     }
@@ -386,7 +386,7 @@ kinds = ['rust']",
 
     #[test]
     fn old_presets_become_profiles_from_code() {
-        let text = "[projects.'d:\\x']\npresets = [{ name = 'test', bin = 'amber-server', args = '--addr 1', ready = 'port:18731' }]";
+        let text = "[projects.'d:\\x']\npresets = [{ name = 'test', bin = 'lantern-server', args = '--addr 1', ready = 'port:18731' }]";
         let config: Config = toml::from_str(text).unwrap();
         let preset = &config.project(Path::new(r"D:\x")).presets[0];
         assert_eq!(preset.source, Source::Code);

@@ -144,7 +144,7 @@ mod tests {
     fn env_variables_expand_in_args() {
         // SAFETY: тест однопоточный по этой переменной; имя уникальное.
         unsafe { std::env::set_var("ANVIL_TEST_DIR", r"C:\data") };
-        assert_eq!(expand_env(r"--db %ANVIL_TEST_DIR%\amber.db"), r"--db C:\data\amber.db");
+        assert_eq!(expand_env(r"--db %ANVIL_TEST_DIR%\lantern.db"), r"--db C:\data\lantern.db");
         assert_eq!(expand_env("100% sure %NO_SUCH_VAR_X%"), "100% sure %NO_SUCH_VAR_X%");
     }
 

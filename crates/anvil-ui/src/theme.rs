@@ -55,7 +55,7 @@ impl Accent {
         dark: Swatch { fill: rgb(0xAB7CF6), on_fill: rgb(0x150A31), text: rgb(0xBF9FFB) },
         light: Swatch { fill: rgb(0x7439D9), on_fill: rgb(0xFFFFFF), text: rgb(0x6229C4) },
     };
-    /// Amber: янтарь.
+    /// Янтарный.
     pub const AMBER: Accent = Accent {
         name: "Amber",
         dark: Swatch { fill: rgb(0xF2B54A), on_fill: rgb(0x1C1403), text: rgb(0xF2B54A) },
@@ -562,7 +562,7 @@ mod tests {
             }
         }
         failures.dedup();
-        // Кромка знака Amber в светлой теме — графика: не меньше 3:1 ко всем светлым фонам.
+        // Кромка янтарного знака в светлой теме — графика: не меньше 3:1 ко всем светлым фонам.
         let p = Palette::new(false, Accent::VIOLET);
         let (fill, _, edge) = p.mark(Some(Accent::AMBER));
         let edge = over(edge.expect("у янтаря в светлой теме есть кромка"), fill);
@@ -571,7 +571,7 @@ mod tests {
         {
             let ratio = contrast(edge, under);
             if ratio < 3.0 {
-                failures.push(format!("кромка знака Amber на {what} — {ratio:.2}:1"));
+                failures.push(format!("кромка янтарного знака на {what} — {ratio:.2}:1"));
             }
         }
         assert!(

@@ -43,7 +43,7 @@ pub struct Item {
     /// Бинарник Rust; у проекта Godot и Unity — `None`.
     pub bin: Option<String>,
     pub group: Group,
-    /// Имя на Пульте: «Amber», «Amber Admin», «amber-server», «IQube».
+    /// Имя на Пульте: «Lantern», «Lantern Admin», «lantern-server», «IQube».
     pub name: String,
     /// Подпись моноширинным рядом с именем: бинарник, «Godot 4.7».
     pub caption: String,
@@ -220,7 +220,7 @@ pub fn items<'a>(
 }
 
 /// Главная программа проекта берёт имя проекта: единственная оконная, или названная как папка,
-/// или `<папка>-desktop` / `-app` / `-gui` (`amber-desktop` → «Amber»).
+/// или `<папка>-desktop` / `-app` / `-gui` (`lantern-desktop` → «Lantern»).
 fn main_program<'a>(project: &Path, programs: &[&'a Bin]) -> Option<&'a str> {
     if let [only] = programs {
         return Some(only.name.as_str());
@@ -270,9 +270,9 @@ mod tests {
 
     #[test]
     fn roles_come_from_hint_then_window_then_name() {
-        assert_eq!(role(&bin("amber-desktop", true)), Role::Program);
-        assert_eq!(role(&bin("amber-server", false)), Role::Service);
-        assert_eq!(role(&bin("amber-bot", false)), Role::Service);
+        assert_eq!(role(&bin("lantern-desktop", true)), Role::Program);
+        assert_eq!(role(&bin("lantern-server", false)), Role::Service);
+        assert_eq!(role(&bin("lantern-bot", false)), Role::Service);
         assert_eq!(role(&bin("uniffi-bindgen", false)), Role::Tool);
         let mut hinted = bin("uniffi-bindgen", false);
         hinted.hint.role = Some("program".into());
@@ -335,16 +335,16 @@ mod tests {
 
     #[test]
     fn default_profile_comes_first_and_follows_install() {
-        let amber = rust("/dev/amber", vec![bin("amber-desktop", true)]);
-        let item = items([&amber], |_| None).remove(0);
+        let lantern = rust("/dev/lantern", vec![bin("lantern-desktop", true)]);
+        let item = items([&lantern], |_| None).remove(0);
         let presets = vec![
             Preset {
                 name: "test".into(),
-                bin: "amber-desktop".into(),
+                bin: "lantern-desktop".into(),
                 args: "--profile test".into(),
                 ..Preset::default()
             },
-            Preset { name: "other".into(), bin: "amber-server".into(), ..Preset::default() },
+            Preset { name: "other".into(), bin: "lantern-server".into(), ..Preset::default() },
         ];
         let list = profiles(&item, &presets, true);
         assert_eq!(list.len(), 2);

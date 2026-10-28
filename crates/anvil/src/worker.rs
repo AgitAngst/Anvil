@@ -50,7 +50,7 @@ impl Project {
     }
 }
 
-/// Имя проекта — имя папки с заглавной буквы: `amber` → `Amber`, `FFMincer` как есть.
+/// Имя проекта — имя папки с заглавной буквы: `lantern` → `Lantern`, `FFMincer` как есть.
 pub fn display_name(path: &Path) -> String {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let mut chars = name.chars();

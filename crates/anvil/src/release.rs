@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(bump(&v("0.3.1"), Bump::Minor).to_string(), "0.4.0");
         assert_eq!(bump(&v("0.3.1"), Bump::Major).to_string(), "1.0.0");
         assert_eq!(bump(&v("1.0.0-rc.1"), Bump::Patch).to_string(), "1.0.0");
-        // Amber: в Cargo.toml 0.1.0, а тег уже v0.3.0 — считать от тега.
+        // В Cargo.toml 0.1.0, а тег уже v0.3.0 — считать от тега.
         assert_eq!(base(Some("0.1.0"), Some("v0.3.0")).to_string(), "0.3.0");
         assert_eq!(base(Some("0.2.0"), None).to_string(), "0.2.0");
     }

@@ -93,8 +93,8 @@ pub struct Meta {
     pub bins: Vec<Bin>,
     /// Куда cargo кладёт сборку (`target`, если не переопределено).
     pub target_dir: PathBuf,
-    /// Репозиторий выпусков (`owner/name`), если выпуски публикуются не в сам проект: у закрытого
-    /// Amber — публичный `AgitAngst/amber-releases`. Берётся из workflow выпуска.
+    /// Репозиторий выпусков (`owner/name`), если выпуски публикуются не в сам проект: закрытый код
+    /// выходит в отдельный публичный репозиторий, например `example/lantern-releases`. Берётся из workflow выпуска.
     pub releases_repo: Option<String>,
 }
 
@@ -113,7 +113,7 @@ pub struct Bin {
 /// ```toml
 /// [package.metadata.anvil]
 /// role = "service"    # program | service | tool
-/// name = "Amber"      # имя на Пульте
+/// name = "Lantern"    # имя на Пульте
 /// hidden = true       # не показывать на Пульте
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -268,8 +268,8 @@ mod tests {
 
     #[test]
     fn releases_repo_from_release_workflow() {
-        let amber = r#"# Код Amber закрыт, поэтому выпуск идёт в отдельный публичный
-# AgitAngst/amber-releases.
+        let lantern = r#"# Выпуск идёт в отдельный публичный репозиторий
+# example/lantern-releases.
 on:
   push:
     tags: ["v*"]
@@ -277,10 +277,10 @@ jobs:
   release:
     uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.2.0
     with:
-      bins: amber-desktop amber-admin
-      repository: AgitAngst/amber-releases
+      bins: lantern-desktop lantern-admin
+      repository: example/lantern-releases
 "#;
-        assert_eq!(workflow_releases_repo(amber).as_deref(), Some("AgitAngst/amber-releases"));
+        assert_eq!(workflow_releases_repo(lantern).as_deref(), Some("example/lantern-releases"));
         // Свой репозиторий — поля нет.
         let own = "jobs:\n  release:\n    uses: ./.github/workflows/rust-release.yml\n    with:\n      app: anvil\n";
         assert_eq!(workflow_releases_repo(own), None);
@@ -316,8 +316,8 @@ jobs:
             Metadata {
                 packages: vec![
                     package("core", "/w/crates/core", "0.3.0", &[("core", "lib")]),
-                    package("desktop", "/w/crates/desktop", "0.3.0", &[("amber-desktop", "bin")]),
-                    package("server", "/w/crates/server", "0.3.0", &[("amber-server", "bin"), ("smoke", "example")]),
+                    package("desktop", "/w/crates/desktop", "0.3.0", &[("lantern-desktop", "bin")]),
+                    package("server", "/w/crates/server", "0.3.0", &[("lantern-server", "bin"), ("smoke", "example")]),
                 ],
                 target_directory: PathBuf::from("/w/target"),
             },
@@ -325,7 +325,7 @@ jobs:
         assert_eq!(meta.version.as_deref(), Some("0.3.0"));
         assert_eq!(meta.packages, 3);
         let bins: Vec<&str> = meta.bins.iter().map(|b| b.name.as_str()).collect();
-        assert_eq!(bins, ["amber-desktop", "amber-server"]);
+        assert_eq!(bins, ["lantern-desktop", "lantern-server"]);
         assert_eq!(meta.target_dir, PathBuf::from("/w/target"));
     }
 
@@ -357,8 +357,8 @@ jobs:
         assert!(!declares_gui(&dir.join("missing.rs")));
         std::fs::remove_dir_all(&dir).unwrap();
 
-        let json = r#"{"packages":[{"name":"amber-bot","version":"0.4.0","manifest_path":"/a/Cargo.toml",
-            "targets":[{"name":"amber-bot","kind":["bin"],"src_path":"/a/src/main.rs"}],
+        let json = r#"{"packages":[{"name":"lantern-bot","version":"0.4.0","manifest_path":"/a/Cargo.toml",
+            "targets":[{"name":"lantern-bot","kind":["bin"],"src_path":"/a/src/main.rs"}],
             "metadata":{"anvil":{"role":"service","name":"Бот"}}}],"target_directory":"/a/target"}"#;
         let metadata: Metadata = serde_json::from_str(json).unwrap();
         let meta = summarize(Path::new("/a"), metadata);

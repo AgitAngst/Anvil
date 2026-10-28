@@ -22,7 +22,7 @@
 
 - Только **E:** — сборки, `target`, логи. JDK и SDK для Android только читаются с `D:\Android`
   (`JAVA_HOME='D:\Android\jdk-21'`, `ANDROID_HOME='D:\Android\Sdk'`); больше D: не трогать.
-- Rust: по ходу — только затронутые крейты; при сдаче — `python E:/dev_personal/tools/checks.py all` (скил `rust-verify`).
+- Rust: по ходу — только затронутые крейты; при сдаче — полный прогон (скил `rust-verify`).
 - Android (`android/`): `./gradlew … --max-workers=2`, после работы `./gradlew --stop`; Gradle и cargo одновременно не
   гонять, два Gradle одновременно — тоже.
 

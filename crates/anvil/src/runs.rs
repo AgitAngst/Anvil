@@ -26,7 +26,7 @@ use crate::launch::Launch;
 pub struct Tag {
     /// Ключ предмета Пульта.
     pub key: String,
-    /// Имя для людей: «Amber», «amber-server».
+    /// Имя для людей: «Lantern», «lantern-server».
     pub name: String,
     /// Профиль: «обычный», «test».
     pub profile: String,
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn log_levels_and_tail() {
         assert_eq!(log_level("00:28:22  ERROR  audio: socket closed"), LogLevel::Error);
-        assert_eq!(log_level("2026-09-27T00:28:22Z  WARN amber_server: peer left"), LogLevel::Warn);
+        assert_eq!(log_level("2026-09-27T00:28:22Z  WARN lantern_server: peer left"), LogLevel::Warn);
         assert_eq!(log_level("INFO  tick 3"), LogLevel::Info);
         assert_eq!(log_level("thread 'main' panicked at src/main.rs:4:5:"), LogLevel::Error);
         assert_eq!(log_level("just text"), LogLevel::Plain);

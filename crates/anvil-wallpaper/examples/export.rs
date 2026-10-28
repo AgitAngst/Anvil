@@ -6,7 +6,7 @@
 //! cargo run -p anvil-wallpaper --example export -- [ПАПКА] [--scale 2] [--bg EEE5D3 --ink 6E5A3A]
 //! ```
 //!
-//! Без `--bg`/`--ink` — по две плитки на узор, цветами фона бесед Amber:
+//! Без `--bg`/`--ink` — по две плитки на узор, цветами фона Lantern:
 //! `<узор>-light@<N>x.png` и `<узор>-dark@<N>x.png`. С ними — одна плитка
 //! `<узор>@<N>x.png` этими цветами. Папка по умолчанию — `target/wallpapers`.
 
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use anvil_wallpaper::{Pattern, tile};
 
-/// Фон бесед и узор у Amber: светлая и тёмная тема (как в `Theme.kt` телефона).
+/// Фон и узор по умолчанию: светлая и тёмная тема.
 const LIGHT: ([u8; 3], [u8; 3]) = ([0xEE, 0xE5, 0xD3], [0x6E, 0x5A, 0x3A]);
 const DARK: ([u8; 3], [u8; 3]) = ([0x12, 0x10, 0x0E], [0xCD, 0xBF, 0xA8]);
 

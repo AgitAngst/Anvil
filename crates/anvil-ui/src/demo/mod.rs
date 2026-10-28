@@ -49,18 +49,22 @@ struct Project {
     binaries: &'static [(&'static str, bool)],
 }
 
+/// Знаки вымышленной программы Lantern: в таблице семьи её нет, поэтому собраны прямо в витрине.
+const LANTERN_DESKTOP: crate::Mark = crate::Mark { accent: Some(Accent::AMBER), icon: Icon::File };
+const LANTERN_SERVER: crate::Mark = crate::Mark { accent: Some(Accent::AMBER), icon: Icon::Broadcast };
+
 const PROJECTS: [Project; 4] = [
     Project {
-        name: "Amber",
-        about: "Приватный мессенджер: сервер, десктоп, Android",
-        path: r"D:\dev_personal\amber",
+        name: "Lantern",
+        about: "Заметки с поиском и синхронизацией",
+        path: r"P:\lantern",
         tone: Tone::Success,
         trailing: Some(("0.3.1", Tone::Accent)),
         version: "v0.3.0",
         ahead: "+4 коммита",
         ci: ("CI пройден", Tone::Success),
         dirty: None,
-        binaries: &[("amber-desktop", true), ("amber-server", false), ("amber-admin", false)],
+        binaries: &[("lantern-desktop", true), ("lantern-server", false), ("lantern-admin", false)],
     },
     Project {
         name: "Tetrachrome",
@@ -147,7 +151,7 @@ impl Demo {
             project: 0,
             detail_tab: 0,
             search: String::new(),
-            field: "amber-desktop --profile test".into(),
+            field: "lantern-desktop --profile test".into(),
             toasts: Toasts::default(),
             confirm_open: open == Some(Open::Release),
             settings_open: open == Some(Open::Settings),
@@ -213,7 +217,7 @@ impl Demo {
                     "git commit -m \"Release v0.3.1\"",
                     "git tag v0.3.1",
                     "git push origin main v0.3.1",
-                    "CI соберёт выпуск в amber-releases",
+                    "CI соберёт выпуск в lantern-releases",
                 ] {
                     ui.horizontal(|ui| {
                         let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
@@ -224,7 +228,7 @@ impl Demo {
                 ui.add_space(8.0);
                 w::banner(ui, Tone::Warning, "Push не отменить.", "Тег увидят все.", |_| {});
             };
-            match w::confirm(&ctx, "release", "Выпустить Amber v0.3.1?", body, "Выпустить", false) {
+            match w::confirm(&ctx, "release", "Выпустить Lantern v0.3.1?", body, "Выпустить", false) {
                 Some(true) => {
                     self.confirm_open = false;
                     self.toasts.push("Выпуск v0.3.1 запущен — ждём CI", Tone::Accent);
@@ -339,9 +343,9 @@ impl Demo {
         );
         let rows: [Row; 5] = [
             (
-                crate::family::mark_of("amber-desktop").unwrap(),
-                "Amber",
-                "amber-desktop",
+                LANTERN_DESKTOP,
+                "Lantern",
+                "lantern-desktop",
                 Some("test упал"),
                 "установлена",
                 Some("0.4.0"),
@@ -349,8 +353,8 @@ impl Demo {
                 Some(Tone::Success),
             ),
             (
-                crate::family::mark_of("amber-server").unwrap(),
-                "amber-server",
+                LANTERN_SERVER,
+                "lantern-server",
                 "test-18731",
                 None,
                 "сборка",
@@ -474,10 +478,10 @@ impl Demo {
             w::source_chip(ui, "сборка", Some("2353af9"));
             w::source_chip(ui, "не установлена", None);
             ui.add_space(14.0);
-            let amber = crate::family::mark_of("amber-desktop").unwrap();
-            let server = crate::family::mark_of("amber-server").unwrap();
-            w::running_chip(ui, amber.accent, amber.icon, "Amber", "2:14");
-            w::running_chip(ui, server.accent, server.icon, "amber-server", ":18731");
+            let lantern = LANTERN_DESKTOP;
+            let server = LANTERN_SERVER;
+            w::running_chip(ui, lantern.accent, lantern.icon, "Lantern", "2:14");
+            w::running_chip(ui, server.accent, server.icon, "lantern-server", ":18731");
         });
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -485,11 +489,11 @@ impl Demo {
             ui.add_space(20.0);
             w::chain(ui, &[ChainNode::Starting, ChainNode::Stopped], "запускается");
             ui.add_space(20.0);
-            let amber = crate::family::mark_of("amber-desktop").unwrap();
-            let server = crate::family::mark_of("amber-server").unwrap();
+            let lantern = LANTERN_DESKTOP;
+            let server = LANTERN_SERVER;
             w::mark_stack(
                 ui,
-                &[(server.accent, server.icon), (amber.accent, amber.icon), (amber.accent, amber.icon)],
+                &[(server.accent, server.icon), (lantern.accent, lantern.icon), (lantern.accent, lantern.icon)],
                 p.bg,
             );
             ui.add_space(20.0);
@@ -543,7 +547,7 @@ impl Demo {
             w::section_label(ui, "Задачи");
             ui.add_space(6.0);
             w::spinner(ui, 14.0);
-            w::mono(ui, "cargo build --release -p amber-desktop", Some(p.text));
+            w::mono(ui, "cargo build --release -p lantern-desktop", Some(p.text));
             ui.add_space(8.0);
             let t = (self.started.elapsed().as_secs_f32() / 40.0).fract();
             w::progress(ui, Some(t), 220.0);
@@ -697,7 +701,7 @@ impl Demo {
                     w::badge(ui, "есть 0.3.1", Tone::Accent);
                 });
                 w::field_row(ui, "Где", |ui| {
-                    w::mono(ui, r"%LOCALAPPDATA%\Programs\amber", None);
+                    w::mono(ui, r"…\Programs\lantern", None);
                 });
                 w::field_row(ui, "Прошлые", |ui| {
                     ui.label("0.2.0, 0.1.0");
@@ -1138,7 +1142,7 @@ impl Demo {
                 ui.horizontal(|ui| {
                     for (icon, name) in [
                         (Icon::Hive, "Anvil"),
-                        (Icon::Chat, "Amber"),
+                        (Icon::File, "Lantern"),
                         (Icon::Tiles, "Tetrachrome"),
                         (Icon::Film, "FFMincer"),
                     ] {

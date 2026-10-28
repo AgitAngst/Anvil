@@ -27,7 +27,7 @@ impl Program {
     }
 }
 
-/// Имя программы из имени архива выпуска `version`: `amber-desktop-0.3.1-windows-x64.zip` → `amber-desktop`.
+/// Имя программы из имени архива выпуска `version`: `lantern-desktop-0.3.1-windows-x64.zip` → `lantern-desktop`.
 /// Имя идёт в путь установки, поэтому только безопасные.
 pub fn bin_of(asset: &str, version: &Version) -> Option<String> {
     let suffix = anvil_update::asset_name("", version);
@@ -148,8 +148,8 @@ mod tests {
     #[test]
     fn names_from_archives() {
         let v = Version::parse("0.3.1").unwrap();
-        let ok = anvil_update::asset_name("amber-desktop", &v);
-        assert_eq!(bin_of(&ok, &v).as_deref(), Some("amber-desktop"));
+        let ok = anvil_update::asset_name("lantern-desktop", &v);
+        assert_eq!(bin_of(&ok, &v).as_deref(), Some("lantern-desktop"));
         assert_eq!(bin_of("SHA256SUMS", &v), None);
         assert_eq!(bin_of(&anvil_update::asset_name("a b", &v), &v), None);
         assert_eq!(bin_of(&anvil_update::asset_name("..", &v), &v), None);

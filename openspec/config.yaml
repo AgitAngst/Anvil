@@ -8,8 +8,8 @@ context: |
   Project: Anvil, a Rust workspace: the command center and launcher for the owner's programs
   (crates/anvil, Windows, egui) and the shared kit the other programs take by git tag `kit-v*`:
   anvil-ui (theme, icons, widgets, motion), anvil-update (update check and install),
-  anvil-wallpaper (chat background patterns, no dependencies). Kit consumers: Amber,
-  Tetrachrome, FFMincer, Morok. Where the project stands and how to work: HANDOFF.md; plan and
+  anvil-wallpaper (chat background patterns, no dependencies). Kit consumers:
+  Tetrachrome, FFMincer, Kamerton and other programs. Where the project stands and how to work: HANDOFF.md; plan and
   stages: SPEC.md; look rules: docs/STYLE.md; motion: docs/MOTION.md; icons: docs/ICONS.md;
   wallpapers: docs/WALLPAPERS.md; releases: docs/RELEASES.md; Android programs: docs/ANDROID.md.
   Owner rules every artifact must respect:

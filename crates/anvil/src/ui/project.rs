@@ -649,7 +649,7 @@ fn bins_card(ui: &mut Ui, app: &App, project: &Project, actions: &mut Vec<Action
     });
 }
 
-/// Откуда запущен exe — коротко, если он внутри проекта: `target\release\amber-desktop.exe`.
+/// Откуда запущен exe — коротко, если он внутри проекта: `target\release\lantern-desktop.exe`.
 fn place(exe: &Path, project: &Path) -> String {
     let text = exe.to_string_lossy();
     let root = project.to_string_lossy();

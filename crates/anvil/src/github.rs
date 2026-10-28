@@ -62,7 +62,7 @@ pub struct Target {
     pub repo: Repo,
     /// Ветка, по которой смотреть CI.
     pub branch: Option<String>,
-    /// Откуда выпуски, если не из `repo` (у Amber — `amber-releases`).
+    /// Откуда выпуски, если не из `repo` (например, `lantern-releases`).
     pub releases: Option<Repo>,
 }
 
@@ -872,7 +872,7 @@ mod tests {
         let releases: Vec<ApiRelease> = serde_json::from_str(
             r#"[{"tag_name":"v0.3.0","name":"","html_url":"u",
             "published_at":"2026-09-23T15:04:05Z","created_at":"2026-09-23T15:00:00Z","prerelease":false,"draft":false,
-            "assets":[{"name":"amber-server","size":10485760,"download_count":3,"browser_download_url":"d","url":"a"}]}]"#,
+            "assets":[{"name":"lantern-server","size":10485760,"download_count":3,"browser_download_url":"d","url":"a"}]}]"#,
         )
         .unwrap();
         let release = Release::from(releases.into_iter().next().unwrap());
@@ -882,9 +882,9 @@ mod tests {
 
     #[test]
     fn repo_from_slug() {
-        let repo = Repo::from_slug(" AgitAngst/amber-releases ").unwrap();
-        assert_eq!(repo.slug(), "AgitAngst/amber-releases");
-        assert!(Repo::from_slug("amber-releases").is_none());
+        let repo = Repo::from_slug(" example/lantern-releases ").unwrap();
+        assert_eq!(repo.slug(), "example/lantern-releases");
+        assert!(Repo::from_slug("lantern-releases").is_none());
         assert!(Repo::from_slug("a/b/c").is_none());
         assert!(Repo::from_slug("/b").is_none());
     }
@@ -931,12 +931,12 @@ mod tests {
             failed_jobs: Vec::new(),
         };
         let remote = Remote { runs: vec![run], checked: 5, ..Remote::default() };
-        let known = HashMap::from([(PathBuf::from("amber"), remote)]);
+        let known = HashMap::from([(PathBuf::from("lantern"), remote)]);
         save_cache(&file, &known);
         let back = load_cache(&file);
         let _ = std::fs::remove_dir_all(&dir);
-        let amber = &back[&PathBuf::from("amber")];
-        assert_eq!((amber.checked, amber.runs[0].number, amber.runs[0].state), (5, 68, RunState::Success));
+        let lantern = &back[&PathBuf::from("lantern")];
+        assert_eq!((lantern.checked, lantern.runs[0].number, lantern.runs[0].state), (5, 68, RunState::Success));
         assert!(load_cache(&dir.join("missing.json")).is_empty());
     }
 }

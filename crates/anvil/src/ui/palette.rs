@@ -1207,12 +1207,12 @@ mod tests {
     #[test]
     fn every_word_must_match() {
         let items = [
-            item("Собрать debug", Some("Amber")),
-            item("Собрать release", Some("Amber")),
+            item("Собрать debug", Some("Lantern")),
+            item("Собрать release", Some("Lantern")),
             item("Собрать release", Some("Tetrachrome")),
             item("Настройки", None),
         ];
-        assert_eq!(found(&items, "собрать amber release"), vec![1]);
+        assert_eq!(found(&items, "собрать lantern release"), vec![1]);
         assert_eq!(found(&items, "release"), vec![1, 2]);
         assert_eq!(found(&items, "tetra"), vec![2]);
         assert_eq!(found(&items, "").len(), 4);
@@ -1221,7 +1221,7 @@ mod tests {
 
     #[test]
     fn word_starts_rank_higher() {
-        let items = [item("Проверить форматирование", None), item("Открыть папку", Some("Amber"))];
+        let items = [item("Проверить форматирование", None), item("Открыть папку", Some("Lantern"))];
         // «пап» — начало слова во второй строке, в первой не найдено вовсе.
         assert_eq!(found(&items, "пап"), vec![1]);
         let items = [item("Показать консоль", None), item("Консоль CI", None)];
@@ -1232,16 +1232,16 @@ mod tests {
 
     #[test]
     fn wrong_layout_still_finds() {
-        let mut test = item("Amber · test", Some("--profile test · сборка 2353af9"));
+        let mut test = item("Lantern · test", Some("--profile test · сборка 2353af9"));
         test.section = Section::Launch;
-        let mut plain = item("Amber", Some("установлена 0.4.0"));
+        let mut plain = item("Lantern", Some("установлена 0.4.0"));
         plain.section = Section::Launch;
-        let items = [plain, test, item("Собрать release", Some("Amber"))];
-        assert_eq!(found(&items, "фь еу"), vec![1]);
-        assert_eq!(found(&items, "am te"), vec![1]);
+        let items = [plain, test, item("Собрать release", Some("Lantern"))];
+        assert_eq!(found(&items, "дф уы"), vec![1]);
+        assert_eq!(found(&items, "la es"), vec![1]);
         assert_eq!(found(&items, "cj,hfnm"), vec![2]);
         // Выключено в настройках — только как набрано.
-        assert!(arrange(&items, "фь еу", false, false).is_empty());
+        assert!(arrange(&items, "дф уы", false, false).is_empty());
     }
 
     #[test]
@@ -1271,27 +1271,27 @@ mod tests {
 
     #[test]
     fn exact_alias_comes_first() {
-        let mut amber = item("Amber", None);
-        amber.section = Section::Launch;
-        let mut server = item("amber-server · test", None);
+        let mut lantern = item("Lantern", None);
+        lantern.section = Section::Launch;
+        let mut server = item("lantern-server · test", None);
         server.section = Section::Launch;
-        server.alias = Some("as".into());
-        let rows = [amber, server, item("Настройки", Some("Amber"))];
-        assert_eq!(found(&rows, "as"), vec![1]);
-        assert_eq!(found(&rows, "AS"), vec![1]);
+        server.alias = Some("ls".into());
+        let rows = [lantern, server, item("Настройки", Some("Lantern"))];
+        assert_eq!(found(&rows, "ls"), vec![1]);
+        assert_eq!(found(&rows, "LS"), vec![1]);
         // В другой раскладке — тоже точно.
-        assert_eq!(found(&rows, "фы"), vec![1]);
-        // Не точно — как обычное совпадение: «am» — начало имени у обоих.
-        assert_eq!(found(&rows, "am"), vec![0, 1, 2]);
+        assert_eq!(found(&rows, "ды"), vec![1]);
+        // Не точно — как обычное совпадение: «la» — начало имени у обоих.
+        assert_eq!(found(&rows, "la"), vec![0, 1, 2]);
     }
 
     #[test]
     fn crashed_rises_on_equal_match() {
-        let mut ok = item("Amber", None);
+        let mut ok = item("Lantern", None);
         ok.section = Section::Launch;
-        let mut crashed = item("Amber · test", None);
+        let mut crashed = item("Lantern · test", None);
         crashed.section = Section::Launch;
         crashed.crashed = true;
-        assert_eq!(found(&[ok, crashed], "amber"), vec![1, 0]);
+        assert_eq!(found(&[ok, crashed], "lantern"), vec![1, 0]);
     }
 }

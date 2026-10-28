@@ -54,7 +54,7 @@ impl MotionDemo {
             result_key: 0,
             result_ok: true,
             shake_fire: false,
-            field: "amber-desktop --profile".into(),
+            field: "lantern-desktop --profile".into(),
             counter: 41,
             list_key: 0,
             reveal: true,
@@ -242,7 +242,7 @@ impl MotionDemo {
                     self.list_key += 1;
                 }
             });
-            for (i, name) in ["amber-desktop", "amber-server", "tetrachrome", "ffmincer"].iter().enumerate() {
+            for (i, name) in ["lantern-desktop", "lantern-server", "tetrachrome", "ffmincer"].iter().enumerate() {
                 fx::enter(ui, (self.list_key, i), i, |ui| {
                     ui.horizontal(|ui| {
                         w::dot(ui, if i == 1 { Tone::Warning } else { Tone::Success });
@@ -327,7 +327,7 @@ impl MotionDemo {
         w::toggle(ui, &mut self.busy_chain, "");
     }
 
-    /// Круг подключения из Morok: дымка стягивается, сгущается в кольцо и расходится волной.
+    /// Круг подключения: дымка стягивается, сгущается в кольцо и расходится волной.
     fn draw_orb(&self, ui: &mut Ui) {
         let p = Palette::of(ui);
         let ctx = ui.ctx().clone();

@@ -68,7 +68,7 @@ pub fn inside(path: &Path, root: &Path) -> bool {
     path.starts_with(&root) && path[root.len()..].starts_with('/')
 }
 
-/// Имя для людей: `amber-desktop` → `Amber Desktop`.
+/// Имя для людей: `lantern-desktop` → `Lantern Desktop`.
 pub fn display_name(bin: &str) -> String {
     bin.split(['-', '_'])
         .filter(|w| !w.is_empty())
@@ -160,11 +160,11 @@ mod tests {
 
     #[test]
     fn names_and_labels() {
-        assert_eq!(display_name("amber-desktop"), "Amber Desktop");
+        assert_eq!(display_name("lantern-desktop"), "Lantern Desktop");
         assert_eq!(display_name("anvil"), "Anvil");
         assert_eq!(local_label("0.1.0", Some("3f89301"), false), "0.1.0-3f89301");
         assert_eq!(local_label("0.1.0", Some("3f89301"), true), "0.1.0-3f89301-dirty");
-        assert!(shortcut_path("amber-desktop").ends_with("Amber Desktop.lnk"));
+        assert!(shortcut_path("lantern-desktop").ends_with("Lantern Desktop.lnk"));
         assert!(inside(Path::new("C:/Users/A/Programs/demo/current/demo.exe"), Path::new("c:/users/a/programs/demo")));
         assert!(!inside(Path::new("C:/Users/A/Programs/demo2/demo.exe"), Path::new("C:/Users/A/Programs/demo")));
     }

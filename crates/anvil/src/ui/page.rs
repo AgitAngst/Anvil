@@ -1689,7 +1689,7 @@ fn log_card(
     app.deck_view.log_errors = errors;
 }
 
-/// `…\run\amber-server-test\out.log` — хвост пути, по которому видно, чей это журнал.
+/// `…\run\lantern-server-test\out.log` — хвост пути, по которому видно, чей это журнал.
 fn short_path(path: &Path) -> String {
     let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let dir = path.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

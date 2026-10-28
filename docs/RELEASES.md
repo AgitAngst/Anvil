@@ -13,7 +13,7 @@
 | Под Android | `<app>-X.Y.Z-android.apk`, подписанный ключом выпуска программы ([ANDROID.md](ANDROID.md)) |
 | Контрольные суммы | `SHA256SUMS` в каждом выпуске: строка `<sha256>  <имя файла>` на файл |
 | Заметки | тело GitHub Release — их показывает «Что нового» |
-| Где | GitHub Releases репозитория программы; закрытый код — отдельный публичный `<app>-releases` |
+| Где | GitHub Releases репозитория программы или отдельный публичный `<app>-releases` |
 
 ## Подробно
 
@@ -31,7 +31,7 @@
 версии. Формат как у `sha256sum`:
 
 ```
-3f5c…9a1e  amber-desktop-0.3.1-windows-x64.zip
+3f5c…9a1e  lantern-desktop-0.3.1-windows-x64.zip
 ```
 
 **Заметки.** Тело Release, обычный Markdown. «Что нового» показывает заголовки, списки и абзацы.
@@ -42,15 +42,14 @@ GitHub. Тег с заметками ставить так, иначе git вы�
 git tag -a v0.3.1 --cleanup=verbatim -F notes.md
 ```
 
-**Несколько программ в одном репозитории** (Amber: клиент, сервер, админка) — отдельный архив
-на каждую, со своим `<app>`: `amber-desktop-0.3.1-windows-x64.zip`, `amber-admin-0.3.1-windows-x64.zip`.
+**Несколько программ в одном репозитории** (Lantern: клиент, сервер, админка) — отдельный архив
+на каждую, со своим `<app>`: `lantern-desktop-0.3.1-windows-x64.zip`, `lantern-admin-0.3.1-windows-x64.zip`.
 `SHA256SUMS` — общий, по строке на архив.
 
-**Закрытый код.** Приватные Releases без токена не видны, поэтому выпуски такой программы
-публикуются в отдельный публичный репозиторий `<app>-releases` (для Amber — `AgitAngst/amber-releases`).
-Код остаётся закрытым, CI закрытого репозитория публикует туда выпуск токеном с правом записи
-(секрет `RELEASES_TOKEN`). В репозитории выпусков должен быть хотя бы один коммит (README).
-Anvil берёт выпуски такой программы оттуда же — для установки, «Обновить» и вкладки «Выпуски»:
+**Отдельный репозиторий выпусков.** Если Releases репозитория программы нельзя читать без токена, выпуски
+публикуются в отдельный публичный репозиторий `<app>-releases` (например, `example/lantern-releases`).
+CI репозитория программы публикует туда выпуск токеном с правом записи (секрет `RELEASES_TOKEN`). В репозитории
+выпусков должен быть хотя бы один коммит (README). Anvil берёт выпуски программы оттуда же — для установки, «Обновить» и вкладки «Выпуски»:
 репозиторий выпусков он читает из `repository:` у вызова общего workflow в `.github/workflows`,
 а задать его руками можно в `anvil.toml` у проекта (`releases = "owner/name"` в разделе проекта).
 CI по-прежнему смотрится в репозитории кода.
@@ -147,8 +146,8 @@ jobs:
 Входы: `app` — начало имени архива; `bins` — бинарники через пробел; `package` — пакет cargo, если
 бинарники не в корневом; `repository` — куда публиковать (`owner/name`), пусто — сюда же.
 Без `app` каждый бинарник ложится в свой архив `<бинарник>-X.Y.Z-windows-x64.zip`, а `SHA256SUMS` —
-один на всех: так у Amber клиент и командный центр обновляются по отдельности.
-Для закрытого кода — ещё `secrets: RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}`.
+один на всех: так клиент и админка Lantern обновляются по отдельности.
+Для выпусков в отдельный репозиторий — ещё `secrets: RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}`.
 
 Workflow и крейты набора программа берёт с одного и того же тега набора (`@kit-vX.Y.Z` в workflow,
 `tag = "kit-vX.Y.Z"` в `Cargo.toml`) — так сборка выпуска повторяема, а по `Cargo.lock` видно, на какой
@@ -177,9 +176,8 @@ Workflow и крейты набора программа берёт с одно�
 | Anvil | `release.yml` | `anvil-…` | `AgitAngst/Anvil` | — |
 | Tetrachrome | `release.yml` | `tetrachrome-…` | `AgitAngst/Tetrachrome` | — |
 | FFMincer | `release.yml` | `ffmincer-…` | `AgitAngst/FFMincer` | — |
-| Amber | `desktop-release.yml` | `amber-desktop-…`, `amber-admin-…` | `AgitAngst/amber-releases` | `RELEASES_TOKEN` |
 
-У Amber сервер по-прежнему выпускает свой `server.yml` в закрытый репозиторий, а клиент и
-командный центр под Windows — `desktop-release.yml` в публичный `amber-releases` (оба — по тому же
-тегу). `RELEASES_TOKEN` — fine-grained токен с правом «Contents: Read and write» только на
-`AgitAngst/amber-releases`; его заводит владелец и кладёт в секреты репозитория `amber`.
+Пример выпуска в отдельный репозиторий: клиент и админка Lantern выпускаются `desktop-release.yml` в публичный
+`example/lantern-releases`, сервер — своим workflow в репозиторий программы (оба — по одному тегу).
+`RELEASES_TOKEN` — fine-grained токен с правом «Contents: Read and write» только на `example/lantern-releases`;
+его заводит владелец и кладёт в секреты репозитория программы.

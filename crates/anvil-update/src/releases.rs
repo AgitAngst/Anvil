@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn picks_newest_stable_and_its_files() {
         let current = Version::parse("0.3.0").unwrap();
-        let zip = asset_name("amber", &Version::parse("0.3.2").unwrap());
+        let zip = asset_name("lantern-desktop", &Version::parse("0.3.2").unwrap());
         let list = vec![
             release("v0.3.1", false, false, &[]),
             release("v0.3.2", false, false, &[zip.as_str(), "SHA256SUMS"]),
@@ -137,11 +137,11 @@ mod tests {
             release("v0.5.0", false, true, &[]),
             release("v0.2.9", false, false, &[]),
         ];
-        let update = choose(list, "amber", &current, false).unwrap();
+        let update = choose(list, "lantern-desktop", &current, false).unwrap();
         assert_eq!(update.tag, "v0.3.2");
         assert_eq!(update.sums.unwrap().url, "https://dl/SHA256SUMS");
         if cfg!(all(windows, target_arch = "x86_64")) {
-            assert_eq!(update.asset.unwrap().name, "amber-0.3.2-windows-x64.zip");
+            assert_eq!(update.asset.unwrap().name, "lantern-desktop-0.3.2-windows-x64.zip");
         }
     }
 

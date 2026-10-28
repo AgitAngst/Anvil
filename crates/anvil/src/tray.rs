@@ -251,7 +251,7 @@ mod tests {
             Request::Show,
             Request::Quick,
             Request::Quit,
-            Request::Main(r"d:\dev\amber|amber-desktop".into()),
+            Request::Main(r"d:\dev\lantern|lantern-desktop".into()),
             Request::Page("k|x".into()),
             Request::Stop("k|y".into()),
         ] {

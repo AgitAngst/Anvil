@@ -31,9 +31,9 @@ mod tests {
     fn russian_keys_become_latin_and_back() {
         assert_eq!(EN.chars().count(), RU.chars().count());
         assert_eq!(swapped("фь еу"), "am te");
-        assert_eq!(swapped("Фьиук"), "amber");
+        assert_eq!(swapped("Дфтеукт"), "lantern");
         assert_eq!(swapped("am te"), "фь еу");
         assert_eq!(swapped("repyb"), "кузни");
-        assert_eq!(swapped("amber-server 18731"), "фьиук-ыукмук 18731");
+        assert_eq!(swapped("lantern-server 18731"), "дфтеукт-ыукмук 18731");
     }
 }

@@ -344,8 +344,8 @@ mod tests {
             releases_repo: None,
             packages: 3,
             bins: vec![
-                Bin { name: "amber-desktop".into(), package: "amber-desktop".into(), ..Bin::default() },
-                Bin { name: "amber-server".into(), package: "amber-server".into(), ..Bin::default() },
+                Bin { name: "lantern-desktop".into(), package: "lantern-desktop".into(), ..Bin::default() },
+                Bin { name: "lantern-server".into(), package: "lantern-server".into(), ..Bin::default() },
             ],
             target_dir: PathBuf::from(r"D:\p\target"),
             ..Meta::default()
@@ -355,23 +355,23 @@ mod tests {
     #[test]
     fn run_builds_one_bin_and_launches_it() {
         let m = meta();
-        let task = Task::Run { bin: "amber-desktop".into(), args: vec!["--profile".into(), "t".into()] };
+        let task = Task::Run { bin: "lantern-desktop".into(), args: vec!["--profile".into(), "t".into()] };
         let s = spec(Path::new(r"D:\p"), Some(&m), &task, true, 4);
-        assert_eq!(s.title, "cargo build -p amber-desktop --bin amber-desktop --release -j 4");
+        assert_eq!(s.title, "cargo build -p lantern-desktop --bin lantern-desktop --release -j 4");
         assert_eq!(s.args.last().map(String::as_str), Some("--message-format=json"));
         let after = s.after.unwrap();
-        assert_eq!(after.exe, launch::exe_path(Path::new(r"D:\p\target"), true, "amber-desktop"));
+        assert_eq!(after.exe, launch::exe_path(Path::new(r"D:\p\target"), true, "lantern-desktop"));
         assert_eq!(after.args, ["--profile", "t"]);
     }
 
     #[test]
     fn install_is_always_release_and_installs_the_bin() {
         let m = meta();
-        let task = Task::Install { bin: "amber-desktop".into(), label: "0.3.0-abc".into() };
+        let task = Task::Install { bin: "lantern-desktop".into(), label: "0.3.0-abc".into() };
         let s = spec(Path::new(r"D:\p"), Some(&m), &task, false, 0);
-        assert_eq!(s.title, "cargo build -p amber-desktop --bin amber-desktop --release");
+        assert_eq!(s.title, "cargo build -p lantern-desktop --bin lantern-desktop --release");
         let step = s.install.unwrap();
-        assert_eq!(step.exe, launch::exe_path(&m.target_dir, true, "amber-desktop"));
+        assert_eq!(step.exe, launch::exe_path(&m.target_dir, true, "lantern-desktop"));
         assert_eq!(step.label, "0.3.0-abc");
         assert!(s.after.is_none());
     }
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn separate_dir_moves_launch_too() {
         let m = meta();
-        let task = Task::Run { bin: "amber-server".into(), args: Vec::new() };
+        let task = Task::Run { bin: "lantern-server".into(), args: Vec::new() };
         let mut s = spec(Path::new(r"D:\p"), Some(&m), &task, false, 0);
         resolve(&mut s, &[], Resolve::SeparateDir, Some(&m), false);
         let at = s.args.iter().position(|a| a == "--target-dir").unwrap();
@@ -396,7 +396,7 @@ mod tests {
         let separate = m.target_dir.join("anvil");
         assert_eq!(PathBuf::from(&s.args[at + 1]), separate);
         assert_eq!(s.args.last().map(String::as_str), Some("--message-format=json"));
-        assert_eq!(s.after.unwrap().exe, launch::exe_path(&separate, false, "amber-server"));
+        assert_eq!(s.after.unwrap().exe, launch::exe_path(&separate, false, "lantern-server"));
     }
 
     #[test]
@@ -404,15 +404,15 @@ mod tests {
         let m = meta();
         let presets = vec![Preset {
             name: "Тест".into(),
-            bin: "amber-desktop".into(),
+            bin: "lantern-desktop".into(),
             args: "--profile uitest".into(),
             ..Preset::default()
         }];
         let (label, bin, args) = run_target(Some(&m), &presets, Some("Тест")).unwrap();
-        assert_eq!((label.as_str(), bin.as_str()), ("Тест", "amber-desktop"));
+        assert_eq!((label.as_str(), bin.as_str()), ("Тест", "lantern-desktop"));
         assert_eq!(args, ["--profile", "uitest"]);
-        assert_eq!(run_target(Some(&m), &presets, Some("amber-server")).unwrap().1, "amber-server");
-        assert_eq!(run_target(Some(&m), &presets, None).unwrap().1, "amber-desktop");
-        assert_eq!(run_target(Some(&m), &presets, Some("нет такого")).unwrap().1, "amber-desktop");
+        assert_eq!(run_target(Some(&m), &presets, Some("lantern-server")).unwrap().1, "lantern-server");
+        assert_eq!(run_target(Some(&m), &presets, None).unwrap().1, "lantern-desktop");
+        assert_eq!(run_target(Some(&m), &presets, Some("нет такого")).unwrap().1, "lantern-desktop");
     }
 }

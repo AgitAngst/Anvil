@@ -47,7 +47,7 @@ pub struct Look {
     pub(super) hint: String,
     /// Где стоит установленная копия — для «Папка установки».
     pub(super) install_dir: Option<PathBuf>,
-    /// Порт службы из профиля — хвост чипа «amber-server :18731».
+    /// Порт службы из профиля — хвост чипа «lantern-server :18731».
     pub(super) port: Option<u16>,
     /// Бейдж падения: «test упал», пока страницу не открыли.
     pub(super) badge: Option<String>,
