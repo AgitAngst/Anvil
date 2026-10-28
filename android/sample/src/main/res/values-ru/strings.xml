@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Набор Anvil</string>
+    <string name="sample_title">Набор Anvil для Android</string>
+
+    <string name="sample_accent">Акцент</string>
+    <string name="sample_accent_value">Акцент: %1$s</string>
+    <string name="accent_violet">Фиолетовый</string>
+    <string name="accent_amber">Янтарный</string>
+    <string name="accent_teal">Бирюзовый</string>
+    <string name="accent_rose">Розовый</string>
+    <string name="accent_blue">Синий</string>
+    <string name="accent_ampulse">Ampulse</string>
+
+    <string name="sample_palette_light">Палитра, светлая тема</string>
+    <string name="sample_palette_dark">Палитра, тёмная тема</string>
+
+    <string name="sample_about">О программе</string>
+    <string name="sample_updates_later">Обновления — на шаге 3</string>
+
+    <string name="sample_motion">Движение</string>
+    <string name="sample_motion_time">Время анимации</string>
+    <string name="sample_ms">%1$d мс</string>
+    <string name="sample_expand">Развернуть</string>
+    <string name="sample_collapse">Свернуть</string>
+    <string name="sample_motion_on">Анимация в системе включена</string>
+    <string name="sample_motion_off">Анимация в системе выключена</string>
+    <string name="sample_motion_block">Высота и цвет меняются по шкале движения</string>
+</resources>
