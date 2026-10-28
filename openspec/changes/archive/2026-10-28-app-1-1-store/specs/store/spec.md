@@ -13,3 +13,7 @@ Anvil SHALL list the programs found in the releases of the account's repositorie
 
 ### Requirement: Update all
 Anvil SHALL update every installed program that has a newer release when the owner presses "Update all".
+
+#### Scenario: Several programs are outdated
+- **WHEN** two installed programs have newer releases and the owner presses "Update all"
+- **THEN** both are downloaded, verified and installed one after another
