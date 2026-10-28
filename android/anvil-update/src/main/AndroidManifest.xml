@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Сеть — только чтобы спросить GitHub о новой версии и скачать её. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Установка скачанного APK; подтверждает человек в окне системы. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <!-- Статус сессии установщика: окно подтверждения, успех или ошибка. -->
+        <receiver
+            android:name="io.github.agitangst.anvil.update.InstallReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="anvil_update_err_rate_limit">GitHub rate limit (HTTP %1$d): try again in about %2$d min</string>
+    <string name="anvil_update_err_http">GitHub answered HTTP %1$d</string>
+    <string name="anvil_update_err_network">No connection to GitHub</string>
+    <string name="anvil_update_err_bad_answer">GitHub sent an answer the app could not read</string>
+    <string name="anvil_update_err_no_apk">The release has no file for Android</string>
+    <string name="anvil_update_err_no_sums">The release has no checksums (SHA256SUMS), so the update is not installed</string>
+    <string name="anvil_update_err_checksum">The checksum did not match; the file was deleted</string>
+    <string name="anvil_update_err_storage">Not enough space for the update</string>
+    <string name="anvil_update_err_install">Android did not install the update: %1$s</string>
+    <string name="anvil_update_err_install_unknown">Android did not install the update</string>
+</resources>
