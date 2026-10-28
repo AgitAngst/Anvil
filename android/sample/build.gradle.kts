@@ -51,6 +51,7 @@ android {
 
 dependencies {
     implementation(project(":anvil-compose"))
+    implementation(project(":anvil-update"))
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
     implementation(libs.compose.ui.tooling.preview)

@@ -11,6 +11,7 @@ import io.github.agitangst.anvil.compose.Accents
 import io.github.agitangst.anvil.compose.AnvilActivity
 import io.github.agitangst.anvil.compose.AnvilSettings
 import io.github.agitangst.anvil.compose.AnvilTheme
+import io.github.agitangst.anvil.update.Updater
 
 /** Единственный экран примера: тема набора с выбранным акцентом и витрина его частей. */
 class MainActivity : AnvilActivity() {
@@ -18,12 +19,14 @@ class MainActivity : AnvilActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val settings = AnvilSettings(this)
+        // Один проверяльщик на процесс: переживает пересоздание экрана (смену темы, языка).
+        val updater = Updater.shared(this, sampleUpdateConfig())
         setContent {
             // Акцент хранится по имени: так он переживает пересоздание экрана (смену языка или темы).
             var accentName by rememberSaveable { mutableStateOf(Accents.AMPULSE.name) }
             val accent = Accents.all.firstOrNull { it.name == accentName } ?: Accents.AMPULSE
             AnvilTheme(accent, settings.themeMode) {
-                SampleScreen(settings, accent, onAccentChange = { accentName = it.name })
+                SampleScreen(settings, updater, accent, onAccentChange = { accentName = it.name })
             }
         }
     }

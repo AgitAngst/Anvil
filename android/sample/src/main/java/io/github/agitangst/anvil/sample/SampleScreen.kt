@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -65,12 +67,22 @@ import io.github.agitangst.anvil.compose.Motion
 import io.github.agitangst.anvil.compose.SectionTitle
 import io.github.agitangst.anvil.compose.Segmented
 import io.github.agitangst.anvil.compose.ThemeMode
-import io.github.agitangst.anvil.compose.Tone
 import io.github.agitangst.anvil.compose.motionSpec
+import io.github.agitangst.anvil.update.UpdateBanner
+import io.github.agitangst.anvil.update.UpdateConfig
+import io.github.agitangst.anvil.update.Updater
+import io.github.agitangst.anvil.update.UpdatesSection
+import io.github.agitangst.anvil.update.rememberAboutUpdate
 import java.util.Locale
 
 /** Адрес исходного кода набора для карточки «О программе». */
 private const val CODE_URL = "https://github.com/AgitAngst/Anvil"
+
+/**
+ * Что обновляет пример: репозиторий набора. Выпусков для Android в нём нет, поэтому проверка отвечает «Последняя
+ * версия»; баннер появится, когда в репозитории будет выпуск с `anvil-sample-X.Y.Z-android.apk`.
+ */
+fun sampleUpdateConfig() = UpdateConfig(app = "anvil-sample", version = BuildConfig.VERSION_NAME, repo = "AgitAngst/Anvil")
 
 /** Названия акцентов — строками ресурсов; незнакомый акцент показывается своим именем. */
 private val accentLabels = mapOf(
@@ -86,33 +98,42 @@ private val accentLabels = mapOf(
 private val motionSteps = listOf(Motion.PRESS, Motion.LAYOUT, Motion.GRAPH)
 
 /**
- * Витрина набора: акценты, палитра текущей темы, «Оформление», «О программе» и движение. Цвета — только из
- * палитры темы, цели нажатия — не меньше 48 dp, отступы системных панелей — через `safeDrawing`.
+ * Витрина набора: баннер обновления, акценты, палитра текущей темы, «Оформление», «Обновления», «О программе» и
+ * движение. Цвета — только из палитры темы, цели нажатия — не меньше 48 dp, отступы системных панелей — через
+ * `safeDrawing`.
  */
 @Composable
-fun SampleScreen(settings: AnvilSettings, accent: Accent, onAccentChange: (Accent) -> Unit) {
+fun SampleScreen(settings: AnvilSettings, updater: Updater, accent: Accent, onAccentChange: (Accent) -> Unit) {
     val p = AnvilTheme.palette
+    // Проверка при первом показе экрана: раз за процесс и только если включено «Проверять обновления».
+    if (!LocalInspectionMode.current) {
+        LaunchedEffect(updater) { updater.auto(settings.checkUpdates) }
+    }
     // Surface задаёт цвет содержимого: Text без цвета (например, подписи «Тема» и «Язык») не остаётся чёрным.
     Surface(Modifier.fillMaxSize(), color = p.bg, contentColor = p.text) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                stringResource(R.string.sample_title),
-                Modifier.semantics { heading() },
-                color = p.text,
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            AccentPicker(accent, onAccentChange)
-            PaletteSection()
-            AppearanceSection(settings)
-            AboutSection()
-            MotionSection()
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            // Баннер над содержимым и не прокручивается; скрыт — места не занимает (отступ у самой карточки).
+            UpdateBanner(updater, Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp))
+            Column(
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    stringResource(R.string.sample_title),
+                    Modifier.semantics { heading() },
+                    color = p.text,
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                AccentPicker(accent, onAccentChange)
+                PaletteSection()
+                AppearanceSection(settings)
+                UpdatesSection(settings, updater)
+                AboutSection(updater)
+                MotionSection()
+            }
         }
     }
 }
@@ -236,15 +257,18 @@ private fun TokenRow(name: String, color: Color) {
 }
 
 @Composable
-private fun AboutSection() {
+private fun AboutSection(updater: Updater) {
+    val update = rememberAboutUpdate(updater)
     Section(stringResource(R.string.sample_about)) {
         AboutCard(
             name = stringResource(R.string.app_name),
             version = BuildConfig.VERSION_NAME,
             mark = { AppMark() },
             build = BuildConfig.BUILD_NUMBER,
-            status = stringResource(R.string.sample_updates_later),
-            statusTone = Tone.Neutral,
+            status = update.status,
+            statusTone = update.tone,
+            action = update.action,
+            error = update.error,
             codeUrl = CODE_URL,
         )
     }
@@ -336,7 +360,8 @@ private fun MotionSection() {
 private fun SamplePreview(mode: ThemeMode) {
     val context = LocalContext.current
     val settings = remember { AnvilSettings(context) }
-    AnvilTheme(Accents.AMPULSE, mode) { SampleScreen(settings, Accents.AMPULSE, onAccentChange = {}) }
+    val updater = remember { Updater.shared(context, sampleUpdateConfig()) }
+    AnvilTheme(Accents.AMPULSE, mode) { SampleScreen(settings, updater, Accents.AMPULSE, onAccentChange = {}) }
 }
 
 @Preview(name = "Light", widthDp = 360, heightDp = 1500)
