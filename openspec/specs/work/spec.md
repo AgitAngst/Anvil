@@ -1,4 +1,9 @@
-## ADDED Requirements
+# work Specification
+
+## Purpose
+TBD - created by archiving change app-0-7-work. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: Progress of long tasks
 Anvil SHALL show the plans written by the progress skill with a bar, remaining time estimate and stage states, and SHALL notify when a running plan becomes finished.
@@ -9,3 +14,7 @@ Anvil SHALL show the plans written by the progress skill with a bar, remaining t
 
 ### Requirement: Claude sessions
 Anvil SHALL list Claude sessions touched in the last day with project, first prompt and an activity mark, reading the files without changing them.
+
+#### Scenario: Session touched an hour ago
+- **WHEN** a Claude session file was changed within the last day
+- **THEN** the session is listed with its project and first prompt, and marked "working" only if it changed within the last two minutes

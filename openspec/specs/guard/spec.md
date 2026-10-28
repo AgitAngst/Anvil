@@ -1,4 +1,9 @@
-## ADDED Requirements
+# guard Specification
+
+## Purpose
+TBD - created by archiving change app-0-6-guard. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: Rule checks per project
 Anvil SHALL check each connected project against the owner's rules and show the findings with a severity (violation, warning, note) on the project's "Rules" tab, in the sidebar and in the overview.
@@ -20,3 +25,7 @@ Anvil SHALL block the release step of the wizard while a project has violations 
 
 ### Requirement: Word list outside git
 The word list SHALL live in a file next to `anvil.toml` that is not part of any repository.
+
+#### Scenario: Word file next to the settings
+- **WHEN** the owner opens the word file from Settings → Forge
+- **THEN** the file `guard-words.txt` next to `anvil.toml` is created if missing and opened, and it is not tracked by any repository
