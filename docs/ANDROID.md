@@ -51,6 +51,10 @@
 | `rustore` | RuStore | нет — обновляет магазин | APK или AAB |
 | `play` | Google Play | нет — обновляет магазин | AAB; без `SEND_SMS`; особые разрешения — с объяснением в консоли Play |
 
+Язык внутри программы и AAB: Play по умолчанию раскладывает AAB по языкам и ставит только язык системы — выбор другого
+языка внутри программы тогда не находит строк. В сборке AAB разделение по языкам выключено:
+`android { bundle { language { enableSplit = false } } }`.
+
 - Что отличается по магазинам, живёт за интерфейсом в наборе исходников сборки (`src/github/`,
   `src/play/`), а не проверками `BuildConfig.FLAVOR` по всему коду.
 - Разрешения, которые нужны одной сборке, — только в её манифесте (`src/github/AndroidManifest.xml`):
@@ -275,7 +279,7 @@ class MainActivity : AnvilActivity() {
 
 | Способ | Как | Заметка |
 |---|---|---|
-| Подмодуль + `includeBuild` | Anvil — git-подмодуль программы на теге `android-kit-vX.Y.Z`; в `settings.gradle.kts` — `includeBuild("anvil/android") { dependencySubstitution { substitute(module("io.github.agitangst.anvil:anvil-compose")).using(project(":anvil-compose")) } }`; в `app` — `implementation("io.github.agitangst.anvil:anvil-compose")` | версия набора видна по подмодулю; подстановка явная — `group` у проекта не задан, он есть только у публикации |
+| Подмодуль + `includeBuild` | Anvil — git-подмодуль программы на теге `android-kit-vX.Y.Z`; в `settings.gradle.kts` — `includeBuild("anvil/android")`; в `app` — `implementation("io.github.agitangst.anvil:anvil-compose")` | версия набора видна по подмодулю; у проекта набора те же группа и версия, что у публикации, — Gradle подставляет модуль сам |
 | JitPack | зависимость по тегу `android-kit-vX.Y.Z`, подмодуля нет | проект Gradle лежит в `android/`, а не в корне репозитория — сборку на JitPack сначала проверить |
 
 **Сборка и проверка набора.** `JAVA_HOME` и `ANDROID_HOME` — как в разделе 1; из папки `android/`:

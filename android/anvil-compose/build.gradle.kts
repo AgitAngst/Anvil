@@ -7,6 +7,10 @@ plugins {
 
 val kitVersion = providers.gradleProperty("kitVersion").get()
 
+// Те же группа и версия, что у публикации: includeBuild подставляет модуль сам, без dependencySubstitution.
+group = "io.github.agitangst.anvil"
+version = kitVersion
+
 android {
     namespace = "io.github.agitangst.anvil.compose"
     // Свежие библиотеки Compose требуют компиляции против API 37.
