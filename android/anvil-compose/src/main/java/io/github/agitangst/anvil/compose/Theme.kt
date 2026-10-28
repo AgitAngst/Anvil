@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -55,7 +56,10 @@ fun AnvilTheme(
         LocalAnvilPalette provides p,
         LocalReducedMotion provides rememberReducedMotion(),
     ) {
-        MaterialTheme(colorScheme = p.colorScheme(), typography = typography, content = content)
+        MaterialTheme(colorScheme = p.colorScheme(), typography = typography) {
+            // Текст без явного цвета — цвета текста палитры и вне Surface (иначе в тёмной теме он чёрный).
+            CompositionLocalProvider(LocalContentColor provides p.text, content = content)
+        }
     }
 }
 

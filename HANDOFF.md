@@ -2,6 +2,24 @@
 
 Замысел и этапы — [SPEC.md](SPEC.md). Здесь — где остановились и как тут работать.
 
+## 29.10.2026 — набор для Android 0.1.0 (шаг 2 плана Android)
+
+- По слову владельца («коммить и пушь, потом набор»): изменение OpenSpec `android-kit-0-1`. Проект Gradle `android/`:
+  библиотека `anvil-compose` (палитра по ролям STYLE.md и акценты семьи, `AnvilTheme` с `ColorScheme` из ролей и цветом
+  текста по умолчанию, выбор темы и языка `AnvilSettings`/`AnvilLocale`/`AnvilActivity` без AppCompat, `Segmented`,
+  `AppearanceSection`, `AboutCard`, шкала `Motion` и кривые `AnvilEasing` с «убрать анимацию») и пример-приложение
+  `sample`. Версия набора — `kitVersion=0.1.0` в `android/gradle.properties`, тег `android-kit-v0.1.0` не ставился.
+  Документы — ANDROID.md, раздел 13; RELEASES.md — три номера. Пример и документы писали два агента Sonnet по слову
+  владельца, ветки слиты; заведён `CLAUDE.md` репозитория.
+- Проверено на ПК: `:anvil-compose:testDebugUnitTest` (5 тестов: контраст, шкала = MOTION.md, разбор настроек),
+  `lintDebug` у набора и примера — 0 ошибок, `:sample:assembleDebug` — APK собран.
+- Не проверено: на телефоне ничего (телефон не был подключён) — снимки обеих тем и языков с `sample`, переключение
+  языка на Android 10–12 и 13+, «убрать анимацию». CI Anvil `android/` не собирает.
+- Предупреждения lint, оставленные владельцу: вышли AGP 9.5.0, Gradle 9.8.2, Kotlin 2.4.21, core-ktx 1.19.1 — версии
+  меняются разом во всех Android-программах, по его слову; у примера нет значка и устаревший `allowBackup`.
+- Дальше по плану Android: шаг 3 — обновление из GitHub (перенос `anvil-update`), шаг 4 — каркас Ampulse на наборе
+  (там же выбрать способ подключения: подмодуль + `includeBuild` или JitPack).
+
 ## 29.10.2026 — правила для Android-программ (шаг 1 плана Android)
 
 - По слову владельца («В Anvil, начинай с правил»): новый документ [docs/ANDROID.md](docs/ANDROID.md) — инструменты и их
