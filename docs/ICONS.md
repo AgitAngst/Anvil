@@ -193,6 +193,10 @@ if let Err(e) = res.compile() { println!("cargo:warning=exe icon skipped: {e}");
 **Версия.** Значок — «мелкое изменение внутри этапа»: третья цифра (`0.1.0 → 0.1.1`), номер называют в отчёте.
 Если в чужой сессии версия уже поднята, свою не трогают и говорят об этом.
 
+**Телефон (Android).** Адаптивный значок — векторные `ic_launcher_background`, `ic_launcher_foreground`,
+`ic_launcher_monochrome` (108 dp, знак в безопасной зоне 66 dp) и `ic_notification` 24 dp одним цветом;
+подробно и проверка — [ANDROID.md](ANDROID.md), раздел 9.
+
 ## 8. Особые случаи
 
 **Anvil.** Значок окна, exe, трея и уведомлений — готовые PNG в `crates/anvil/assets/icon`; `build.rs`

@@ -49,7 +49,7 @@
 правила внешнего вида — в [docs/STYLE.md](docs/STYLE.md); анимации набора (шкала, кривые, эффекты,
 «меньше движения») — в [docs/MOTION.md](docs/MOTION.md); узоры обоев для фона бесед (для любого клиента,
 и не на Rust) — в [docs/WALLPAPERS.md](docs/WALLPAPERS.md); как выпускаются программы — в
-[docs/RELEASES.md](docs/RELEASES.md).
+[docs/RELEASES.md](docs/RELEASES.md); программы под Android — в [docs/ANDROID.md](docs/ANDROID.md).
 
 ![Anvil](docs/anvil-dark.png)
 

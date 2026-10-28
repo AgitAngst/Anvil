@@ -11,7 +11,7 @@ context: |
   anvil-wallpaper (chat background patterns, no dependencies). Kit consumers: Amber,
   Tetrachrome, FFMincer, Morok. Where the project stands and how to work: HANDOFF.md; plan and
   stages: SPEC.md; look rules: docs/STYLE.md; motion: docs/MOTION.md; icons: docs/ICONS.md;
-  wallpapers: docs/WALLPAPERS.md; releases: docs/RELEASES.md.
+  wallpapers: docs/WALLPAPERS.md; releases: docs/RELEASES.md; Android programs: docs/ANDROID.md.
   Owner rules every artifact must respect:
   - every UI in the light AND the dark theme and in Russian AND English; app strings go
     through t("…") with the English in crates/anvil/lang/en.tsv, kit strings through
