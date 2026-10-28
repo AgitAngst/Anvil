@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,7 +69,8 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Сегменты: один из 2–4 коротких вариантов, видимых сразу. Подложка `raised`, выбранный — карточка с тенью;
+ * Сегменты: один из 2–4 коротких вариантов, видимых сразу. Подложка `raised`; выбранный в светлой теме — карточка с
+ * тенью, в тёмной — `borderStrong` (карточка там темнее подложки и выглядела бы провалом, как в STYLE.md);
  * высота не меньше 48 dp, для TalkBack — группа переключателей.
  */
 @Composable
@@ -90,12 +92,13 @@ fun Segmented(
     ) {
         options.forEachIndexed { i, label ->
             val on = i == selected
-            val fill by animateColorAsState(if (on) p.card else Color.Transparent, motionSpec(Motion.STATE), label = "segment")
+            val chosen = if (p.dark) p.borderStrong else p.card
+            val fill by animateColorAsState(if (on) chosen else Color.Transparent, motionSpec(Motion.STATE), label = "segment")
             Box(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp)
-                    .then(if (on) Modifier.shadow(1.dp, RoundedCornerShape(24.dp)) else Modifier)
+                    .then(if (on && !p.dark) Modifier.shadow(1.dp, RoundedCornerShape(24.dp)) else Modifier)
                     .clip(RoundedCornerShape(24.dp))
                     .background(fill)
                     .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(i) })
@@ -193,7 +196,12 @@ fun AboutCard(
         }
         if (codeUrl != null) {
             val uri = LocalUriHandler.current
-            TextButton(onClick = { uri.openUri(codeUrl) }, modifier = Modifier.heightIn(min = 48.dp)) {
+            // Без отступа кнопки: ссылка стоит ровно под строкой версии, цель нажатия — те же 48 dp.
+            TextButton(
+                onClick = { uri.openUri(codeUrl) },
+                modifier = Modifier.heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 0.dp),
+            ) {
                 Text(stringResource(R.string.anvil_source_code), color = p.accentText)
                 Spacer(Modifier.width(6.dp))
                 Icon(AnvilIcons.ExternalLink, contentDescription = stringResource(R.string.anvil_opens_browser), tint = p.accentText, modifier = Modifier.size(18.dp))
