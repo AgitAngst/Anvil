@@ -210,6 +210,8 @@ mod tests {
         assert_eq!(up.state, State::Up);
         assert!(up.latency_ms.is_some());
         drop(listener);
+        // Закрытый порт: освобождённый только что бывает занят чужим процессом, поэтому — порт 1, где никто не слушает.
+        let entry = Entry { probe: "tcp:127.0.0.1:1".into(), ..entry };
         let down = check(&entry);
         assert_eq!(down.state, State::Down);
         assert!(down.error.is_some());
