@@ -1,1 +1,8 @@
 /target
+
+# Android (android/)
+/android/.gradle/
+/android/.kotlin/
+/android/**/build/
+/android/local.properties
+/android/keystore.properties

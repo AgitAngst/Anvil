@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="anvil_appearance">Оформление</string>
+    <string name="anvil_theme">Тема</string>
+    <string name="anvil_language">Язык</string>
+    <string name="anvil_as_system">Как в системе</string>
+    <string name="anvil_light">Светлая</string>
+    <string name="anvil_dark">Тёмная</string>
+    <string name="anvil_version">Версия %1$s</string>
+    <string name="anvil_build">сборка %1$d</string>
+    <string name="anvil_source_code">Исходный код</string>
+    <string name="anvil_opens_browser">откроется в браузере</string>
+</resources>
