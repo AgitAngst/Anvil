@@ -1,0 +1,3 @@
+# gradlew запускается в Linux (CI) — только LF; .bat — CRLF.
+android/gradlew text eol=lf
+*.bat text eol=crlf
