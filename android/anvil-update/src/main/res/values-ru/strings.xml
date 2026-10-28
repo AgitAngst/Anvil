@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Баннер -->
+    <string name="anvil_update_available">Вышла версия %1$s</string>
+    <string name="anvil_update_size">Размер загрузки: %1$.1f МБ</string>
+    <string name="anvil_update_downloading">Скачивается версия %1$s</string>
+    <string name="anvil_update_percent">%1$d %%</string>
+    <string name="anvil_update_downloaded">Скачано: %1$.1f МБ</string>
+    <string name="anvil_update_permission_title">Нужно разрешение на установку</string>
+    <string name="anvil_update_permission_body">Android просит разрешить программе устанавливать обновления, скачанные с GitHub. Разрешение нужно только для обновлений, а каждую установку система всё равно подтверждает у вас.</string>
+    <string name="anvil_update_installing">Устанавливается версия %1$s…</string>
+    <string name="anvil_update_installing_hint">Подтвердите установку в окне Android.</string>
+    <string name="anvil_update_installed">Обновление установлено · версия %1$s</string>
+    <string name="anvil_update_failed">Обновление не удалось</string>
+    <string name="anvil_update_opens_browser">откроется в браузере</string>
+
+    <!-- Кнопки -->
+    <string name="anvil_update_action_update">Обновить</string>
+    <string name="anvil_update_action_later">Позже</string>
+    <string name="anvil_update_action_notes">Что нового</string>
+    <string name="anvil_update_action_skip">Пропустить эту версию</string>
+    <string name="anvil_update_action_cancel">Отмена</string>
+    <string name="anvil_update_action_allow">Разрешить</string>
+    <string name="anvil_update_action_got_it">Хорошо</string>
+    <string name="anvil_update_action_retry">Повторить</string>
+    <string name="anvil_update_action_close">Закрыть</string>
+    <string name="anvil_update_action_check">Проверить</string>
+
+    <!-- Окно «Что нового» -->
+    <string name="anvil_update_notes_title">Что нового · версия %1$s</string>
+
+    <!-- Раздел настроек -->
+    <string name="anvil_update_section">Обновления</string>
+    <string name="anvil_update_auto">Проверять обновления</string>
+    <string name="anvil_update_auto_hint">Единственное, что программа делает в сети, — спрашивает GitHub о новой версии; ваши данные не уходят.</string>
+    <string name="anvil_update_pre">Предлагать пред-выпуски</string>
+    <string name="anvil_update_pre_hint">Пробные версии выходят раньше и могут работать нестабильнее.</string>
+
+    <!-- Состояние в «О программе» -->
+    <string name="anvil_update_about_idle">Обновления не проверялись</string>
+    <string name="anvil_update_about_checking">Проверяю…</string>
+    <string name="anvil_update_about_current">Последняя версия</string>
+    <string name="anvil_update_about_downloading">Скачивается — %1$d %%</string>
+    <string name="anvil_update_about_downloading_unknown">Скачивается…</string>
+    <string name="anvil_update_about_installing">Устанавливается…</string>
+    <string name="anvil_update_about_installed">Обновление установлено</string>
+    <string name="anvil_update_about_failed">Не удалось</string>
+</resources>
