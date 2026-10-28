@@ -6,8 +6,7 @@
 как эти правила выглядят на Android и чего на ПК нет. Общий гайдлайн UX/UI и гайдлайн самой программы
 (`docs/ui-guideline.md`) действуют и здесь.
 
-Общего набора кода на Kotlin пока нет (он — следующий шаг, см. конец): правила ниже действуют уже
-сейчас, каждая программа выполняет их сама.
+Общий набор кода на Kotlin — в папке `android/` этого репозитория, см. [раздел 13](#13-набор-android).
 
 ## Коротко
 
@@ -74,6 +73,30 @@
 - **Номер сборки** — число коммитов (`git rev-list --count HEAD`) в поле `BuildConfig`; в «О программе» —
   мелко рядом с версией. CI берёт историю целиком (`fetch-depth: 0`), иначе номер будет 1.
 
+Готовый фрагмент для `app/build.gradle.kts`: версия — из `appVersion` в `gradle.properties` (например,
+`appVersion=0.2.0`), номер сборки — из git (нет git или ошибка — 0), в коде это `BuildConfig.BUILD_NUMBER`:
+
+```kotlin
+val appVersion = providers.gradleProperty("appVersion").get()
+val m = Regex("""(\d+)\.(\d+)\.(\d+)(?:-[a-z]+\.(\d+))?""").matchEntire(appVersion)
+    ?: error("appVersion: X.Y.Z или X.Y.Z-beta.N, а не $appVersion")
+val (major, minor, patch, preN) = m.destructured // preN пустая у выпуска
+val buildNumber = runCatching {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toInt()
+}.getOrDefault(0)
+
+android {
+    defaultConfig {
+        versionName = appVersion
+        versionCode = (major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()) * 100 +
+            (preN.toIntOrNull() ?: 99)
+        buildConfigField("int", "BUILD_NUMBER", "$buildNumber")
+    }
+    buildFeatures { buildConfig = true }
+}
+```
+
 ## 4. Подпись
 
 - **Один ключ на программу** — для GitHub, RuStore и Google Play. В Play — «Подпись приложений Google Play»
@@ -123,8 +146,8 @@
   тёмной темы. Из них строится `ColorScheme`; в коде цвета числами не пишутся.
 - **Динамический цвет (Material You) выключен:** акцент — лицо программы.
 - **Тема:** «Как в системе», «Светлая», «Тёмная». **Язык:** «Как в системе», «Русский», «English» —
-  переключение внутри программы (AppCompat), на Android 13+ ещё и в системных настройках
-  (`locales_config.xml`). Строки — `res/values` (английский) и `res/values-ru`; склонения — `plurals`;
+  переключение внутри программы (в наборе — без AppCompat, раздел 13), на Android 13+ ещё и в системных
+  настройках (`locales_config.xml`). Строки — `res/values` (английский) и `res/values-ru`; склонения — `plurals`;
   числа и даты — по языку.
 - **Доступность:** цель нажатия ≥ 48 dp; крупный шрифт системы (1,3×) ничего важного не обрезает; у
   кнопки-значка — подпись для TalkBack; заголовки размечены как заголовки; контраст ≥ 4,5:1 в обеих темах.
@@ -183,9 +206,91 @@
 Как у любой программы семьи: `CLAUDE.md` с разделом «Сборка (Android)» (пути JDK и SDK, команды проверки,
 `--max-workers=2`), `docs/README.md`, `docs/ui-guideline.md`, `HANDOFF.md`, `SPEC.md`, OpenSpec.
 
-## Дальше: набор на Kotlin
+## 13. Набор (`android/`)
 
-То, что повторяется в каждой программе, станет общим набором в папке `android/` этого репозитория: тема
-по ролям и акцент программы, экраны «Оформление» и «О программе», обновление из GitHub Releases (перенос
-`anvil-update`), шкала движения и «убрать анимацию», числа и даты по языку. Как его подключать (тег набора
-и JitPack или подмодуль) — по решению владельца, когда до него дойдёт.
+Проект Gradle в корне этого репозитория; Rust-часть его не видит, CI Anvil его пока не собирает. Пакет —
+`io.github.agitangst.anvil.compose`. Программа берёт тему, «Оформление», «О программе» и движение отсюда, а не
+пишет своё. Версия набора — 0.1.0, тега пока нет.
+
+| Модуль | Что |
+|---|---|
+| `anvil-compose` | библиотека (Kotlin, Compose, Material 3); группа `io.github.agitangst.anvil`, артефакт `anvil-compose`; публикация через `maven-publish` настроена, нигде пока не опубликована |
+| `sample` | пример-приложение: палитра, акценты, сегменты, «Оформление», «О программе», кнопка с движением — для снимков обеих тем и языков |
+
+**Что даёт `anvil-compose`:**
+
+| Что | Имя в коде | Заметка |
+|---|---|---|
+| Палитра по ролям | `AnvilPalette` | токены [STYLE.md](STYLE.md) (2.1); `light()`, `dark()`, `of(dark, accent)`; свои нейтральные цвета — через `copy()`; `soft(цвет)` — мягкая подложка (16 % в тёмной теме, 12 % в светлой); `tone(Tone)` — цвет смысла |
+| Смысловой тон | `Tone` | `Neutral`, `Accent`, `Success`, `Warning`, `Danger`; рядом с цветом всегда слово |
+| Акцент | `Accent`, `AccentShades`, `Accents` | тройка «заливка / на заливке / текст» для светлой и тёмной; готовые `VIOLET`, `AMBER`, `TEAL`, `ROSE`, `BLUE` ([STYLE.md](STYLE.md), 2.2) и `AMPULSE` (раздел 7); список — `Accents.all` |
+| Тема | `AnvilTheme` | параметры `accent`, `mode`, `palette` (функция «тёмная ли тема → палитра»), `typography` (шрифты — программы); динамический цвет выключен; полосы системы — под тему; палитра внутри — `AnvilTheme.palette` |
+| `ColorScheme` | `colorScheme()` | расширение `AnvilPalette`: `primary` — заливка акцента, `onPrimary` — текст на ней, фон и поверхность — `bg`, контейнеры — `card`/`raised`/`popup`, `outline` — `borderStrong`, `error` — `danger` |
+| Выбор темы | `ThemeMode` | `System`, `Light`, `Dark` — «Как в системе», «Светлая», «Тёмная» |
+| Выбор языка | `AppLanguage` | `System`, `Russian`, `English` — «Как в системе», «Русский», «English» |
+| Настройки | `AnvilSettings(context)` | `themeMode`, `checkUpdates` (по умолчанию включено — для шага «Обновление»), `language` (только чтение); хранит `SharedPreferences` `anvil`; тема — состояние Compose, применяется сразу |
+| Язык внутри программы | `AnvilLocale`, `AnvilActivity` | Android 13+ — `LocaleManager` (система хранит выбор и пересоздаёт экран); ниже — выбор в `SharedPreferences`, `AnvilActivity` подменяет язык контекста, после выбора — `recreate()`; без AppCompat; программе нужен `android:localeConfig` в манифесте |
+| Сегменты | `Segmented` | 2–4 коротких варианта; высота ≥ 48 dp, для TalkBack — роль выбора |
+| «Оформление» | `AppearanceSection` | тема и язык сегментами; названия языков — на своём языке |
+| «О программе» | `AboutCard`, `AboutAction` | знак (`mark`), имя, состояние (`status`, `statusTone`), одна кнопка (`action`), версия и `build`, `error`, ссылка на код (`codeUrl`) со значком «наружу» |
+| Карточка, заголовок | `AnvilCard`, `SectionTitle` | карточка семьи (фон `card`, скругление 20, поля 16); подпись раздела — заголовок для TalkBack |
+| Значок | `AnvilIcons.ExternalLink` | «наружу»: линии 1,8 на сетке 24 |
+| Шкала движения | `Motion` | имена и миллисекунды как в [MOTION.md](MOTION.md); `Motion.SCALE` — шкала данными |
+| Кривые | `AnvilEasing` | `Out`, `In`, `Standard`, `Pop`, `Linear`; имя `Easing` занято Compose |
+| Анимация набора | `motionSpec(ms, easing)` | `tween` по шкале; при выключенной в системе анимации — `snap()` |
+| «Убрать анимацию» | `LocalReducedMotion`, `isReducedMotion(context)`, `rememberReducedMotion()` | шкала аниматора 0; перечитывается при возвращении в программу; `AnvilTheme` кладёт флаг в `LocalReducedMotion` сама |
+
+Строки набора — `res/values` (английский) и `res/values-ru`. Пока нет: обновления из GitHub (шаг 3 плана), чисел и дат
+по языку, своих шрифтов (программа передаёт свою `Typography`).
+
+**Подключение темы и настроек** (импорты опущены; в манифесте программы — `android:localeConfig`, см. раздел 7):
+
+```kotlin
+class MainActivity : AnvilActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val settings = AnvilSettings(this)
+        setContent {
+            AnvilTheme(accent = Accents.BLUE, mode = settings.themeMode) {
+                Scaffold { inner ->
+                    AppearanceSection(settings, Modifier.padding(inner).padding(16.dp))
+                }
+            }
+        }
+    }
+}
+```
+
+«О программе» — `AboutCard(name, version, mark = { … })`; состояние, кнопка, номер сборки и ссылка на код — по
+необходимости. Свои нейтральные цвета: `AnvilTheme(accent, palette = { AnvilPalette.of(it, accent).copy(bg = …) })`.
+
+**Версия набора.** `kitVersion` в [`android/gradle.properties`](../android/gradle.properties) — своя, третья в
+репозитории (рядом с `kit-v*` для Rust и `v*` для приложения Anvil, [RELEASES.md](RELEASES.md)). Тег —
+`android-kit-vX.Y.Z`; ставит его только владелец, по команде. Номера `kit-v*` и `v*` Android-набор не трогает.
+Растёт по общей схеме: этап — вторая цифра, исправление — третья.
+
+**Как программа подключает.** Два способа; выбор — за владельцем на шаге 4 плана (первая программа — Ampulse),
+пока не выбран:
+
+| Способ | Как | Заметка |
+|---|---|---|
+| Подмодуль + `includeBuild` | Anvil — git-подмодуль программы на теге `android-kit-vX.Y.Z`; в `settings.gradle.kts` — `includeBuild("anvil/android") { dependencySubstitution { substitute(module("io.github.agitangst.anvil:anvil-compose")).using(project(":anvil-compose")) } }`; в `app` — `implementation("io.github.agitangst.anvil:anvil-compose")` | версия набора видна по подмодулю; подстановка явная — `group` у проекта не задан, он есть только у публикации |
+| JitPack | зависимость по тегу `android-kit-vX.Y.Z`, подмодуля нет | проект Gradle лежит в `android/`, а не в корне репозитория — сборку на JitPack сначала проверить |
+
+**Сборка и проверка набора.** `JAVA_HOME` и `ANDROID_HOME` — как в разделе 1; из папки `android/`:
+
+```sh
+./gradlew :anvil-compose:testDebugUnitTest :anvil-compose:lintDebug :sample:assembleDebug --max-workers=2
+./gradlew --stop
+```
+
+Судить по коду выхода, вывод — в файл. Тесты набора:
+
+| Тест | Что проверяет |
+|---|---|
+| `ContrastTest` | пары «текст на фоне» у каждого акцента в обеих темах — контраст ≥ 4,5:1 (`text` и `weak` на `bg` и `card`, `onAccent` на `accent`, `accentText` на `card` и `bg`) |
+| `MotionDocTest` | `Motion.SCALE` и `WAVE_DELAY`, `STAGGER`, `STAGGER_MAX` совпадают с [MOTION.md](MOTION.md): поменял число — поправь и таблицу |
+| `SettingsParseTest` | разбор сохранённых темы и языка: незнакомое и пустое — «Как в системе», теги с регионом — по языку |
+
+Снимки `sample` (светлая и тёмная × русский и английский) — по разделу 11, когда подключён телефон.
