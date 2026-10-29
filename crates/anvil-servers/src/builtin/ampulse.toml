@@ -1,0 +1,47 @@
+# Манифест модуля для командного центра Anvil (изменение `server-modules`, раздел Manifest sketch).
+# Центр читает его из папки настроек владельца и показывает команды дословно перед запуском.
+# Сверка с программой — тест `tests/manifest.rs`: служба, бинарник, порт и флаги берутся оттуда.
+
+id = "ampulse"
+name = "Ampulse"
+hidden = false
+instances = false
+service = "ampulse"                       # имя службы systemd
+binary = "/opt/ampulse/ampulse-server"
+
+[source]
+repo = "AgitAngst/Ampulse"                # выпуск GitHub
+assets = { x86_64 = "ampulse-server", arm64 = "ampulse-server-arm64" }
+checksums = "SHA256SUMS"
+
+[ports]
+tcp = [8740]
+
+[commands]                                # {bin} — путь к бинарнику, {args} — поля формы
+install = "{bin} install {args}"
+status = "{bin} status --json"
+backup = "{bin} backup --to {dir}"
+uninstall = "{bin} uninstall"
+
+[[form]]                                  # поля окна установки
+key = "port"
+label = "Порт"
+kind = "port"
+default = 8740
+arg = "--port {value}"
+
+[[form]]
+key = "address"
+label = "Внешний адрес (IP или имя), если сервер не определит его сам"
+kind = "text"
+arg = "--address {value}"
+
+[[action]]                                # кнопки «Обслуживания»
+label = "Перезапустить"
+cmd = "systemctl restart {service}"
+confirm = true
+
+[[action]]
+label = "Журнал (последние 100 строк)"
+cmd = "journalctl -u {service} -n 100 --no-pager"
+confirm = false

@@ -1681,7 +1681,11 @@ cmd = "systemctl restart {service}"
     fn hidden_modules_appear_only_with_the_switch_and_broken_ones_are_listed_with_a_reason() {
         let config = settings_with_modules();
         let state = state_in(&config);
-        let ids = |show| state.registry.modules(show).map(|m| m.manifest.id.clone()).collect::<Vec<_>>();
+        // Встроенные модули (сейчас один) в сравнение не входят: тест про файлы из папки настроек.
+        let ids = |show| {
+            let all = state.registry.modules(show).map(|m| m.manifest.id.clone());
+            all.filter(|id| id != "ampulse").collect::<Vec<_>>()
+        };
         assert_eq!(ids(false), ["relay"], "the switch is off: the hidden module is absent from the choice");
         assert_eq!(ids(true), ["relay", "secret"]);
         assert!(state.shown("relay", false) && !state.shown("secret", false) && state.shown("secret", true));
