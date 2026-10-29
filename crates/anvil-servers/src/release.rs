@@ -86,6 +86,10 @@ pub struct Fetched {
 struct Release {
     tag_name: String,
     assets: Vec<Asset>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,7 +132,10 @@ impl Releases {
         mut progress: impl FnMut(u64, u64),
     ) -> Result<Fetched, ReleaseError> {
         let wanted = request.source.asset_for(request.arch).ok_or(ReleaseError::NoArch(request.arch.key()))?.to_owned();
-        let release = self.release(&request.source.repo, request.tag).await?;
+        let release = match (request.tag, &request.source.tag_prefix) {
+            (None, Some(prefix)) => self.newest_with_prefix(&request.source.repo, prefix).await?,
+            _ => self.release(&request.source.repo, request.tag).await?,
+        };
         let tag = release.tag_name.clone();
         let find = |name: &str| release.assets.iter().find(|a| a.name == name);
         let asset = find(&wanted).ok_or_else(|| ReleaseError::NoAsset { tag: tag.clone(), file: wanted.clone() })?;
@@ -164,6 +171,18 @@ impl Releases {
             Some(tag) => format!("releases/tags/{tag}"),
             None => "releases/latest".to_owned(),
         };
+        self.get_json(repo, &path).await
+    }
+
+    /// Новейший опубликованный выпуск, тег которого начинается с `prefix` (последние 50 выпусков репозитория).
+    async fn newest_with_prefix(&self, repo: &str, prefix: &str) -> Result<Release, ReleaseError> {
+        let list: Vec<Release> = self.get_json(repo, "releases?per_page=50").await?;
+        list.into_iter()
+            .find(|r| !r.draft && !r.prerelease && r.tag_name.starts_with(prefix))
+            .ok_or_else(|| ReleaseError::NotFound(repo.to_owned()))
+    }
+
+    async fn get_json<T: serde::de::DeserializeOwned>(&self, repo: &str, path: &str) -> Result<T, ReleaseError> {
         let response = self
             .authorized(self.http.get(format!("{}/repos/{repo}/{path}", self.api)))
             .header("Accept", "application/vnd.github+json")
@@ -402,6 +421,32 @@ mod tests {
         let (base, seen) = serve(|b| release_routes(b, Some(good_sums()))).await;
         Releases::with_api(&base, Some("")).unwrap().fetch(request(&source, Arch::X86_64), |_, _| {}).await.unwrap();
         assert!(seen.lock().unwrap().iter().all(|(_, auth)| auth.is_none()), "an empty token is no token");
+    }
+
+    #[tokio::test]
+    async fn a_tag_prefix_picks_the_newest_published_release_of_that_kind() {
+        let mut source = source();
+        source.tag_prefix = Some("server-v".into());
+        let (base, seen) = serve(|b| {
+            let mut routes = release_routes(b, Some(good_sums()));
+            let body = String::from_utf8(routes["/repos/octo/example/releases/latest"].1.clone()).unwrap();
+            let server = body.replace("v1.2.0", "server-v0.3.0");
+            let old = body.replace("v1.2.0", "server-v0.2.0");
+            let list = format!(
+                r#"[{{"tag_name":"v0.9.2","assets":[]}},{{"tag_name":"server-v0.4.0-rc.1","prerelease":true,"assets":[]}},{{"tag_name":"server-v0.3.5","draft":true,"assets":[]}},{server},{old}]"#
+            );
+            routes.insert("/repos/octo/example/releases?per_page=50".to_owned(), (200, list.into_bytes()));
+            routes
+        })
+        .await;
+        let releases = Releases::with_api(&base, None).unwrap();
+        let got = releases.fetch(request(&source, Arch::X86_64), |_, _| {}).await.unwrap();
+        assert_eq!((got.tag.as_str(), got.verified), ("server-v0.3.0", true));
+        assert!(seen.lock().unwrap().iter().all(|(path, _)| !path.ends_with("/releases/latest")));
+
+        source.tag_prefix = Some("tool-v".into());
+        let err = releases.fetch(request(&source, Arch::X86_64), |_, _| {}).await.unwrap_err();
+        assert_eq!(err, ReleaseError::NotFound("octo/example".into()));
     }
 
     #[tokio::test]

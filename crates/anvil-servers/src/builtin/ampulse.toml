@@ -13,6 +13,7 @@ binary = "/opt/ampulse/ampulse-server"
 repo = "AgitAngst/Ampulse"                # выпуск GitHub
 assets = { x86_64 = "ampulse-server", arm64 = "ampulse-server-arm64" }
 checksums = "SHA256SUMS"
+tag_prefix = "server-v"                 # в репозитории есть и выпуски приложения (vX.Y.Z)
 
 [ports]
 tcp = [8740]

@@ -48,6 +48,9 @@ pub struct Source {
     pub assets: BTreeMap<Arch, String>,
     /// Файл с суммами SHA-256 в том же выпуске.
     pub checksums: String,
+    /// Начало тега выпусков сервера, когда в репозитории есть и другие выпуски (приложение): берётся новейший
+    /// выпуск с таким началом. `None` — последний выпуск репозитория.
+    pub tag_prefix: Option<String>,
 }
 
 impl Source {
@@ -228,6 +231,7 @@ struct RawSource {
     #[serde(default)]
     assets: BTreeMap<String, String>,
     checksums: Option<String>,
+    tag_prefix: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -479,7 +483,16 @@ fn parse_source(raw: Option<RawSource>) -> Result<Source, ManifestError> {
     if !is_file_name(&checksums) {
         return Err(ManifestError::invalid("source.checksums", "not a plain file name"));
     }
-    Ok(Source { repo, assets, checksums })
+    let tag_prefix = match raw.tag_prefix {
+        None => None,
+        Some(prefix)
+            if !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) =>
+        {
+            Some(prefix)
+        }
+        Some(_) => return Err(ManifestError::invalid("source.tag_prefix", "letters, digits, `.`, `_` and `-` only")),
+    };
+    Ok(Source { repo, assets, checksums, tag_prefix })
 }
 
 fn parse_field(index: usize, raw: RawField) -> Result<Field, ManifestError> {
@@ -564,6 +577,19 @@ cmd = "systemctl restart {service}"
 "#;
 
     #[test]
+    fn a_tag_prefix_is_read_and_checked() {
+        let with = |prefix: &str| {
+            let line = format!("tag_prefix = \"{prefix}\"\n\n[ports]");
+            EXAMPLE.replace("[ports]", &line)
+        };
+        assert_eq!(Manifest::parse(&with("server-v")).unwrap().source.tag_prefix.as_deref(), Some("server-v"));
+        for bad in ["", "a b", "x/y"] {
+            let err = Manifest::parse(&with(bad)).unwrap_err().to_string();
+            assert!(err.contains("source.tag_prefix"), "{bad:?}: {err}");
+        }
+    }
+
+    #[test]
     fn the_example_manifest_reads_whole() {
         let m = Manifest::parse(EXAMPLE).unwrap();
         assert_eq!((m.id.as_str(), m.name.as_str(), m.hidden, m.instances), ("example", "Пример", false, true));
@@ -577,6 +603,7 @@ cmd = "systemctl restart {service}"
         assert_eq!(m.source.asset_for(Arch::X86_64), Some("example-server"));
         assert_eq!(m.source.asset_for(Arch::Arm64), Some("example-server-arm64"), "`aarch64` is `arm64`");
         assert_eq!(m.source.checksums, "SHA256SUMS");
+        assert_eq!(m.source.tag_prefix, None, "the latest release unless a prefix is given");
         assert_eq!(m.ports.tcp, [8740]);
         assert_eq!(m.commands.get(CommandKind::Status), Some("{bin} status --json"));
         assert_eq!(m.commands.get(CommandKind::Update), None);
