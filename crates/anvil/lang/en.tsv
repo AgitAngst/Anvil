@@ -839,3 +839,125 @@ Windows не отдала сведения о дисках (для части д
 Данные программы при удалении не трогаются.	Program data is left untouched on uninstall.
 Страница на GitHub	GitHub page
 Установить	Install
+Проверка	Check
+Остановка	Stop
+Перезапуск	Restart
+Копия	Backup
+Удаление	Removal
+Действие	Action
+не вышло	failed
+Контрольная сумма файла не сошлась — на машину ничего не залито	The file checksum does not match: nothing was uploaded to the machine
+Для архитектуры этой машины выпусков нет	There is no release for the architecture of this machine
+В выпуске нет контрольной суммы	The release has no checksum
+Введите адрес машины без пробелов: имя или IP-адрес.	Enter the machine address without spaces: a name or an IP address.
+Порт SSH — число от 1 до 65535.	The SSH port is a number from 1 to 65535.
+Введите логин без пробелов.	Enter the login without spaces.
+Машина с таким названием уже есть.	A machine with this name already exists.
+Укажите файл закрытого ключа.	Choose the private key file.
+Linux-машины по SSH: Anvil ставит на них серверы ваших программ, обновляет их и показывает журнал. Только проверка порта и ваши команды — в «Парке серверов».	Linux machines over SSH: Anvil installs your programs' servers on them, updates them and shows their log. Port checks and your own commands stay in the Server fleet.
+Машины	Machines
+Новый сервер…	New server…
+Машин пока нет. Добавьте адрес, логин и способ входа.	No machines yet. Add an address, a login and a way to sign in.
+Машина не выбрана	No machine selected
+Добавьте машину кнопкой «+» слева: Anvil подключится по SSH и покажет, какие серверы на ней стоят.	Add a machine with the + button on the left: Anvil connects over SSH and shows which servers it runs.
+Ошибка	Error
+Ключ не подтверждён	Key not confirmed
+Не проверена	Not checked
+Проверена	Checked
+Убрать из списка…	Remove from the list…
+Подождите: на машине идёт работа.	Wait: the machine is busy.
+Нет ни одного модуля: положите манифест в папку modules (Настройки → Кузница → Серверы).	No modules yet: put a manifest into the modules folder (Settings → Forge → Servers).
+Поставить сервер…	Install a server…
+проверена	checked
+Не получилось	It did not work
+Обслуживание	Maintenance
+Ход работы скопирован	Work log copied
+Остановлен	Stopped
+Состояние неизвестно	State unknown
+Ключ машины ещё не подтверждён. Нажмите «Проверить»: Anvil покажет отпечаток, и после вашего подтверждения подключится.	The machine key is not confirmed yet. Press Check: Anvil shows the fingerprint and connects once you confirm it.
+Машину ещё не проверяли. Нажмите «Проверить»: Anvil найдёт, какие серверы на ней стоят.	The machine has not been checked yet. Press Check: Anvil finds which servers it runs.
+Anvil не нашёл на этой машине известных серверов. Поставьте сервер кнопкой «Поставить сервер…».	Anvil found no known servers on this machine. Install one with Install a server….
+Серверов нет	No servers
+проверен	checked
+Отпечаток	Fingerprint
+Перезапустить	Restart
+Манифеста этого сервера нет в папке modules: управлять им из Anvil нельзя.	This server's manifest is not in the modules folder: Anvil cannot manage it.
+Сначала поставьте сервер или проверьте машину.	Install a server or check the machine first.
+Манифеста этого сервера нет в папке modules: обслуживать его из Anvil нельзя.	This server's manifest is not in the modules folder: Anvil cannot maintain it.
+Обновление и копия	Update and backup
+Обновить…	Update…
+В манифесте нет команды backup.	The manifest has no backup command.
+Сделать копию	Make a backup
+Обновление ставит последний выпуск поверх: файл проверяется по SHA256SUMS. Копия ложится на самой машине, в /var/backups/anvil.	An update installs the latest release over the current one; the file is checked against SHA256SUMS. The backup stays on the machine, in /var/backups/anvil.
+Выполнит команду uninstall этого сервера. Вернуть удалённое нельзя; команду вы увидите дословно.	Runs this server's uninstall command. Removed data cannot be restored; you will see the command verbatim.
+В манифесте нет команды uninstall.	The manifest has no uninstall command.
+Удалить сервер…	Remove the server…
+Обновить журнал	Refresh the log
+Последние строки journalctl службы сервера.	The latest journalctl lines of the server's service.
+Журнал не загружен: нажмите «Обновить журнал».	The log is not loaded: press Refresh the log.
+Команда выполняется на машине от root. Перед запуском Anvil покажет её дословно и спросит подтверждение.	The command runs on the machine as root. Anvil shows it verbatim and asks for confirmation first.
+Выполнить…	Run…
+Вывод команд появится здесь.	Command output appears here.
+Скопировать	Copy
+Здесь пойдёт ход установки и других дел на машине.	The progress of installs and other work on the machine appears here.
+Изменить сервер	Edit server
+Новый сервер	New server
+как показывать в списке	how to show it in the list
+Логин	Login
+Порт SSH	SSH port
+Как входить	Sign in with
+Пароль	Password
+Файл ключа	Key file
+ssh-agent	ssh-agent
+оставьте пустым, чтобы не менять	leave empty to keep it
+Пароль хранится в хранилище учётных данных системы, не в настройках Anvil.	The password is kept in the system credential store, not in Anvil's settings.
+Файл закрытого ключа	Private key file
+Фраза ключа (если есть)	Key passphrase (if any)
+Ключи берутся у ssh-agent: службы OpenSSH Authentication Agent или Pageant. Пароль не нужен.	Keys come from ssh-agent: the OpenSSH Authentication Agent service or Pageant. No password needed.
+Пароль не сохранён	The password was not saved
+Поставить сервер на	Install a server on
+Модулей нет	No modules
+Модуль — это манифест сервера: положите файл .toml в папку modules рядом с настройками Anvil.	A module is a server manifest: put a .toml file into the modules folder next to Anvil's settings.
+Выберите сервер. Файл возьмётся из последнего выпуска на GitHub и проверится по SHA256SUMS.	Choose a server. The file comes from the latest GitHub release and is checked against SHA256SUMS.
+Имя экземпляра	Instance name
+основной — оставьте пустым	main — leave empty
+У каждого экземпляра своя служба, пользователь, папка данных и порты. Строчные латинские буквы, цифры и дефис.	Each instance has its own service, user, data folder and ports. Lowercase Latin letters, digits and a hyphen.
+Поставит последний выпуск поверх; значения ниже нужны, только если сервер их спрашивает.	Installs the latest release over the current one; the values below are needed only if the server asks for them.
+На машине сейчас идёт другая работа: подождите.	The machine is busy with other work: wait.
+Будет выполнено на машине	This will run on the machine
+от root, дословно так:	as root, verbatim:
+Выполнить	Run
+Выполнить на	Run on
+Убрать	Remove
+из списка?	from the list?
+Anvil забудет адрес, ключ машины и сохранённый пароль.	Anvil forgets the address, the machine key and the saved password.
+Сама машина и серверы на ней не меняются.	The machine itself and its servers stay as they are.
+Служба, пользователь и данные сервера, в том числе	The service, its user and the server data, including
+могут быть удалены. Вернуть их нельзя.	may be removed. This cannot be undone.
+Чтобы подтвердить, введите	To confirm, type
+Введите имя сервера, чтобы разрешить удаление.	Type the server name to allow removal.
+Удалить сервер	Remove the server
+Первое подключение	First connection
+Anvil ещё не знает ключ машины	Anvil does not know the key of the machine
+Пока вы не подтвердите отпечаток, пароль и другие секреты на машину не отправляются.	Until you confirm the fingerprint, no password or other secret is sent to the machine.
+Отпечаток ключа машины	Machine key fingerprint
+Сверьте его с панелью хостинга или на самой машине:	Compare it with your hosting panel, or on the machine itself:
+Доверять и подключиться	Trust and connect
+Ключ машины сменился	The machine key changed
+Anvil не подключился	Anvil did not connect
+Пароль и другие секреты не отправлены.	No password or other secret was sent.
+Машина	Machine
+Так бывает после переустановки системы — и когда машину подменили по дороге. Сверьте новый отпечаток с панелью хостинга, прежде чем доверять.	This happens after a system reinstall, and when the machine is replaced on the way. Compare the new fingerprint with your hosting panel before trusting it.
+Был	Was
+Стал	Now
+Поверить новому ключу	Trust the new key
+Поставить без проверки суммы?	Install without a checksum?
+В выпуске нет контрольной суммы для этого файла: Anvil не может проверить, что его не подменили.	The release has no checksum for this file: Anvil cannot check that it was not tampered with.
+Продолжайте, только если полностью доверяете репозиторию. Файл будет залит на машину и запущен от root.	Go on only if you fully trust the repository. The file is uploaded to the machine and run as root.
+Поставить без проверки	Install without checking
+Скрытые модули	Hidden modules
+Модули с hidden = true в манифесте видны в «Серверы» только при включённом переключателе.	Modules with hidden = true in their manifest show in Servers only while this switch is on.
+Манифесты модулей — файлы .toml в папке:	Module manifests are .toml files in the folder:
+Не открылось	Could not open
+Загружено модулей:	Modules loaded:
+Не приняты — причина указана справа:	Rejected, the reason is on the right:

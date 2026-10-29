@@ -55,6 +55,8 @@ pub enum View {
     Resources,
     /// Парк серверов и ботов.
     Fleet,
+    /// Серверы на Linux-машинах: установка и управление по SSH.
+    Servers,
     /// Магазин программ: программы из выпусков репозиториев.
     Store,
 }
@@ -208,6 +210,9 @@ pub struct App {
     fleet_last: Option<Instant>,
     fleet_tx: Sender<FleetEvent>,
     fleet_rx: Receiver<FleetEvent>,
+    /// Серверы по SSH: реестр модулей, ход дел на машинах, вопросы владельцу.
+    pub servers: crate::servers::State,
+    pub servers_view: crate::ui::servers::View,
     work_busy: bool,
     work_last: Option<Instant>,
     work_tx: Sender<crate::work::Snapshot>,
@@ -353,6 +358,11 @@ impl App {
             let ctx = ctx.clone();
             move || ctx.request_repaint_of(egui::ViewportId::ROOT)
         };
+        let servers_wake: crate::servers::Wake = {
+            let ctx = cc.egui_ctx.clone();
+            Arc::new(move || ctx.request_repaint_of(egui::ViewportId::ROOT))
+        };
+        let servers_state = crate::servers::State::new(servers_wake, &config_path);
         let (clicks_tx, clicks) = std::sync::mpsc::channel();
         notifier.set_clicks(clicks_tx, wake(&cc.egui_ctx));
         let (tray_tx, tray_rx) = std::sync::mpsc::channel();
@@ -428,6 +438,8 @@ impl App {
             fleet_last: None,
             fleet_tx,
             fleet_rx,
+            servers: servers_state,
+            servers_view: Default::default(),
             work_busy: false,
             work_last: None,
             work_tx,
@@ -825,6 +837,25 @@ impl App {
         }
     }
 
+    /// Открыть «Серверы» в Кузнице: манифесты перечитываются, выбрана первая машина, если ничего не выбрано.
+    pub fn open_servers(&mut self) {
+        self.set_mode(Mode::Forge);
+        self.view = View::Servers;
+        self.servers.reload(&self.config_path);
+        self.servers_view.select_first(&self.config.servers);
+    }
+
+    /// Принять события потоков «Серверов»: что нашли — в настройки, о чём сказать — в уведомления.
+    fn poll_servers(&mut self) {
+        let applying = self.servers.poll(&mut self.config.servers);
+        for (text, tone) in applying.toasts {
+            self.toasts.push(text, tone);
+        }
+        if applying.save {
+            self.save();
+        }
+    }
+
     /// Открыть «Ресурсы и бюджет» в Кузнице.
     pub fn open_resources(&mut self) {
         self.set_mode(Mode::Forge);
@@ -1120,6 +1151,7 @@ impl App {
             self.apply_fleet(event);
         }
         self.fleet_tick(ctx);
+        self.poll_servers();
         while let Ok(snapshot) = self.resources_rx.try_recv() {
             self.resources_busy = false;
             self.resources = Some(snapshot);
@@ -1233,7 +1265,7 @@ impl App {
         }
         self.view = match self.view {
             View::Project => View::Overview,
-            View::Overview | View::Work | View::Resources | View::Fleet | View::Store => View::Project,
+            View::Overview | View::Work | View::Resources | View::Fleet | View::Servers | View::Store => View::Project,
         };
     }
 

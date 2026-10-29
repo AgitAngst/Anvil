@@ -18,6 +18,7 @@ mod presets;
 mod project;
 pub mod release;
 mod resources;
+pub mod servers;
 mod settings;
 mod sidebar;
 mod store;
@@ -75,6 +76,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
             (Mode::Forge, View::Work) => work::show(app, ui),
             (Mode::Forge, View::Resources) => resources::show(app, ui),
             (Mode::Forge, View::Fleet) => fleet::show(app, ui),
+            (Mode::Forge, View::Servers) => servers::show(app, ui),
             (Mode::Forge, View::Store) => store::show(app, ui),
         }
     });
@@ -83,6 +85,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     add_project::show(app, &ctx);
     demo::show(app, &ctx);
     fleet::dialogs(app, &ctx);
+    servers::dialogs(app, &ctx);
     presets::show(app, &ctx);
     release::show(app, &ctx);
     dialogs::show(app, &ctx);

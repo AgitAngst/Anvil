@@ -564,6 +564,8 @@ fn forge(app: &mut App, ui: &mut Ui) {
     super::guard::settings(app, ui);
     ui.add_space(12.0);
     super::github::settings(app, ui);
+    ui.add_space(12.0);
+    super::servers::settings(app, ui);
 }
 
 /// Какие проекты искать: Rust, Godot, Unity, просто git.

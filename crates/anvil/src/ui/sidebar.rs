@@ -87,6 +87,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 if w::menu_item(ui, Some(Icon::Monitor), t("Ресурсы и бюджет"), None).clicked() {
                     app.open_resources();
                 }
+                if w::menu_item(ui, Some(Icon::Terminal), t("Серверы"), None).clicked() {
+                    app.open_servers();
+                }
                 if w::menu_item(ui, Some(Icon::Server), t("Парк серверов"), None).clicked() {
                     app.open_fleet();
                 }
