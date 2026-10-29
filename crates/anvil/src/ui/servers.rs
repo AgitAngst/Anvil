@@ -219,7 +219,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         ),
     );
     ui.add_space(12.0);
-    let height = ui.available_height();
+    // Запас: между рядами есть промежутки, и без него на самом малом окне появлялась вторая прокрутка.
+    let height = ui.available_height() - 16.0;
     ui.horizontal_top(|ui| {
         ui.allocate_ui_with_layout(Vec2::new(LIST_WIDTH, height), Layout::top_down(Align::LEFT), |ui| {
             machine_list(app, ui, &p);
@@ -354,55 +355,28 @@ fn detail(app: &mut App, ui: &mut Ui, p: &Palette) {
     let modules = shown(app, &machine);
     let can_install = app.servers.registry.modules(app.config.show_hidden_modules).next().is_some();
 
-    // Шапка: имя и состояние; главная кнопка левее остальных действий.
+    // Шапка: имя и состояние; главная кнопка левее остальных действий. В узком окне действия — строкой ниже.
+    let narrow = ui.available_width() < 700.0;
     ui.horizontal(|ui| {
-        w::title(ui, &machine.name, 22.0);
-        match (busy, &error) {
-            (Some(what), _) => {
-                w::badge(ui, what, Tone::Accent);
-            }
-            (None, Some(_)) => {
-                w::badge(ui, t("Ошибка"), Tone::Danger);
-            }
-            (None, None) if machine.fingerprint.is_empty() => {
-                w::badge(ui, t("Ключ не подтверждён"), Tone::Warning);
-            }
-            (None, None) if machine.checked == 0 => {
-                w::badge(ui, t("Не проверена"), Tone::Neutral);
-            }
-            (None, None) => {
-                w::badge(ui, t("Проверена"), Tone::Success);
-            }
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let more = w::icon_button(ui, Icon::More, t("Ещё"));
-            let entries = [(t("Изменить…"), None), (t("Убрать из списка…"), None)];
-            w::menu_fit(&more, 190.0, &entries, |ui| {
-                if w::menu_item(ui, Some(Icon::Pencil), t("Изменить…"), None).clicked() {
-                    act = Some(Act::Edit);
-                }
-                w::menu_separator(ui);
-                if w::menu_item_danger(ui, Some(Icon::Trash), t("Убрать из списка…")).clicked() {
-                    act = Some(Act::Remove);
-                }
+        ui.add(egui::Label::new(RichText::new(&machine.name).font(semibold(22.0)).color(p.text)).truncate());
+        let (text, tone) = match (busy, &error) {
+            (Some(what), _) => (what, Tone::Accent),
+            (None, Some(_)) => (t("Ошибка"), Tone::Danger),
+            (None, None) if machine.fingerprint.is_empty() => (t("Ключ не подтверждён"), Tone::Warning),
+            (None, None) if machine.checked == 0 => (t("Не проверена"), Tone::Neutral),
+            (None, None) => (t("Проверена"), Tone::Success),
+        };
+        w::badge(ui, text, tone);
+        if !narrow {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                header_actions(ui, busy.is_some(), can_install, &mut act, true);
             });
-            let wait = t("Подождите: на машине идёт работа.");
-            if gated(ui, busy.is_none(), wait, |ui| w::button(ui, Kind::Secondary, Some(Icon::Refresh), t("Проверить")))
-            {
-                act = Some(Act::Check);
-            }
-            let why = if can_install {
-                wait
-            } else {
-                t("Нет ни одного модуля: положите манифест в папку modules (Настройки → Кузница → Серверы).")
-            };
-            if gated(ui, busy.is_none() && can_install, why, |ui| {
-                w::button(ui, Kind::Primary, Some(Icon::Plus), t("Поставить сервер…"))
-            }) {
-                act = Some(Act::Install);
-            }
-        });
+        }
     });
+    if narrow {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| header_actions(ui, busy.is_some(), can_install, &mut act, false));
+    }
     ui.horizontal_wrapped(|ui| {
         w::mono(ui, &machine.target(), Some(p.weak));
         if !machine.arch.is_empty() {
@@ -423,7 +397,8 @@ fn detail(app: &mut App, ui: &mut Ui, p: &Palette) {
     app.servers_view.tab = tab;
     ui.add_space(10.0);
 
-    let body_height = (ui.available_height() - LOG_HEIGHT - 8.0).max(120.0);
+    let log_height = (ui.available_height() * 0.3).clamp(92.0, LOG_HEIGHT);
+    let body_height = (ui.available_height() - log_height - 48.0).max(80.0);
     egui::ScrollArea::vertical().id_salt("servers-body").max_height(body_height).auto_shrink([false, true]).show(
         ui,
         |ui| match tab {
@@ -434,7 +409,7 @@ fn detail(app: &mut App, ui: &mut Ui, p: &Palette) {
         },
     );
     ui.add_space(8.0);
-    work_log(app, ui, p, &machine, &mut act);
+    work_log(app, ui, p, &machine, &mut act, log_height);
     if let Some(Act::CopyLog) = act {
         if let Some(runtime) = app.servers.runtime(&machine.id) {
             ui.ctx().copy_text(runtime.log.iter().cloned().collect::<Vec<_>>().join("\n"));
@@ -444,6 +419,47 @@ fn detail(app: &mut App, ui: &mut Ui, p: &Palette) {
     }
     if let Some(act) = act {
         apply(app, &machine, act);
+    }
+}
+
+/// Действия шапки машины: «Поставить сервер…», «Проверить», «Ещё». `reversed` — для раскладки справа налево.
+fn header_actions(ui: &mut Ui, busy: bool, can_install: bool, act: &mut Option<Act>, reversed: bool) {
+    let wait = t("Подождите: на машине идёт работа.");
+    let order: [u8; 3] = if reversed { [2, 1, 0] } else { [0, 1, 2] };
+    for item in order {
+        match item {
+            0 => {
+                let why = if can_install {
+                    wait
+                } else {
+                    t("Нет ни одного модуля: положите манифест в папку modules (Настройки → Кузница → Серверы).")
+                };
+                if gated(ui, !busy && can_install, why, |ui| {
+                    w::button(ui, Kind::Primary, Some(Icon::Plus), t("Поставить сервер…"))
+                }) {
+                    *act = Some(Act::Install);
+                }
+            }
+            1 => {
+                if gated(ui, !busy, wait, |ui| w::button(ui, Kind::Secondary, Some(Icon::Refresh), t("Проверить")))
+                {
+                    *act = Some(Act::Check);
+                }
+            }
+            _ => {
+                let more = w::icon_button(ui, Icon::More, t("Ещё"));
+                let entries = [(t("Изменить…"), None), (t("Убрать из списка…"), None)];
+                w::menu_fit(&more, 190.0, &entries, |ui| {
+                    if w::menu_item(ui, Some(Icon::Pencil), t("Изменить…"), None).clicked() {
+                        *act = Some(Act::Edit);
+                    }
+                    w::menu_separator(ui);
+                    if w::menu_item_danger(ui, Some(Icon::Trash), t("Убрать из списка…")).clicked() {
+                        *act = Some(Act::Remove);
+                    }
+                });
+            }
+        }
     }
 }
 
@@ -741,7 +757,7 @@ fn mono_box(ui: &mut Ui, p: &Palette, text: &str, height: f32, id: &str) {
 }
 
 /// «Ход работы»: до 400 строк на машину, «Скопировать».
-fn work_log(app: &App, ui: &mut Ui, p: &Palette, machine: &Machine, act: &mut Option<Act>) {
+fn work_log(app: &App, ui: &mut Ui, p: &Palette, machine: &Machine, act: &mut Option<Act>, height: f32) {
     let runtime = app.servers.runtime(&machine.id);
     ui.horizontal(|ui| {
         w::section_label(ui, t("Ход работы"));
@@ -774,7 +790,7 @@ fn work_log(app: &App, ui: &mut Ui, p: &Palette, machine: &Machine, act: &mut Op
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_height(LOG_HEIGHT - 52.0);
+            ui.set_height(height - 52.0);
             egui::ScrollArea::vertical().id_salt("servers-log").stick_to_bottom(true).auto_shrink([false, false]).show(
                 ui,
                 |ui| match runtime {
@@ -887,6 +903,13 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
     prompt_dialog(app, ctx);
 }
 
+/// Ряд кнопок диалога: главная справа, по высоте ровно в строку (иначе ряд растянулся бы на весь диалог).
+fn button_row(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
+    ui.horizontal(|ui| {
+        ui.with_layout(Layout::right_to_left(Align::Center), content);
+    });
+}
+
 fn error_line(ui: &mut Ui, text: &str) {
     let p = Palette::of(ui);
     ui.horizontal_wrapped(|ui| {
@@ -995,7 +1018,7 @@ fn edit_dialog(app: &mut App, ctx: &egui::Context) {
             error_line(ui, error);
             ui.add_space(6.0);
         }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        button_row(ui, |ui| {
             let label = if editing { t("Сохранить") } else { t("Добавить") };
             if w::button(ui, Kind::Primary, None, label).clicked() {
                 save = true;
@@ -1162,7 +1185,7 @@ fn install_dialog(app: &mut App, ctx: &egui::Context) {
             error_line(ui, error);
             ui.add_space(6.0);
         }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        button_row(ui, |ui| {
             let label = if install.update { t("Обновить") } else { t("Поставить") };
             if w::button(ui, Kind::Primary, None, label).clicked() {
                 go = true;
@@ -1218,8 +1241,7 @@ fn ask_dialog(app: &mut App, ctx: &egui::Context) {
     let machine_of = |id: &str| app.config.servers.iter().find(|m| m.id == id).cloned();
     let verbatim = |ui: &mut Ui, name: &str, command: &str| {
         let p = Palette::of(ui);
-        w::note(ui, format!("{} {}:", t("Будет выполнено на машине"), q(name)));
-        w::note(ui, t("от root, дословно так:"));
+        w::note(ui, format!("{} {} {}", t("Будет выполнено на машине"), q(name), t("от root, дословно так:")));
         ui.add_space(4.0);
         egui::Frame::new()
             .fill(p.field)
@@ -1285,7 +1307,7 @@ fn ask_dialog(app: &mut App, ctx: &egui::Context) {
         Ask::Uninstall { machine, module, instance, name, command, data_dir, typed } => {
             let Some(target) = machine_of(machine) else { return };
             let mut open = true;
-            let mut go = false;
+            let (mut go, mut cancel) = (false, false);
             let title = format!("{} {}?", t("Удалить"), q(name));
             let matches = typed.trim() == name.as_str();
             chrome::dialog(ctx, "anvil-servers-uninstall", &title, 520.0, &mut open, |ui| {
@@ -1303,10 +1325,10 @@ fn ask_dialog(app: &mut App, ctx: &egui::Context) {
                     ui.label(RichText::new(text).size(13.0).color(p.weak));
                 });
                 ui.add_space(8.0);
-                w::section_label(ui, &format!("{} {}", t("Чтобы подтвердить, введите"), q(name)));
+                w::note(ui, format!("{} {}:", t("Чтобы подтвердить, введите"), q(name)));
                 ui.add(egui::TextEdit::singleline(typed).desired_width(ui.available_width()));
                 ui.add_space(12.0);
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                button_row(ui, |ui| {
                     if gated(
                         ui,
                         matches,
@@ -1315,11 +1337,14 @@ fn ask_dialog(app: &mut App, ctx: &egui::Context) {
                     ) {
                         go = true;
                     }
+                    if w::button(ui, Kind::Ghost, None, t("Отмена")).clicked() {
+                        cancel = true;
+                    }
                 });
             });
             if go {
                 app.servers.start(&target, Job::Uninstall { module: module.clone(), instance: instance.clone() }, show);
-            } else if open {
+            } else if open && !cancel {
                 app.servers_view.ask = Some(ask);
             }
         }
@@ -1336,7 +1361,7 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                 app.servers.prompt = None;
                 return;
             };
-            let (mut open, mut trust) = (true, false);
+            let (mut open, mut trust, mut cancel) = (true, false, false);
             chrome::dialog(
                 ctx,
                 "anvil-servers-trust",
@@ -1359,10 +1384,13 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                     w::note(ui, t("Сверьте его с панелью хостинга или на самой машине:"));
                     w::mono(ui, "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub", None);
                     ui.add_space(12.0);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    button_row(ui, |ui| {
                         if w::button(ui, Kind::Primary, Some(Icon::Lock), t("Доверять и подключиться")).clicked()
                         {
                             trust = true;
+                        }
+                        if w::button(ui, Kind::Ghost, None, t("Отмена")).clicked() {
+                            cancel = true;
                         }
                     });
                 },
@@ -1371,7 +1399,7 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                 trust_key(app, &machine, &fingerprint);
                 app.servers.prompt = None;
                 restart(app, &machine, job, show);
-            } else if !open {
+            } else if !open || cancel {
                 app.servers.prompt = None;
             }
         }
@@ -1380,7 +1408,7 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                 app.servers.prompt = None;
                 return;
             };
-            let (mut open, mut trust) = (true, false);
+            let (mut open, mut trust, mut cancel) = (true, false, false);
             chrome::dialog(
                 ctx,
                 "anvil-servers-keychanged",
@@ -1410,10 +1438,13 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                     w::section_label(ui, t("Стал"));
                     fingerprint_box(ui, &now);
                     ui.add_space(12.0);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    button_row(ui, |ui| {
                         if w::button(ui, Kind::Danger, Some(Icon::Lock), t("Поверить новому ключу")).clicked()
                         {
                             trust = true;
+                        }
+                        if w::button(ui, Kind::Ghost, None, t("Отмена")).clicked() {
+                            cancel = true;
                         }
                     });
                 },
@@ -1422,7 +1453,7 @@ fn prompt_dialog(app: &mut App, ctx: &egui::Context) {
                 trust_key(app, &machine, &now);
                 app.servers.prompt = None;
                 restart(app, &machine, job, show);
-            } else if !open {
+            } else if !open || cancel {
                 app.servers.prompt = None;
             }
         }
