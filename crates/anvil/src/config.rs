@@ -43,6 +43,10 @@ pub struct Config {
     pub actions_quota: u32,
     /// Парк серверов и ботов (`[[fleet]]`).
     pub fleet: Vec<crate::fleet::Entry>,
+    /// Серверы на Linux-машинах (`[[servers]]`): без паролей и ключевых фраз — они в хранилище учётных данных.
+    pub servers: Vec<crate::servers::Machine>,
+    /// Показывать модули серверов с `hidden = true` (вид «Серверы» и выбор при установке).
+    pub show_hidden_modules: bool,
     /// Редактор Godot (`Godot_v4.7.1-stable_win64.exe`). Не задан — ищется в `PATH`.
     pub godot: Option<PathBuf>,
     /// Быстрый запуск: сочетание, закрывать ли после запуска, искать ли в другой раскладке.
@@ -261,6 +265,8 @@ impl Default for Config {
             guard: GuardSettings::default(),
             actions_quota: 2000,
             fleet: Vec::new(),
+            servers: Vec::new(),
+            show_hidden_modules: false,
             godot: None,
             quick: QuickSettings::default(),
             window: WindowSettings::default(),
@@ -403,6 +409,28 @@ kinds = ['rust']",
         assert_eq!(back, config);
         assert_eq!(back.project(Path::new(r"E:\SRC\X")).visibility, Some(Visibility::Private));
         assert_eq!(Config::default().project(Path::new("x")).visibility, None);
+    }
+
+    #[test]
+    fn servers_round_trip_without_secrets() {
+        use crate::servers::{Login, Machine, Seen};
+        let machine = Machine {
+            id: "m1".into(),
+            name: "Demo".into(),
+            host: "203.0.113.7".into(),
+            login: Login::Key(PathBuf::from("demo.key")),
+            fingerprint: "SHA256:abc".into(),
+            modules: vec![Seen { module: "relay".into(), running: Some(true), ports: vec![8740], ..Seen::default() }],
+            ..Machine::default()
+        };
+        let config = Config { servers: vec![machine], show_hidden_modules: true, ..Config::default() };
+        let text = toml::to_string_pretty(&config).unwrap();
+        assert!(text.contains("[[servers]]") && text.contains("show_hidden_modules = true"), "{text}");
+        assert!(!text.to_lowercase().contains("passphrase") && !text.contains("secret"), "{text}");
+        assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
+        // Старые файлы без серверов читаются, скрытые модули по умолчанию выключены.
+        let old: Config = toml::from_str("roots = ['C:/src']").unwrap();
+        assert!(old.servers.is_empty() && !old.show_hidden_modules);
     }
 
     #[test]

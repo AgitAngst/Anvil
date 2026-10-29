@@ -11,6 +11,8 @@ publish.workspace = true
 [dependencies]
 anvil-ui = { path = "../anvil-ui", features = ["serde", "demo"] }
 anvil-update = { path = "../anvil-update" }
+# Серверы на Linux-машинах: SSH, манифесты модулей, выпуски GitHub (вид «Серверы»).
+anvil-servers = { path = "../anvil-servers" }
 eframe = { workspace = true }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "blocking"] }
 rfd = "0.17.2"
@@ -18,6 +20,8 @@ rfd = "0.17.2"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Свой поток событий для работы по SSH (русло current_thread в каждом фоновом потоке).
+tokio = { workspace = true }
 toml = "0.9.5"
 toml_edit = "0.25.15"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

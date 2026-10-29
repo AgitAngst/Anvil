@@ -31,6 +31,7 @@ mod resources;
 mod run;
 mod runs;
 mod rustsec;
+mod servers;
 mod sources;
 mod store;
 mod tasks;
