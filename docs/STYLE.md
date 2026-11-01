@@ -98,6 +98,7 @@ cargo run -p anvil-ui --example gallery --features demo
 | `TEAL` | Tetrachrome | `#3CC8B4` / `#04201C` / `#4FD6C3` | `#0E7C70` / `#FFFFFF` / `#0B6E63` |
 | `ROSE` | FFMincer | `#F0647A` / `#22060B` / `#F4808F` | `#C22D48` / `#FFFFFF` / `#B3263F` |
 | `BLUE` | Kamerton и программы без своего цвета | `#6C9EF8` / `#06142E` / `#86B0FA` | `#2A5FD0` / `#FFFFFF` / `#2556C0` |
+| `PLUM` | Klavesin | `#CB81D9` / `#170A1A` / `#E1A0EE` | `#AA39C0` / `#FFFFFF` / `#792989` |
 
 Правила акцента:
 - На экране **одна** главная кнопка, залитая акцентом. Остальные — обычные или тихие.

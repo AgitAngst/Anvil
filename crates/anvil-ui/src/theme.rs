@@ -79,8 +79,15 @@ impl Accent {
         dark: Swatch { fill: rgb(0x6C9EF8), on_fill: rgb(0x06142E), text: rgb(0x86B0FA) },
         light: Swatch { fill: rgb(0x2A5FD0), on_fill: rgb(0xFFFFFF), text: rgb(0x2556C0) },
     };
+    /// Klavesin: сливовый, 290°. Контраст не ниже 5.2:1 в обеих темах
+    /// (проверено расчётом WCAG при заведении, 01.11.2026).
+    pub const PLUM: Accent = Accent {
+        name: "Plum",
+        dark: Swatch { fill: rgb(0xCB81D9), on_fill: rgb(0x170A1A), text: rgb(0xE1A0EE) },
+        light: Swatch { fill: rgb(0xAA39C0), on_fill: rgb(0xFFFFFF), text: rgb(0x792989) },
+    };
 
-    pub const ALL: [Accent; 5] = [Self::VIOLET, Self::AMBER, Self::TEAL, Self::ROSE, Self::BLUE];
+    pub const ALL: [Accent; 6] = [Self::VIOLET, Self::AMBER, Self::TEAL, Self::ROSE, Self::BLUE, Self::PLUM];
 
     pub fn swatch(&self, dark: bool) -> Swatch {
         if dark { self.dark } else { self.light }
